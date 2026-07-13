@@ -745,20 +745,21 @@ class CEXUserTrader {
       // 管理员 Brain 决定平仓
       let shouldClose = false;
       let reason = '';
-      if (this.brain) {
-        const klines = this.dataBus?.klines?.[pos.symbol] || [];
-        const indicators = this.dataBus?.indicators?.[pos.symbol] || {};
+      // v122: Brain平仓增加15分钟最低持仓保护 — 给策略发展空间, 避免开仓几分钟就被Brain平掉
+      const _klines = this.dataBus?.klines?.[pos.symbol] || [];
+      const _indicators = this.dataBus?.indicators?.[pos.symbol] || {};
+      if (this.brain && holdHours * 60 >= 15) {
         const brainDecision = this.brain.managePosition(pos.symbol, {
           side: pos.side, entryPrice: pos.entryPrice, leverage,
           openTime, _peakPnlPct: peakGrossPct,
-        }, klines, indicators, null, null, null);
+        }, _klines, _indicators, null, null, null);
         if (brainDecision.action === 'CLOSE') {
           shouldClose = true;
           reason = brainDecision.reason || 'Brain平仓';
         }
+      } // v122: 持仓<15min时跳过Brain, 只用ATR止损/止盈管理
         // v113.70: AdaptiveExitManager 顶级策略止盈止损 — 用户独立实例
         if (!shouldClose && _userExit) {
-          const _klines = klines;
           // v113.70: 用开仓时存的ATR, 不用实时klines算的(可能被引擎覆盖为5m)
           const _openAtrPct = localPos?._openAtrPct || 1.5;
           const _grossPnl = grossPnlPct; // 已经是百分比 (rawPnlPct * leverage * 100)
@@ -775,7 +776,6 @@ class CEXUserTrader {
             reason = _exitDecision.reason;
           }
         }
-      }
       // v118: 超时兜底 — 放宽到6小时+18小时, 匹配新止盈止损逻辑
       if (!shouldClose && holdHours * 60 > 360 && netPnlPct < -0.03) {
         shouldClose = true;
@@ -786,16 +786,17 @@ class CEXUserTrader {
         reason = `⏰最大持仓时间 ${holdHours.toFixed(0)}h`;
       }
       // 策略反转 — 共享管理员 StrategyManager
+      // v122: 反转置信度从0.6提高到0.75 — 减少价格微幅波动导致的误反转
       if (!shouldClose && (Date.now() - openTime) > 15 * 60000) {
         const klines = this.dataBus?.klines?.[pos.symbol] || [];
         if (klines.length >= 50 && this.strategyManager) {
           try {
             const result = await this.strategyManager.analyze({ klines, currentPrice, symbol: pos.symbol });
             const signal = result.finalSignal;
-            if (pos.side === 'LONG' && signal.action === 'SELL' && signal.confidence > 0.6) {
+            if (pos.side === 'LONG' && signal.action === 'SELL' && signal.confidence > 0.75) {
               shouldClose = true;
               reason = `策略反转平多 conf=${signal.confidence.toFixed(2)}`;
-            } else if (pos.side === 'SHORT' && signal.action === 'BUY' && signal.confidence > 0.6) {
+            } else if (pos.side === 'SHORT' && signal.action === 'BUY' && signal.confidence > 0.75) {
               shouldClose = true;
               reason = `策略反转平空 conf=${signal.confidence.toFixed(2)}`;
             }

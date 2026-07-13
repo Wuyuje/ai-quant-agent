@@ -249,13 +249,14 @@ class AdaptiveExitManager {
     // v120: 止盈目标最小毛利 = 成本 + MIN_TAKE_HOME/0.7 + 0.3%安全垫
     const minGrossForProfit = costPct + MIN_TAKE_HOME / 0.70 + 0.3;
 
-    // ═══ 1. 硬止损 — 动态: max(-3.5%, ATR止损的80%) ═══
-    // v120: 不再固定-3.5%, 而是取 max(-3.5%, netSlPct * 0.8)
-    // 这样低波动时硬止损跟着收紧, 高波动时放宽到-3.5%
+    // ═══ 1. 硬止损 — 动态: max(-5%, ATR止损的80%) ═══
+    // v122: 从-3.5%放宽到-5%, 给趋势更多发展空间
+    // v120: 不再固定, 而是取 max(-5%, netSlPct * 0.8)
+    // 这样低波动时硬止损跟着收紧, 高波动时放宽到-5%
     const netSlPct = this.toNetPnl(exitCalc.slPct, leverage, holdHours);
-    const dynamicHardStop = Math.max(-3.5, netSlPct * 0.8);
+    const dynamicHardStop = Math.max(-5.0, netSlPct * 0.8); // v122: -3.5→-5 放宽给趋势空间
     if (netPnlPct <= dynamicHardStop) {
-      const isHard = Math.abs(dynamicHardStop - (-3.5)) < 0.01;
+      const isHard = Math.abs(dynamicHardStop - (-5.0)) < 0.01;
       return {
         shouldClose: true,
         reason: `🔴 ${isHard ? '硬止损' : 'ATR止损'} 净=${netPnlPct.toFixed(2)}% ≤ ${dynamicHardStop.toFixed(2)}%`,
