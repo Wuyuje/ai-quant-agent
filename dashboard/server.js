@@ -1253,6 +1253,11 @@ class Dashboard {
 
         this.log(`✅ 用户 ${userKey.slice(0,10)}... API Key 已验证并加密存储 (CEX模式 + 提现权限)`);
 
+        // v121: 重置转账冷却（用户重新绑定了带提现权限的 API Key）
+        if (this.cexUserTrader && walletAddress) {
+          this.cexUserTrader.resetTransferCooldown?.(walletAddress.toLowerCase());
+        }
+
         res.json({
           success: true,
           balance: usdtBalance.toFixed(2),

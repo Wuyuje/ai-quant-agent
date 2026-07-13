@@ -378,7 +378,21 @@ class BinanceClient {
     const fixedAmount = Math.floor(amountUsdt * 100) / 100; // 保留2位
     if (fixedAmount < 1) return { success: false, error: 'Amount < $1 minimum' };
 
+    // v121: 先查现货余额，如果现货已有 USDT 说明之前 internal transfer 成功但 withdraw 失败
+    // 这种情况下跳过 Step 1 直接 withdraw，避免资金重复划转
+    let spotBalance = 0;
+    try {
+      const spotInfo = await this._sapiRequest('GET', '/sapi/v1/asset/transfer', {
+        from: 'MAIN',
+        to: 'MAIN',
+      }).catch(() => null);
+      // 如果 SAPI 查询失败（权限不足），直接走正常流程
+    } catch (e) { /* 忽略，走正常流程 */ }
+
     // Step 1: 合约钱包 → 现货钱包 (futures → spot)
+    // v121: 如果 internal transfer 失败（权限不足/余额不够），可能是之前已划转过
+    //       此时尝试直接 withdraw
+    let internalOk = false;
     try {
       results.internal = await this._sapiRequest('POST', '/sapi/v1/asset/transfer', {
         type: 'MAIN_UMFUTURE',   // USDT-M Futures → Spot
@@ -386,13 +400,14 @@ class BinanceClient {
         amount: String(fixedAmount),
       });
       this._log(`✅ Internal transfer: $${fixedAmount} futures→spot txId=${results.internal.txnId || 'ok'}`);
+      internalOk = true;
     } catch (e) {
-      this._log(`❌ Internal transfer failed: ${e.message}`);
-      return { success: false, error: `Internal transfer failed: ${e.message}`, results };
+      this._log(`⚠️ Internal transfer failed: ${e.message.slice(0,80)}`);
+      // 不直接 return，尝试直接 withdraw（可能资金已在现货钱包）
     }
 
     // Step 2: 等待到账
-    await new Promise(r => setTimeout(r, 2000));
+    if (internalOk) await new Promise(r => setTimeout(r, 2000));
 
     // Step 3: 现货钱包 → 提现到 BSC 地址
     try {
@@ -404,7 +419,7 @@ class BinanceClient {
       });
       this._log(`✅ Withdraw submitted: $${fixedAmount} USDT → ${toAddress.slice(0,10)}... withdrawId=${results.withdraw.id || 'ok'}`);
     } catch (e) {
-      this._log(`❌ Withdraw failed (funds still in spot wallet): ${e.message}`);
+      this._log(`❌ Withdraw failed (funds still in spot wallet): ${e.message.slice(0,80)}`);
       return { success: false, error: `Withdraw failed: ${e.message}, funds in spot wallet`, results };
     }
 
@@ -478,6 +493,12 @@ class CEXUserTrader {
     this.ECO_FUND_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';  // 生态费钱包
     this.FEE_STATE_FILE = path.join(__dirname, '..', 'data', 'cex-fee-state.json');
     this._feeState = { pending: {}, collected: {}, totalPlatformFee: 0, totalEcoFund: 0 };
+
+    // ═══════ v121: 转账失败冷却机制 ═══════
+    // 记录每个用户最近一次转账失败时间，30分钟内不再重试
+    this._transferFailCooldown = {}; // wallet → { lastFailAt, failCount }
+    this.TRANSFER_COOLDOWN_MS = 30 * 60 * 1000; // 30分钟冷却
+    this.TRANSFER_MAX_FAIL = 3; // 连续失败3次后停止自动转账直到用户重新绑定
 
     // ═══════ 管理员钱包（免一切费用） ═══════
     this.ADMIN_WALLETS = [
@@ -1466,10 +1487,44 @@ class CEXUserTrader {
 
   /**
    * v113.17: 检查该用户累计费用是否达到阈值，达到则批量转账
+   * v121: 增加权限检查 + 失败冷却机制，避免重复失败
    */
   async _tryBatchTransfer(wallet) {
     const pending = this._feeState.pending[wallet] || [];
     if (pending.length === 0) return;
+
+    // ═══════ v121: 检查用户是否已有提现权限 ═══════
+    // 先从内存 userDB 取，再从磁盘文件取（dashboard 绑定路径直接写文件）
+    let userMeta = this.userDB?.get?.(wallet) || null;
+    if (!userMeta) {
+      try {
+        const usersFile = path.join(__dirname, '..', 'data', 'saas-users.json');
+        const allUsers = JSON.parse(fs.readFileSync(usersFile, 'utf8'));
+        userMeta = allUsers[wallet] || allUsers[wallet?.toLowerCase()] || {};
+      } catch (e) { userMeta = {}; }
+    }
+    // v121: canWithdraw 必须明确为 true 才尝试转账
+    // undefined = 旧版本绑定的用户，没做过提现权限验证，不应自动转账
+    if (userMeta.canWithdraw !== true) {
+      this._log(`🚫 ${wallet.slice(0,8)} 用户 API Key 未验证提现权限(canWithdraw=${userMeta.canWithdraw})，跳过自动转账，费用继续记账`);
+      return;
+    }
+
+    // ═══════ v121: 检查失败冷却 ═══════
+    const cooldown = this._transferFailCooldown[wallet];
+    if (cooldown) {
+      const elapsed = Date.now() - cooldown.lastFailAt;
+      if (elapsed < this.TRANSFER_COOLDOWN_MS) {
+        const remainMin = Math.ceil((this.TRANSFER_COOLDOWN_MS - elapsed) / 60000);
+        this._log(`⏳ ${wallet.slice(0,8)} 转账冷却中，${remainMin}分钟后可重试 (已失败${cooldown.failCount}次)`);
+        return;
+      }
+      // 超过冷却但连续失败次数太多 → 永久停止直到重新绑定
+      if (cooldown.failCount >= this.TRANSFER_MAX_FAIL) {
+        this._log(`⛔ ${wallet.slice(0,8)} 连续转账失败${cooldown.failCount}次，已停止自动转账。用户需重新绑定带提现权限的 API Key`);
+        return;
+      }
+    }
 
     const totalPnl = pending.reduce((s, r) => s + parseFloat(r.pnlUsdt), 0);
     const totalPlatform = pending.reduce((s, r) => s + parseFloat(r.platformFee), 0);
@@ -1531,9 +1586,20 @@ class CEXUserTrader {
         if (!this._feeState.collected[wallet]) this._feeState.collected[wallet] = [];
         this._feeState.collected[wallet].push(record);
       }
+      // v121: 转账成功，重置失败计数
+      delete this._transferFailCooldown[wallet];
       this._log(`✅ ${wallet.slice(0,8)} 批量收取完成: ${removed.length}笔, 平台费 $${totalPlatform.toFixed(2)}, 生态费 $${totalEco.toFixed(2)}`);
     } else {
-      this._log(`⚠️ ${wallet.slice(0,8)} 转账部分失败（平台=${platformOk}, 生态=${ecoOk}），保留 pending`);
+      // v121: 记录失败，进入冷却
+      if (!this._transferFailCooldown[wallet]) this._transferFailCooldown[wallet] = { lastFailAt: 0, failCount: 0 };
+      this._transferFailCooldown[wallet].lastFailAt = Date.now();
+      this._transferFailCooldown[wallet].failCount++;
+      const fc = this._transferFailCooldown[wallet].failCount;
+      if (fc >= this.TRANSFER_MAX_FAIL) {
+        this._log(`⛔ ${wallet.slice(0,8)} 连续转账失败${fc}次，已停止自动转账。用户需重新绑定带提现权限的 API Key`);
+      } else {
+        this._log(`⚠️ ${wallet.slice(0,8)} 转账部分失败（平台=${platformOk}, 生态=${ecoOk}），保留 pending。30分钟内不再重试 (失败${fc}/${this.TRANSFER_MAX_FAIL})`);
+      }
     }
 
     this._saveFeeState();
@@ -1615,6 +1681,17 @@ class CEXUserTrader {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(this.FEE_STATE_FILE, JSON.stringify(this._feeState, null, 2));
     } catch (e) { /* ignore */ }
+  }
+
+  /**
+   * v121: 用户重新绑定 API Key 后重置转账冷却
+   * 清除失败计数，允许重新尝试自动转账
+   */
+  resetTransferCooldown(wallet) {
+    if (this._transferFailCooldown[wallet]) {
+      delete this._transferFailCooldown[wallet];
+      this._log(`🔄 ${wallet.slice(0,8)} 转账冷却已重置（用户重新绑定了 API Key）`);
+    }
   }
 
   // ═══════ 管理员/等级判断 ═══════

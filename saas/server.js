@@ -1718,6 +1718,12 @@ class SaasServer {
         verifiedAt: Date.now(),
       });
       this.log(`✅ ${session.wallet.slice(0,10)}... CEX API Key 已绑定 (含提现权限)`);
+
+      // v121: 重置转账冷却（用户重新绑定了带提现权限的 API Key）
+      if (this.cexUserTrader) {
+        this.cexUserTrader.resetTransferCooldown?.(session.wallet);
+      }
+
       res.json({ success: true, cexMode: true, canWithdraw: true, balance: usdtBalance.toFixed(2) });
     });
 
