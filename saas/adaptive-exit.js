@@ -274,11 +274,12 @@ class AdaptiveExitManager {
     }
 
     // ═══ 3. 移动止盈 — 峰值回撤锁定 (v120: 加到手利润检查) ═══
+    // v122.3: 修复保本平仓dead code — 原来外层 netPnlPct > 0 导致内层 netPnlPct <= 0 永不成立
     if (exitCalc.trailingActive && exitCalc.trailingSlPct !== null) {
       const trailingNetThreshold = this.toNetPnl(exitCalc.trailingSlPct, leverage, holdHours);
-      // v120: 移动止盈触发条件: trailingNet > 0 且 到手 > MIN_TAKE_HOME
-      if (trailingNetThreshold > 0 && netPnlPct > 0 && netPnlPct <= trailingNetThreshold) {
-        // v120: 检查到手利润 — 不到最低利润不平仓, 让它继续跑
+      // v122.3: 拆分两种情况, 不再合并 netPnlPct > 0 条件
+      // 情况1: 净利>0 且回撤到移动止盈线 → 检查到手是否达标
+      if (netPnlPct > 0 && trailingNetThreshold > 0 && netPnlPct <= trailingNetThreshold) {
         if (takeHome >= MIN_TAKE_HOME) {
           return {
             shouldClose: true,
@@ -286,14 +287,17 @@ class AdaptiveExitManager {
             type: 'TRAILING_STOP'
           };
         }
-        // 到手<MIN_TAKE_HOME但净值>0 → 用底线0%保护, 不让盈利变亏损
-        if (netPnlPct <= 0) {
-          return {
-            shouldClose: true,
-            reason: `🔄 保本平仓 净=${netPnlPct.toFixed(2)}% (到手不足${MIN_TAKE_HOME}%, 保本退出)`,
-            type: 'TRAILING_STOP'
-          };
-        }
+        // 到手<MIN_TAKE_HOME 但净利>0 → 不平仓, 让它继续跑到达标或变负
+      }
+      // v122.3: 情况2: 净利从正变负 → 保本平仓(必须立即平, 不让盈利变亏损)
+      // 之前: 这个检查在外层 netPnlPct > 0 内, 永不成立 → dead code
+      // 现在: 独立检查, 只要移动止盈激活且净利<=0 → 保本平仓
+      if (netPnlPct <= 0 && trailingNetThreshold > 0) {
+        return {
+          shouldClose: true,
+          reason: `🔄 保本平仓 净=${netPnlPct.toFixed(2)}% (峰值${peakPnlPct.toFixed(2)}%, 到手不足${MIN_TAKE_HOME}%, 保本退出)`,
+          type: 'TRAILING_STOP'
+        };
       }
     }
 
@@ -318,9 +322,11 @@ class AdaptiveExitManager {
       }
     }
 
-    // ═══ 5b. v120: 固定止盈目标 — 毛利达到止盈线且到手>MIN_TAKE_HOME ═══
-    // 解决低波动时止盈永远不触发的问题
-    if (!exitCalc.trailingActive && grossPnlPct >= exitCalc.tpPct && takeHome >= MIN_TAKE_HOME) {
+    // ═══ 5b. v122.3: 固定止盈目标 — 修复dead code ═══
+    // v122.3: 原 !trailingActive && grossPnlPct >= tpPct 不可能同时成立
+    // 因为 tpPct > rDist, 当 grossPnlPct >= tpPct 时 trailingActive 必然为 true
+    // 修复: 改为 grossPnlPct >= tpPct 即可, 不管 trailingActive
+    if (grossPnlPct >= exitCalc.tpPct && takeHome >= MIN_TAKE_HOME) {
       return {
         shouldClose: true,
         reason: `🟢 目标止盈 毛利=${grossPnlPct.toFixed(2)}%≥${exitCalc.tpPct.toFixed(2)}% 到手=${takeHome.toFixed(2)}%`,
