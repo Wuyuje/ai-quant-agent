@@ -879,7 +879,10 @@ class CEXUserTrader {
     this._positionCache[cacheKey] = { value: afterClose, time: Date.now() };
     // v113.56回滚: 直接用strategyParams的maxPositions
     const maxPos = (this.strategyParams[userData.strategy] || this.strategyParams.balanced).maxPositions;
-    if (afterClose.length >= maxPos) return;
+    if (afterClose.length >= maxPos) {
+      if (this._cycleCount % 5 === 0) this._log(`📋 ${wallet.slice(0,10)} 已有${afterClose.length}仓>=${maxPos} — 不开新仓 [${afterClose.map(p=>p.symbol).join(',')}]`);
+      return;
+    }
     let remainingSlots = maxPos - afterClose.length;  // v113.15: const→let 避免开仓后递减报错
 
     // 4. 信号 — 共享管理员 StrategyManager 评分
@@ -891,8 +894,11 @@ class CEXUserTrader {
 
     // v113.5: 过滤掉TradFi品种(股票/ETF/商品/债券) — 普通用户Binance Futures只有crypto权限
     // 避免每轮重复尝试-4411被拒浪费API调用
-    const TRADFI_PREFIXES = ['MSFT','TSLA','NVDA','AAPL','META','GOOGL','SPY','QQQ','XAG','XAU','COPPER','NATGAS','UVXY','URNM','PAXG'];
-    const isTradFi = (sym) => TRADFI_PREFIXES.some(p => sym.startsWith(p));
+    // v122.5: TradFi品种不再一刀切过滤 — 用户Binance Futures大多有股票/商品权限
+    // 如果下单时无权限(-4411错误), 会在运行时自动跳过
+    // 只过滤已知需要特殊权限的品种
+    const TRADFI_BLOCKED = ['UVXY', 'URNM', 'PAXG']; // 这些品种大多数账户确实无权限
+    const isTradFi = (sym) => TRADFI_BLOCKED.some(p => sym.startsWith(p));
 
     // v113.71: 高度集中资金持仓 — 最多1-2仓, 趋势选币
     // v113.69: 趋势方向过滤 — 与管理员引擎一致
@@ -995,8 +1001,9 @@ class CEXUserTrader {
             if (_ma7 < _ma25 && _ma25 < _ma99) _trendStr += 0.5;
           }
           _trendStr = Math.min(2.5, _trendStr);
+          // v122.5: 用available余额计算仓位, 不是总余额
           const sizing = _userSizer.size({
-            balanceUsd: balance.balance,
+            balanceUsd: balance.available || balance.balance,
             atrPct, currentPrice,
             signalStrength: cand.score >= 12 ? 'strong' : cand.score >= 8 ? 'moderate' : 'weak',
             confidence: cand.confidence || 0.5,
@@ -1005,8 +1012,8 @@ class CEXUserTrader {
           });
           if (sizing.reject) { this._log(`⏭️ ${futuresSymbol} 仓位拒绝: ${sizing.reason}`); continue; }
           this._log(`📐 ${futuresSymbol} 仓位计算: size=$${sizing.positionSize?.toFixed(2)} lev=${sizing.leverage}x notional=$${sizing.notional?.toFixed(2)} balance=$${balance.balance?.toFixed(2)} avail=$${balance.available?.toFixed(2)} atrPct=${atrPct.toFixed(2)}%`);
-          // v113.56回滚: positionSize 由 position-sizer 计算, 但限制不超过可用资金的50%和tradeAmount的60%
-          positionUsdt = Math.min(sizing.positionSize, balance.available * 0.5, tradeAmount * 0.6);
+          // v122.5: 用available而非balance, cap从50%降到30% — 避免保证金不足
+          positionUsdt = Math.min(sizing.positionSize, balance.available * 0.30, tradeAmount * 0.5);
           leverage = sizing.leverage;
         } else {
           positionUsdt = Math.min(tradeAmount * params.positionPct, balance.available * 0.3);

@@ -168,9 +168,9 @@ class PositionSizer {
     // ═══ 3. 动态杠杆 ═══
     // 波动率越高 → 杠杆越低；余额越大 → 可以稍微高杠杆（有回旋余地）
     // v115: 受 adaptive-params.json 的 maxLeverage 限制
-    // v113.70: ATR太小拒绝开仓 — 波动太小成本吞噬利润
-    if (atrPct < 0.5) {
-      return { reject: true, reason: `ATR=${atrPct.toFixed(2)}%太低(<0.5%) — 波动太小成本吞噬利润` };
+    // v122.5: ATR阈值从0.5%降到0.25% — 低波动市场也能开仓, 用更紧止损控制风险
+    if (atrPct < 0.25) {
+      return { reject: true, reason: `ATR=${atrPct.toFixed(2)}%太低(<0.25%) — 波动太小成本吞噬利润` };
     }
     const adaptiveMaxLev = this.getEffectiveMaxLeverage();
     let leverage = this._calcLeverage(atrPct, balanceUsd, confidence, trendStrength);
