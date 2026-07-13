@@ -1354,6 +1354,8 @@ async function refreshDashboard() {
     let vault = {};
     try { vault = await api('POST', '/api/vault/status', {}); } catch(e) { /* 没有vault也没关系 */ }
     renderDashboard(data, vault);
+    // v121.2: 刷新时同步更新提现权限状态
+    checkCexStatus();
     // [fix#30] 自动检查并触发 USDT approve
     if (vault?.deployed) await _checkAndApproveUSDT();
   } catch (e) {
@@ -2027,6 +2029,8 @@ async function verifyCexKeys() {
         // 隐藏绑定按钮
         var banner = document.getElementById('cexBanner');
         if (banner) { var btns = banner.querySelectorAll('.btn'); btns.forEach(b => { if (b.textContent.includes('币安') || b.textContent.includes('粘贴')) b.style.display = 'none'; }); }
+        // v121.2: 绑定成功后刷新提现权限状态 + 费用面板
+        checkCexStatus();
       }, 1500);
     } else {
       resultEl.className = 'cex-status err';
