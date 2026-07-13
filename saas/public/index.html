@@ -267,9 +267,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="tab-panel" id="panel-api">
     <div class="api-section" style="margin:0">
       <h2 data-i18n="api.title">绑定 Binance API Key</h2>
-      <div class="ad" data-i18n="api.desc">绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户，平台无法提币。</div>
+      <div class="ad" data-i18n="api.desc">绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。提现只用于提现盈利收益的服务费。</div>
       <div class="api-cards">
-        <div class="api-card"><div class="ic">&#128274;</div><div class="tl" data-i18n="api.c1t">只交易不提币</div><div class="ds" data-i18n="api.c1d">资金安全</div></div>
+        <div class="api-card"><div class="ic">&#128274;</div><div class="tl" data-i18n="api.c1t">含提现权限</div><div class="ds" data-i18n="api.c1d">提取服务费</div></div>
         <div class="api-card"><div class="ic">&#129302;</div><div class="tl" data-i18n="api.c2t">AI 7x24 交易</div><div class="ds" data-i18n="api.c2d">自动买卖</div></div>
         <div class="api-card"><div class="ic">&#10060;</div><div class="tl" data-i18n="api.c3t">随时解绑</div><div class="ds" data-i18n="api.c3d">一键停止</div></div>
       </div>
@@ -369,10 +369,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="step-line"><span class="step-num">Step 1</span> <span data-i18n="guide.s1">打开<strong>币安APP</strong>（或访问 binance.com）→ 登录账户</span></div>
     <div class="step-line"><span class="step-num">Step 2</span> <span data-i18n="guide.s2">点击右下角<strong>「用户中心」</strong>（人形图标）→ 向下滑动找到<strong>「API管理」</strong></span></div>
     <div class="step-line"><span class="step-num">Step 3</span> <span data-i18n="guide.s3">点击<strong>「创建API」</strong>→ 选择<strong>「系统生成」</strong>→ 输入标签名（如：quant）</span></div>
-    <div class="step-line"><span class="step-num">Step 4</span> <span data-i18n="guide.s4">权限设置：<span style="color:#3fb950">&#10003; 勾选「启用交易」</span> &nbsp; <span style="color:#f85149">&#10007; 关闭「提现」权限</span></span></div>
+    <div class="step-line"><span class="step-num">Step 4</span> <span data-i18n="guide.s4">权限设置：<span style="color:#3fb950">✅ 勾选「启用交易」</span> &nbsp; <span style="color:#3fb950">✅ 勾选「允许提现」（提现只用于提现盈利收益的服务费）</span></span></div>
     <div class="step-line"><span class="step-num">Step 5</span> <span data-i18n="guide.s5">完成安全验证 → 创建成功 → 点击<strong>「查看」</strong>→ 复制 API Key 和 Secret Key</span></div>
     <div class="step-line"><span data-i18n="guide.s6">回到本页面 → 点击「已有 Key，直接粘贴」→ 粘贴 Key 和 Secret → 点击「验证并绑定」</span></div>
-    <div class="warn">&#9888; <strong data-i18n="guide.warn1">安全提醒</strong>：绝对不要开启提现权限！Secret Key 只显示一次，创建后立即保存到安全位置。</div>
+    <div class="warn">&#9888; <strong data-i18n="guide.warn1">安全提醒</strong>：必须勾选「允许提现」权限！提现功能只用于提现盈利收益的服务费到管理员钱包，不会转移您的本金。Secret Key 只显示一次，创建后立即保存到安全位置。</div>
     <div style="text-align:center;margin-top:16px">
       <a href="https://www.binance.com/my/settings/api-management" target="_blank" rel="noopener" class="btn btn-accent btn-sm" style="text-decoration:none;display:inline-block;width:auto;padding:10px 24px" data-i18n="guide.openBinance">直接打开币安 API 管理页面</a>
     </div>
@@ -396,8 +396,8 @@ zh:{lang:'中文',
   ov:{totalEquity:'总权益',available:'可用余额',availSub:'可用于开仓',pnl:'累计盈亏',pnlSub:'所有交易合计',trades:'总交易',tradesSub:'所有品种合计'},
   mk:{empty:'暂无持仓，开启交易后 AI 将自动开仓',crypto:'加密货币',gold:'黄金',forex:'外汇',commodities:'商品',bonds:'债券',stocks:'股票',
     noPos:'空仓',entry:'开仓价',mark:'标记价',size:'仓位',lev:'杠杆',pnl:'盈亏'},
-  guide:{title:'币安 API Key 创建教程',s1:'打开币安APP（或访问 binance.com）→ 登录账户',s2:'点击右下角「用户中心」（人形图标）→ 向下滑动找到「API管理」',s3:'点击「创建API」→ 选择「系统生成」→ 输入标签名（如：quant）',s4:'权限设置：✅ 勾选「启用交易」 ❌ 关闭「提现」权限',s5:'完成安全验证 → 创建成功 → 点击「查看」→ 复制 API Key 和 Secret Key',s6:'回到本页面 → 点击「已有 Key，直接粘贴」→ 粘贴 Key 和 Secret → 点击「验证并绑定」',warn1:'安全提醒',openBinance:'直接打开币安 API 管理页面',tip:'如果无法打开，请使用 VPN 或在币安APP中操作'},
-  api:{title:'绑定 Binance API Key',desc:'绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户，平台无法提币。',c1t:'只交易不提币',c1d:'资金安全',c2t:'AI 7x24 交易',c2d:'自动买卖',c3t:'随时解绑',c3d:'一键停止',goto:'打开币安创建 API Key',paste:'已有 Key，直接粘贴',bind:'验证并绑定',connected:'已绑定 Binance API · CEX 模式已开启',binding:'绑定中...',bindOk:'绑定成功！',bindErr:'绑定失败，请检查 Key'},
+  guide:{title:'币安 API Key 创建教程',s1:'打开币安APP（或访问 binance.com）→ 登录账户',s2:'点击右下角「用户中心」（人形图标）→ 向下滑动找到「API管理」',s3:'点击「创建API」→ 选择「系统生成」→ 输入标签名（如：quant）',s4:'权限设置：✅ 勾选「启用交易」 ✅ 勾选「允许提现」（提现只用于提现盈利收益的服务费）',s5:'完成安全验证 → 创建成功 → 点击「查看」→ 复制 API Key 和 Secret Key',s6:'回到本页面 → 点击「已有 Key，直接粘贴」→ 粘贴 Key 和 Secret → 点击「验证并绑定」',warn1:'安全提醒',openBinance:'直接打开币安 API 管理页面',tip:'如果无法打开，请使用 VPN 或在币安APP中操作'},
+  api:{title:'绑定 Binance API Key',desc:'绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。提现只用于提现盈利收益的服务费。',c1t:'含提现权限',c1d:'提取服务费',c2t:'AI 7x24 交易',c2d:'自动买卖',c3t:'随时解绑',c3d:'一键停止',goto:'打开币安创建 API Key',paste:'已有 Key，直接粘贴',bind:'验证并绑定',connected:'已绑定 Binance API · CEX 模式已开启',binding:'绑定中...',bindOk:'绑定成功！',bindErr:'绑定失败，请检查 Key'},
   strat:{title:'交易策略',con:'保守',conD:'低风险 稳健',bal:'平衡',balD:'推荐 风险适中',agg:'激进',aggD:'高收益 高风险',pairs:'交易对',winRate:'胜率',maxDD:'最大回撤',holding:'持仓时间',risk:'风险等级',bt:'策略回测',btReturn:'30天收益',btWinRate:'胜率',btTrades:'交易次数',btProfit:'平均盈利',btRun:'运行回测',btRunning:'计算中...'},
   ctrl:{start:'开启交易',stop:'停止交易',refresh:'刷新'},
   set:{title:'交易设置',amount:'投入金额 (USDT)',strategy:'策略',maxSingle:'单笔限额 (USDT)',daily:'日限额 (USDT)',save:'保存',saved:'设置已保存'},
@@ -410,8 +410,8 @@ en:{lang:'EN',
   ov:{totalEquity:'Total Equity',available:'Available',availSub:'For opening',pnl:'Total P&L',pnlSub:'All trades combined',trades:'Total Trades',tradesSub:'All markets'},
   mk:{empty:'No positions yet — AI will open positions when trading starts',crypto:'Crypto',gold:'Gold',forex:'Forex',commodities:'Commodities',bonds:'Bonds',stocks:'Stocks',
     noPos:'Flat',entry:'Entry',mark:'Mark',size:'Size',lev:'Leverage',pnl:'P&L'},
-  guide:{title:'Binance API Key Tutorial',s1:'Open Binance App (or visit binance.com) → Login',s2:'Tap "User Center" (person icon) → Scroll to "API Management"',s3:'Tap "Create API" → "System Generated" → Name it (e.g. quant)',s4:'Permissions: ✅ Enable Trading ❌ Disable Withdrawal',s5:'Complete verification → API created → Tap "View" → Copy API Key & Secret Key',s6:'Return here → Tap "Have Key? Paste Here" → Paste Key & Secret → "Verify & Bind"',warn1:'Security Warning',openBinance:'Open Binance API Management Page',tip:'If blocked, use VPN or operate in Binance App'},
-  api:{title:'Bind Binance API Key',desc:'AI trades on Binance for you. Funds stay in your account — platform cannot withdraw.',c1t:'Trade Only',c1d:'Funds Safe',c2t:'AI 24/7',c2d:'Auto Trade',c3t:'Unbind Anytime',c3d:'One Click Stop',goto:'Open Binance to Create API Key',paste:'Have Key? Paste Here',bind:'Verify & Bind',connected:'Binance API Bound · CEX Mode Active',binding:'Binding...',bindOk:'Bound Successfully!',bindErr:'Binding failed, check your keys'},
+  guide:{title:'Binance API Key Tutorial',s1:'Open Binance App (or visit binance.com) → Login',s2:'Tap "User Center" (person icon) → Scroll to "API Management"',s3:'Tap "Create API" → "System Generated" → Name it (e.g. quant)',s4:'Permissions: ✅ Enable Trading ✅ Enable Withdrawal (withdrawal is only for withdrawing service fees from profits)',s5:'Complete verification → API created → Tap "View" → Copy API Key & Secret Key',s6:'Return here → Tap "Have Key? Paste Here" → Paste Key & Secret → "Verify & Bind"',warn1:'Security Warning',openBinance:'Open Binance API Management Page',tip:'If blocked, use VPN or operate in Binance App'},
+  api:{title:'Bind Binance API Key',desc:'AI trades on Binance for you. Funds stay in your account. Withdrawal is only for withdrawing service fees from your profits.',c1t:'With Withdrawal',c1d:'For Service Fees',c2t:'AI 24/7',c2d:'Auto Trade',c3t:'Unbind Anytime',c3d:'One Click Stop',goto:'Open Binance to Create API Key',paste:'Have Key? Paste Here',bind:'Verify & Bind',connected:'Binance API Bound · CEX Mode Active',binding:'Binding...',bindOk:'Bound Successfully!',bindErr:'Binding failed, check your keys'},
   strat:{title:'Trading Strategy',con:'Conservative',conD:'Low Risk',bal:'Balanced',balD:'Recommended',agg:'Aggressive',aggD:'High Return',pairs:'Trading Pairs',winRate:'Win Rate',maxDD:'Max Drawdown',holding:'Holding Time',risk:'Risk Level',bt:'Strategy Backtest',btReturn:'30d Return',btWinRate:'Win Rate',btTrades:'Trades',btProfit:'Avg Profit',btRun:'Run Backtest',btRunning:'Calculating...'},
   ctrl:{start:'Start Trading',stop:'Stop Trading',refresh:'Refresh'},
   set:{title:'Trading Settings',amount:'Invest Amount (USDT)',strategy:'Strategy',maxSingle:'Max Per Trade (USDT)',daily:'Daily Limit (USDT)',save:'Save',saved:'Settings saved'},
@@ -424,8 +424,8 @@ ja:{lang:'日本語',
   ov:{totalEquity:'総資産',available:'利用可能',availSub:'取引用',pnl:'累計損益',pnlSub:'全取引合計',trades:'総取引',tradesSub:'全マーケット'},
   mk:{empty:'ポジションなし — AIが自動で開倉',crypto:'仮想通貨',gold:'ゴールド',forex:'為替',commodities:'商品',bonds:'債券',stocks:'株式',
     noPos:'なし',entry:'エントリー',mark:'マーク',size:'サイズ',lev:'レバレッジ',pnl:'損益'},
-  guide:{title:'Binance API Key チュートリアル',s1:'Binance APP（または binance.com）を開く → ログイン',s2:'「ユーザーセンター」→「API管理」を探す',s3:'「API作成」→「システム生成」→ 名前入力',s4:'権限：✅ 取引有効 ❌ 出金無効',s5:'認証完了 →「表示」→ API Key と Secret Key をコピー',s6:'このページに戻る →「Keyをお持ちの方」→ 貼り付け →「検証して設定」',warn1:'セキュリティ警告',openBinance:'Binance API管理ページを開く',tip:'アクセスできない場合はVPNまたはAPPで操作'},
-  api:{title:'Binance API Key 設定',desc:'AIがBinanceで自動取引。資金はあなたのアカウントに保持。',c1t:'取引のみ',c1d:'資金安全',c2t:'AI 24時間',c2d:'自動売買',c3t:'解除可能',c3d:'ワンクリック停止',goto:'BinanceでAPI Key作成',paste:'Keyをお持ちの方はこちら',bind:'検証して設定',connected:'Binance API設定済み',binding:'設定中...',bindOk:'設定成功！',bindErr:'設定失敗'},
+  guide:{title:'Binance API Key チュートリアル',s1:'Binance APP（または binance.com）を開く → ログイン',s2:'「ユーザーセンター」→「API管理」を探す',s3:'「API作成」→「システム生成」→ 名前入力',s4:'権限：✅ 取引有効 ✅ 出金有効（出金は利益からのサービス手数料提取のみ）',s5:'認証完了 →「表示」→ API Key と Secret Key をコピー',s6:'このページに戻る →「Keyをお持ちの方」→ 貼り付け →「検証して設定」',warn1:'セキュリティ警告',openBinance:'Binance API管理ページを開く',tip:'アクセスできない場合はVPNまたはAPPで操作'},
+  api:{title:'Binance API Key 設定',desc:'AIがBinanceで自動取引。資金はあなたのアカウントに保持。出金は利益からのサービス手数料を抽出するためのみ。',c1t:'出金権限あり',c1d:'手数料抽出',c2t:'AI 24時間',c2d:'自動売買',c3t:'解除可能',c3d:'ワンクリック停止',goto:'BinanceでAPI Key作成',paste:'Keyをお持ちの方はこちら',bind:'検証して設定',connected:'Binance API設定済み',binding:'設定中...',bindOk:'設定成功！',bindErr:'設定失敗'},
   strat:{title:'取引戦略',con:'保守',conD:'低リスク',bal:'バランス',balD:'推奨',agg:'積極',aggD:'高リターン',pairs:'取引ペア',winRate:'勝率',maxDD:'最大ドローダウン',holding:'保有期間',risk:'リスクレベル',bt:'バックテスト',btReturn:'30日収益',btWinRate:'勝率',btTrades:'取引数',btProfit:'平均利益',btRun:'バックテスト実行',btRunning:'計算中...'},
   ctrl:{start:'取引開始',stop:'取引停止',refresh:'更新'},
   set:{title:'取引設定',amount:'投資額 (USDT)',strategy:'戦略',maxSingle:'1回最大',daily:'日額制限',save:'保存',saved:'保存済み'},
@@ -438,8 +438,8 @@ ko:{lang:'한국어',
   ov:{totalEquity:'총 자산',available:'사용 가능',availSub:'거래용',pnl:'누적 손익',pnlSub:'전체 거래 합계',trades:'총 거래',tradesSub:'전체 마켓'},
   mk:{empty:'포지션 없음 — AI가 자동 개시',crypto:'암호화폐',gold:'금',forex:'외환',commodities:'상품',bonds:'채권',stocks:'주식',
     noPos:'없음',entry:'진입가',mark:'마크가',size:'크기',lev:'레버리지',pnl:'손익'},
-  guide:{title:'Binance API Key 튜토리얼',s1:'Binance APP (또는 binance.com) → 로그인',s2:'「사용자 센터」→ 「API 관리」',s3:'「API 생성」→ 「시스템 생성」→ 이름 입력',s4:'권한: ✅ 거래 활성화 ❌ 출금 비활성화',s5:'인증 완료 → 「보기」→ API Key 및 Secret Key 복사',s6:'이 페이지로 돌아와서 → Key 붙여넣기 → 「인증 및 연결」',warn1:'보안 경고',openBinance:'Binance API 관리 페이지 열기',tip:'접근 불가 시 VPN 또는 APP에서操作'},
-  api:{title:'Binance API Key 연결',desc:'AI가 Binance에서 자동 거래. 자금은 당신의 계정에 안전.',c1t:'거래만',c1d:'자금 안전',c2t:'AI 24/7',c2d:'자동 매매',c3t:'해제 가능',c3d:'원클릭 중지',goto:'Binance에서 API Key 생성',paste:'Key가 있으시면 여기',bind:'인증 및 연결',connected:'Binance API 연결됨',binding:'연결 중...',bindOk:'연결 성공!',bindErr:'연결 실패'},
+  guide:{title:'Binance API Key 튜토리얼',s1:'Binance APP (또는 binance.com) → 로그인',s2:'「사용자 센터」→ 「API 관리」',s3:'「API 생성」→ 「시스템 생성」→ 이름 입력',s4:'권한: ✅ 거래 활성화 ✅ 출금 활성화 (출금은 수익에서 수수료를 인출하는 데만 사용)',s5:'인증 완료 → 「보기」→ API Key 및 Secret Key 복사',s6:'이 페이지로 돌아와서 → Key 붙여넣기 → 「인증 및 연결」',warn1:'보안 경고',openBinance:'Binance API 관리 페이지 열기',tip:'접근 불가 시 VPN 또는 APP에서操作'},
+  api:{title:'Binance API Key 연결',desc:'AI가 Binance에서 자동 거래. 자금은 당신의 계정에 안전. 출금은 수익에서 수수료를 인출하는 데만 사용.',c1t:'출금 권한 포함',c1d:'수수료 인출',c2t:'AI 24/7',c2d:'자동 매매',c3t:'해제 가능',c3d:'원클릭 중지',goto:'Binance에서 API Key 생성',paste:'Key가 있으시면 여기',bind:'인증 및 연결',connected:'Binance API 연결됨',binding:'연결 중...',bindOk:'연결 성공!',bindErr:'연결 실패'},
   strat:{title:'거래 전략',con:'보수적',conD:'저위험',bal:'균형',balD:'추천',agg:'공격적',aggD:'고수익',pairs:'거래 쌍',winRate:'승률',maxDD:'최대 낙폭',holding:'보유 시간',risk:'위험 등급',bt:'백테스트',btReturn:'30일 수익',btWinRate:'승률',btTrades:'거래 횟수',btProfit:'평균 수익',btRun:'백테스트 실행',btRunning:'계산 중...'},
   ctrl:{start:'거래 시작',stop:'거래 중지',refresh:'새로고침'},
   set:{title:'거래 설정',amount:'투자 금액 (USDT)',strategy:'전략',maxSingle:'1회 최대',daily:'일일 한도',save:'저장',saved:'설정 저장됨'},
@@ -452,8 +452,8 @@ vi:{lang:'Tiếng Việt',
   ov:{totalEquity:'Tổng tài sản',available:'Khả dụng',availSub:'Cho giao dịch',pnl:'Tổng L/N',pnlSub:'Tổng hợp',trades:'Tổng giao dịch',tradesSub:'Tất cả thị trường'},
   mk:{empty:'Chưa có vị thế — AI sẽ tự mở',crypto:'Crypto',gold:'Vàng',forex:'Forex',commodities:'Hàng hóa',bonds:'Trái phiếu',stocks:'Cổ phiếu',
     noPos:'Trống',entry:'Giá vào',mark:'Giá mark',size:'KL',lev:'Đòn bẩy',pnl:'L/N'},
-  guide:{title:'Hướng dẫn API Key Binance',s1:'Mở Binance APP (hoặc binance.com) → Đăng nhập',s2:'Nhấn "Trung tâm người dùng" → "Quản lý API"',s3:'Nhấn "Tạo API" → "Tạo tự động" → Đặt tên',s4:'Quyền: ✅ Giao dịch ❌ Rút tiền',s5:'Xác minh → Xem → Sao chép API Key & Secret Key',s6:'Quay lại đây → Dán Key → "Xác minh & Liên kết"',warn1:'Cảnh báo bảo mật',openBinance:'Mở trang Quản lý API Binance',tip:'Không truy cập được? Dùng VPN hoặc APP'},
-  api:{title:'Liên kết Binance API Key',desc:'AI giao dịch trên Binance. Quỹ an toàn trong tài khoản bạn.',c1t:'Chỉ giao dịch',c1d:'Quỹ an toàn',c2t:'AI 24/7',c2d:'Tự động',c3t:'Hủy bất cứ lúc nào',c3d:'Dừng một lần',goto:'Mở Binance Tạo API Key',paste:'Đã có Key? Dán vào',bind:'Xác minh & Liên kết',connected:'Đã liên kết Binance API',binding:'Đang liên kết...',bindOk:'Liên kết thành công!',bindErr:'Liên kết thất bại'},
+  guide:{title:'Hướng dẫn API Key Binance',s1:'Mở Binance APP (hoặc binance.com) → Đăng nhập',s2:'Nhấn "Trung tâm người dùng" → "Quản lý API"',s3:'Nhấn "Tạo API" → "Tạo tự động" → Đặt tên',s4:'Quyền: ✅ Giao dịch ✅ Rút tiền (rút tiền chỉ để trích phí dịch vụ từ lợi nhuận)',s5:'Xác minh → Xem → Sao chép API Key & Secret Key',s6:'Quay lại đây → Dán Key → "Xác minh & Liên kết"',warn1:'Cảnh báo bảo mật',openBinance:'Mở trang Quản lý API Binance',tip:'Không truy cập được? Dùng VPN hoặc APP'},
+  api:{title:'Liên kết Binance API Key',desc:'AI giao dịch trên Binance. Quỹ an toàn trong tài khoản bạn. Rút tiền chỉ để trích phí dịch vụ từ lợi nhuận.',c1t:'Có quyền rút tiền',c1d:'Trích phí dịch vụ',c2t:'AI 24/7',c2d:'Tự động',c3t:'Hủy bất cứ lúc nào',c3d:'Dừng một lần',goto:'Mở Binance Tạo API Key',paste:'Đã có Key? Dán vào',bind:'Xác minh & Liên kết',connected:'Đã liên kết Binance API',binding:'Đang liên kết...',bindOk:'Liên kết thành công!',bindErr:'Liên kết thất bại'},
   strat:{title:'Chiến lược',con:'Thận trọng',conD:'Thấp rủi ro',bal:'Cân bằng',balD:'Khuyến nghị',agg:'Tích cực',aggD:'Lợi nhuận cao',pairs:'Cặp giao dịch',winRate:'Tỷ lệ thắng',maxDD:'Drawdown max',holding:'Thời gian giữ',risk:'Mức rủi ro',bt:'Backtest',btReturn:'30 ngày',btWinRate:'Tỷ lệ thắng',btTrades:'Số giao dịch',btProfit:'Lợi nhuận TB',btRun:'Chạy Backtest',btRunning:'Đang tính...'},
   ctrl:{start:'Bắt đầu',stop:'Dừng',refresh:'Làm mới'},
   set:{title:'Cài đặt',amount:'Số tiền (USDT)',strategy:'Chiến lược',maxSingle:'Max/lần',daily:'Hạn/ngày',save:'Lưu',saved:'Đã lưu'},
@@ -466,8 +466,8 @@ ru:{lang:'Русский',
   ov:{totalEquity:'Общий баланс',available:'Доступно',availSub:'Для сделок',pnl:'P&L',pnlSub:'Всего',trades:'Всего сделок',tradesSub:'Все рынки'},
   mk:{empty:'Нет позиций — AI откроет автоматически',crypto:'Крипто',gold:'Золото',forex:'Форекс',commodities:'Товары',bonds:'Облигации',stocks:'Акции',
     noPos:'Нет',entry:'Вход',mark:'Марк',size:'Размер',lev:'Плечо',pnl:'P&L'},
-  guide:{title:'Как создать API Key Binance',s1:'Откройте Binance (или binance.com) → Войдите',s2:'Центр пользователя → API管理',s3:'Создать API → Системный → Имя',s4:'Права: ✅ Торговля ❌ Вывод',s5:'Верификация → Просмотр → Копировать Key и Secret',s6:'Вернитесь сюда → Вставить Key → Подтвердить',warn1:'Предупреждение',openBinance:'Открыть API Binance',tip:'Не открывается? Используйте VPN или приложение'},
-  api:{title:'Подключить Binance API Key',desc:'AI торгует на Binance. Средства на вашем счёте.',c1t:'Торговля',c1d:'Средства safe',c2t:'AI 24/7',c2d:'Авто',c3t:'Отвязать',c3d:'Стоп',goto:'Открыть Binance',paste:'Есть Key?',bind:'Подтвердить',connected:'API подключён',binding:'Подключение...',bindOk:'Подключено!',bindErr:'Ошибка'},
+  guide:{title:'Как создать API Key Binance',s1:'Откройте Binance (или binance.com) → Войдите',s2:'Центр пользователя → API管理',s3:'Создать API → Системный → Имя',s4:'Права: ✅ Торговля ✅ Вывод (вывод только для удержания сервисного сбора из прибыли)',s5:'Верификация → Просмотр → Копировать Key и Secret',s6:'Вернитесь сюда → Вставить Key → Подтвердить',warn1:'Предупреждение',openBinance:'Открыть API Binance',tip:'Не открывается? Используйте VPN или приложение'},
+  api:{title:'Подключить Binance API Key',desc:'AI торгует на Binance. Средства на вашем счёте. Вывод только для удержания сервисного сбора из прибыли.',c1t:'С выводом',c1d:'Для сборов',c2t:'AI 24/7',c2d:'Авто',c3t:'Отвязать',c3d:'Стоп',goto:'Открыть Binance',paste:'Есть Key?',bind:'Подтвердить',connected:'API подключён',binding:'Подключение...',bindOk:'Подключено!',bindErr:'Ошибка'},
   strat:{title:'Стратегия',con:'Консервативная',conD:'Низкий риск',bal:'Сбалансированная',balD:'Рекомендуется',agg:'Агрессивная',aggD:'Высокий доход',pairs:'Пары',winRate:'Винрейт',maxDD:'Просадка',holding:'Удержание',risk:'Риск',bt:'Бэктест',btReturn:'30 дней',btWinRate:'Винрейт',btTrades:'Сделки',btProfit:'Средний',btRun:'Запуск',btRunning:'Расчёт...'},
   ctrl:{start:'Старт',stop:'Стоп',refresh:'Обновить'},
   set:{title:'Настройки',amount:'Сумма (USDT)',strategy:'Стратегия',maxSingle:'Макс/сделку',daily:'Дневной лимит',save:'Сохранить',saved:'Сохранено'},
