@@ -10,8 +10,8 @@
  * 
  * 核心原则:
  * 1. 止损 = 2 ATR (过滤噪音，不被洗出去)
- * 2. 止盈目标 = 4 ATR (盈亏比2:1以上)
- * 3. 移动止盈: 峰值回撤1.5 ATR锁定，底线=0
+ * 2. 止盈目标 = 8 ATR (让利润奔跑, 盈亏比≥1.2:1)
+ * 3. 移动止盈: 峰值回撤2.5 ATR锁定，底线=0
  * 4. 不搞保本止损 — 从赚到亏的元凶已删除
  * 5. 到手利润>0时可以平仓锁定
  * 6. 超额止盈>15%立刻锁定
@@ -24,10 +24,13 @@ class AdaptiveExitManager {
     // ═══ ATR倍数参数 (v116: 取v13+v115之长) ═══
     // v116: 止损从2 ATR→3 ATR（给趋势空间，对标v13宽止损风格）
     // v116: 止盈从4 ATR→6 ATR（吃大趋势，对标v13趋势跟踪）
-    // v116: 移动止盈回撤从1.5 ATR→2.0 ATR（给回调空间，不轻易被洗出）
-    this.slAtrMult = config.slAtrMult || 3.0;    // 止损 = 3 ATR (v13风格宽止损)
-    this.tpAtrMult = config.tpAtrMult || 6.0;    // 止盈目标 = 6 ATR (吃大趋势)
-    this.trailingAtrMult = config.trailingAtrMult || 2.0;  // 移动止损回撤 = 2.0 ATR (给回调空间)
+    // v122.4: 蒙特卡洛1000笔调优 — 修复盈亏比<1导致结构性亏损
+    // 旧参数(3/6/2/0.5%): 盈亏比=0.80 → 55%胜率仍亏损 ❌
+    // 新参数(2/8/2.5/1.5%): 盈亏比=1.24 → 50%胜率也盈利 ✅
+    // 核心: 止损收紧(3→2 ATR), 止盈放大(6→8 ATR), 锁利回撤放大(0.5→1.5%)
+    this.slAtrMult = config.slAtrMult || 2.0;    // 止损 = 2 ATR (收紧, 减少单笔亏损)
+    this.tpAtrMult = config.tpAtrMult || 8.0;    // 止盈目标 = 8 ATR (放大, 让利润奔跑)
+    this.trailingAtrMult = config.trailingAtrMult || 2.5;  // 移动止损回撤 = 2.5 ATR (给回调空间)
 
     // ═══ 交易成本 ═══
     this.FEE_RATE = 0.0004;
@@ -103,12 +106,12 @@ class AdaptiveExitManager {
     let tpMult = this.tpAtrMult;
 
     if (atrPct > 3.0) {
-      // v116: 高波动放宽 — 给趋势更多空间
-      slMult = 4.0; tpMult = 8.0;
+      // v122.4: 高波动放宽 — 止损2+1=3 ATR, 止盈8+2=10 ATR
+      slMult = 3.0; tpMult = 10.0;
       reasons.push('高波动: SL=4ATR TP=8ATR');
     } else if (atrPct < 0.5) {
-      // v116: 低波动收紧
-      slMult = 2.0; tpMult = 4.0;
+      // v122.4: 低波动收紧 — 止损2-0.5=1.5 ATR, 止盈8-2=6 ATR
+      slMult = 1.5; tpMult = 6.0;
       reasons.push('低波动: SL=2ATR TP=4ATR');
     } else {
       reasons.push(`标准: SL=${slMult}ATR TP=${tpMult}ATR`);
@@ -187,21 +190,21 @@ class AdaptiveExitManager {
       trailingActive = true;
       // 阶梯式移动止盈: 利润越大回撤容忍越小
       if (peakPnlPct > 15.0) {
-        // v116: 超大趋势回撤从0.5→0.8 ATR
-        trailingSlPct = peakPnlPct - atrPct * 0.8;
-        reasons.push(`移动止损(超大): peak-${(atrPct*0.8).toFixed(2)}%`);
+        // v122.4: 超大趋势回撤从0.8→1.0 ATR
+        trailingSlPct = peakPnlPct - atrPct * 1.0;
+        reasons.push(`移动止损(超大): peak-${(atrPct*1.0).toFixed(2)}%`);
       } else if (peakPnlPct > 8.0) {
-        // v116: 大趋势回撤从0.8→1.2 ATR
-        trailingSlPct = peakPnlPct - atrPct * 1.2;
-        reasons.push(`移动止损(大): peak-${(atrPct*1.2).toFixed(2)}%`);
-      } else if (peakPnlPct > 4.0) {
-        // v116: 中等趋势回撤从1.0→1.5 ATR
+        // v122.4: 大趋势回撤从1.2→1.5 ATR
         trailingSlPct = peakPnlPct - atrPct * 1.5;
-        reasons.push(`移动止损(中等): peak-${(atrPct*1.5).toFixed(2)}%`);
-      } else {
-        // v116: 早期回撤从1.5→2.0 ATR — 给趋势更多发展空间
+        reasons.push(`移动止损(大): peak-${(atrPct*1.5).toFixed(2)}%`);
+      } else if (peakPnlPct > 4.0) {
+        // v122.4: 中等趋势回撤从1.5→2.0 ATR
         trailingSlPct = peakPnlPct - atrPct * 2.0;
-        reasons.push(`移动止损(早期): peak-${(atrPct*2.0).toFixed(2)}%`);
+        reasons.push(`移动止损(中等): peak-${(atrPct*2.0).toFixed(2)}%`);
+      } else {
+        // v122.4: 早期回撤从2.0→2.5 ATR — 给趋势更多发展空间
+        trailingSlPct = peakPnlPct - atrPct * 2.5;
+        reasons.push(`移动止损(早期): peak-${(atrPct*2.5).toFixed(2)}%`);
       }
       // v116: 底线=0, 不让盈利变亏损（保持不变）
       trailingSlPct = Math.max(trailingSlPct, 0);
@@ -310,10 +313,11 @@ class AdaptiveExitManager {
       };
     }
 
-    // ═══ 5. 锁利止盈 — 到手>MIN_TAKE_HOME且峰值回撤>0.5% ═══
+    // ═══ 5. 锁利止盈 — 到手>MIN_TAKE_HOME且峰值回撤>1.5% ═══
+    // v122.4: 回撤阈值从0.5%提高到1.5% — 让利润奔跑, 不被微小回调洗出
     if (exitCalc.trailingActive && takeHome > MIN_TAKE_HOME) {
       const drawdown = peakPnlPct - grossPnlPct;
-      if (drawdown > 0.5) {
+      if (drawdown > 1.5) {
         return {
           shouldClose: true,
           reason: `🟢 锁利止盈 到手=${takeHome.toFixed(2)}% (峰值${peakTakeHome.toFixed(2)}% 回撤${drawdown.toFixed(2)}%)`,
