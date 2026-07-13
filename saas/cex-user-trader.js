@@ -810,9 +810,10 @@ class CEXUserTrader {
       // 执行平仓
       try {
         await client.closePosition(pos.symbol);
-        // v114: 修复PnL=0 bug — 用链上仓位数据计算真实PnL
+        // v122: 修复PnL金额多乘杠杆bug — netPnlPct是保证金回报率(已含杠杆), 应×保证金而非名义值
         const posNotional = (pos.amount || pos.size || localPos?.amount || 0) * (pos.entryPrice || currentPrice);
-        const realPnlUsdt = netPnlPct * posNotional;
+        const margin = posNotional / leverage;
+        const realPnlUsdt = netPnlPct * margin;
         this._log(`📉 ${wallet.slice(0,8)} 平仓 ${pos.symbol} | ${reason} | PnL ${(netPnlPct*100).toFixed(2)}% = $${realPnlUsdt.toFixed(4)} | ${holdHours.toFixed(1)}h`);
         this._logTrade(wallet, { symbol: pos.symbol, action: 'CLOSE', amount: pos.amount || localPos?.amount || 0, price: currentPrice, pnl: realPnlUsdt, reason, holdHours: holdHours.toFixed(1), timestamp: Date.now() });
         this._updateStats(wallet, netPnlPct, realPnlUsdt);
