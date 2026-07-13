@@ -810,12 +810,13 @@ class CEXUserTrader {
       // 执行平仓
       try {
         await client.closePosition(pos.symbol);
-        // v122: 修复PnL金额多乘杠杆bug — netPnlPct是保证金回报率(已含杠杆), 应×保证金而非名义值
-        const posNotional = (pos.amount || pos.size || localPos?.amount || 0) * (pos.entryPrice || currentPrice);
+        // v122.2: 修复posNotional计算 — 用pos.qty(数量)×entryPrice, 不用localPos.amount(已是名义值,多乘一次)
+        // getAllPositions返回qty(数量), localPos.amount是qty×entry(名义值), 再乘entry会多算一倍
+        const posNotional = Math.abs(pos.qty || 0) * (pos.entryPrice || currentPrice);
         const margin = posNotional / leverage;
         const realPnlUsdt = netPnlPct * margin;
         this._log(`📉 ${wallet.slice(0,8)} 平仓 ${pos.symbol} | ${reason} | PnL ${(netPnlPct*100).toFixed(2)}% = $${realPnlUsdt.toFixed(4)} | ${holdHours.toFixed(1)}h`);
-        this._logTrade(wallet, { symbol: pos.symbol, action: 'CLOSE', amount: pos.amount || localPos?.amount || 0, price: currentPrice, pnl: realPnlUsdt, reason, holdHours: holdHours.toFixed(1), timestamp: Date.now() });
+        this._logTrade(wallet, { symbol: pos.symbol, action: 'CLOSE', amount: Math.abs(pos.qty || 0), price: currentPrice, pnl: realPnlUsdt, reason, holdHours: holdHours.toFixed(1), timestamp: Date.now() });
         this._updateStats(wallet, netPnlPct, realPnlUsdt);
         const pnlUsdt = realPnlUsdt;
         if (pnlUsdt > 0) this._collectServiceFee(wallet, pos.symbol, pnlUsdt, netPnlPct);
