@@ -633,16 +633,17 @@ class CEXUserTrader {
       this._clients[wallet] = client;
     }
 
-    // v113.13.6: 余额/持仓缓存 — 5分钟内不重复查
+    // v119: 余额缓存5分钟, 持仓缓存降到30秒 — 避免开仓后用旧持仓数据
     if (!this._balanceCache) this._balanceCache = {};
     if (!this._positionCache) this._positionCache = {};
-    const CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
+    const CACHE_TTL = 30 * 1000; // v119: 30秒持仓缓存（原5分钟太长导致孤儿仓位）
+    const BAL_CACHE_TTL = 5 * 60 * 1000; // 余额缓存仍然5分钟
     const cacheKey = wallet;
 
     // 1. 查余额（带缓存）
     let balance;
     const cachedBal = this._balanceCache[cacheKey];
-    if (cachedBal && Date.now() - cachedBal.time < CACHE_TTL) {
+    if (cachedBal && Date.now() - cachedBal.time < BAL_CACHE_TTL) {
       balance = cachedBal.value;
     } else {
       try {
@@ -803,13 +804,41 @@ class CEXUserTrader {
       } catch (e) { this._log(`❌ 平仓失败 ${pos.symbol}: ${e.message}`); }
     }
 
-    // 2b. 清理 state 中已不存在于 Binance 的持仓
+    // 2b. 同步 Binance 实际持仓到本地 state
+    // v119: 修复孤儿仓位问题 — 不再盲目删除本地记录，而是双向同步
     const binanceSymbols = new Set(existingPositions.map(p => p.symbol));
     if (state.positions) {
+      const now = Date.now();
       for (const sym of Object.keys(state.positions)) {
         if (!binanceSymbols.has(sym)) {
-          this._log(`🧹 ${wallet.slice(0,10)} 清理遗留持仓: ${sym}`);
-          delete state.positions[sym];
+          const localOpenTime = state.positions[sym]?.openTime || 0;
+          const sinceOpenMin = (now - localOpenTime) / 60000;
+          // v119: 最近10分钟内开仓的不清理 — Binance API可能有延迟
+          if (sinceOpenMin < 10) {
+            this._log(`⏳ ${wallet.slice(0,10)} 保留新仓 ${sym} (开仓${sinceOpenMin.toFixed(0)}分钟前, Binance未返回, 可能API延迟)`);
+          } else {
+            this._log(`🧹 ${wallet.slice(0,10)} 清理遗留持仓: ${sym} (Binance已无此仓, 开仓${sinceOpenMin.toFixed(0)}分钟前)`);
+            delete state.positions[sym];
+          }
+        }
+      }
+    }
+    // v119: 反向同步 — Binance 上有但本地没有的仓位，补录到本地
+    if (state.positions) {
+      for (const pos of existingPositions) {
+        if (!state.positions[pos.symbol]) {
+          this._log(`📥 ${wallet.slice(0,10)} 同步Binance持仓到本地: ${pos.symbol} ${pos.side} lev=${pos.leverage}x entry=${pos.entryPrice}`);
+          state.positions[pos.symbol] = {
+            side: pos.side,
+            entryPrice: pos.entryPrice,
+            size: Math.abs(parseFloat(pos.qty)) * pos.entryPrice,
+            amount: Math.abs(parseFloat(pos.qty)) * pos.entryPrice,
+            leverage: pos.leverage || 3,
+            openTime: pos.timestamp || Date.now(),
+            _peakPnl: 0,
+            _openAtrPct: 1.5, // 默认ATR
+            _syncedFromBinance: true,
+          };
         }
       }
     }
@@ -978,6 +1007,8 @@ class CEXUserTrader {
           if (!state.positions) state.positions = {};
           // v113.70: 保存开仓时的ATR — 止损监控用这个值, 不用实时klines(可能被引擎覆盖为5m)
           state.positions[futuresSymbol] = { side: cand.side, entryPrice: result.price, size: positionUsdt, amount: positionUsdt, leverage, openTime: Date.now(), _peakPnl: 0, _openAtrPct: atrPct };
+          // v119: 开仓后立即清除持仓缓存 — 确保下一轮能获取到新仓位
+          this._positionCache[cacheKey] = null;
           this._saveState();
           this._logTrade(wallet, { symbol: futuresSymbol, action: cand.side, amount: positionUsdt, price: result.price, leverage, score: cand.score, timestamp: Date.now() });
           remainingSlots--;
