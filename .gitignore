@@ -1,0 +1,14 @@
+node_modules/
+.env
+config/greenfield.json
+
+# ── 敏感数据（含 API Key、密码、session、交易记录）──
+data/
+!data/.gitkeep
+
+# ── 备份（可能含旧密钥）──
+backup/
+
+# ── 日志 ──
+logs/
+*.log

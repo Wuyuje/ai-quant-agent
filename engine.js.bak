@@ -1,0 +1,1005 @@
+/**
+ * Engine v13 — 智能趋势猎手 + 死区终结者
+ * 
+ * v13 核心改进：
+ *   1. 修复持仓管理死区：超时平仓 + 无趋势释放 + 微亏超时
+ *   2. DeepSeek 非阻塞化：5秒 Promise.race 超时
+ *   3. Guardian 容错：链上空但本地有仓 → 保留本地
+ *   4. 评分门槛降至7分：更多机会
+ *   5. WS重连保护：断线自动补拉K线
+ *   6. 智能趋势分析：多时间框架确认 + 动态入场/出场
+ *   7. 最低点买入做多 / 最高点买入做空 / 趋势反转自动平仓
+ */
+const fs = require('fs');
+const path = require('path');
+const DataBus = require('./data/databus');
+const AIDecisionEngine = require('./brain/ai-engine');
+const Trader = require('./executor/trader');
+const Guardian = require('./safety/guardian');
+const MarketScanner = require('./scanner/market-scanner');
+const BackupManager = require('./backup/manager');
+
+const CONFIG = require('./config/default.json');
+
+// v13: 解析环境变量占位符 ${ENV_VAR}
+function resolveEnvVars(obj) {
+  for (const key of Object.keys(obj)) {
+    if (typeof obj[key] === 'string' && obj[key].startsWith('${') && obj[key].endsWith('}')) {
+      const envName = obj[key].slice(2, -1);
+      obj[key] = process.env[envName] || '';
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      resolveEnvVars(obj[key]);
+    }
+  }
+}
+resolveEnvVars(CONFIG);
+const PAIRS = require('./config/trading-pairs.js');
+const STATE_FILE = path.join(__dirname, 'data', 'engine_state.json');
+const TRADE_LOG = path.join(__dirname, 'data', 'trades.json');
+
+class Engine {
+  constructor(deps = {}) {
+    this.running = false;
+    this.paused = false;
+    this.cycleCount = 0;
+
+    this.dataBus = deps.dataBus || new DataBus(CONFIG);
+    this.aiEngine = new AIDecisionEngine(CONFIG, this.dataBus);
+    this.trader = new Trader(CONFIG, PAIRS);
+    this.guardian = new Guardian(this.trader, this.dataBus, CONFIG);
+    this.scanner = new MarketScanner(CONFIG);
+    this.backupManager = new BackupManager();
+
+    this.trader.setMarketData(this.dataBus.marketData);
+    this.engineState = this._loadState();
+    this.tradeLog = this._loadTradeLog();
+
+    // v14 智能参数
+    this._scanIntervalMs = 450000; // 7.5分钟扫描（v16: 增加间隔避免频繁开仓）
+    this._lastScanTime = 0;
+    // v14: 排除黑名单交易对
+    const blacklist = (CONFIG.strategy && CONFIG.strategy.blacklistPairs) || [];
+    const cfgBlacklist = (typeof require('./config/trading-pairs.js')._blacklist !== 'undefined') ? require('./config/trading-pairs.js')._blacklist : [];
+    this._blacklist = new Set([...blacklist, ...cfgBlacklist]);
+    this._candidateSymbols = Object.keys(PAIRS).filter(s => !s.startsWith('_') && !this._blacklist.has(s));
+    this._log(`[v14] 排除黑名单: ${[...this._blacklist].join(',')} | 候选币种: ${this._candidateSymbols.length}`);
+    this._addPositionState = {};
+    this._peakPnl = {};
+    this._lowPnl = {};
+    this._overbought = {};
+    this._oversold = {};
+    this._trailSl = {};
+    this._openTime = {};
+    this._trendScore = {};
+    this._emergencyStop = false;
+    this._degradedMode = false; // v14: API Key 无效时降级运行
+    this._dailyPnl = 0;
+    this._dailyPnlResetTime = this._startOfDay();
+    // [v14] 账户级回撤保护
+    this._accountDrawdownPaused = false;
+    this._accountDrawdownPauseTime = 0;
+    // [v14] 动态权重
+    this._pairStats = {}; // symbol → { wins, losses, totalPnl }
+
+    // v13 新增：WS健康追踪 + K线新鲜度
+    this._wsLastMessage = 0;
+    this._wsReconnectCount = 0;
+    this._klineFreshness = {}; // symbol → lastFetchTime
+
+    // 从持久化恢复
+    if (this.engineState._openTime) this._openTime = this.engineState._openTime;
+    if (this.engineState._peakPnl) this._peakPnl = this.engineState._peakPnl;
+    if (this.engineState._trendScore) this._trendScore = this.engineState._trendScore;
+    if (this.engineState._dailyPnl) this._dailyPnl = this.engineState._dailyPnl;
+    // [v14] 恢复新状态变量
+    if (this.engineState._accountDrawdownPaused) this._accountDrawdownPaused = this.engineState._accountDrawdownPaused;
+    if (this.engineState._accountDrawdownPauseTime) this._accountDrawdownPauseTime = this.engineState._accountDrawdownPauseTime;
+    if (this.engineState._pairStats) this._pairStats = this.engineState._pairStats;
+
+    this._log('Engine v16 (保守趋势猎手+低杠杆+严格评分) initialized');
+  }
+
+  _log(msg) { console.log(`[Engine] ${new Date().toISOString()} ${msg}`); }
+  _startOfDay() { const d = new Date(); d.setUTCHours(0,0,0,0); return d.getTime(); }
+
+  _loadState() {
+    try { if (fs.existsSync(STATE_FILE)) return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch(e) { console.error(`[Engine] _loadState FAILED: ${e.message}`); }
+    return { symbols: {}, totalPnl: 0, totalTrades: 0, wins: 0, losses: 0 };
+  }
+  _saveState() {
+    try {
+      this.engineState._openTime = this._openTime;
+      this.engineState._peakPnl = this._peakPnl;
+      this.engineState._trendScore = this._trendScore;
+      this.engineState._dailyPnl = this._dailyPnl;
+      // [v14] 持久化新状态
+      this.engineState._accountDrawdownPaused = this._accountDrawdownPaused;
+      this.engineState._accountDrawdownPauseTime = this._accountDrawdownPauseTime;
+      this.engineState._pairStats = this._pairStats;
+      fs.writeFileSync(STATE_FILE, JSON.stringify(this.engineState, null, 2));
+    } catch(e) { console.error(`[Engine] _saveState FAILED: ${e.message}`); }
+  }
+  _loadTradeLog() {
+    try { if (fs.existsSync(TRADE_LOG)) return JSON.parse(fs.readFileSync(TRADE_LOG, 'utf8')); } catch(e) { console.error(`[Engine] _loadTradeLog FAILED: ${e.message}`); }
+    return [];
+  }
+  _saveTradeLog() {
+    if (this.tradeLog.length > 500) this.tradeLog = this.tradeLog.slice(-300);
+    try { fs.writeFileSync(TRADE_LOG, JSON.stringify(this.tradeLog, null, 2)); } catch(e) { console.error(`[Engine] _saveTradeLog FAILED: ${e.message}`); }
+  }
+
+  // ═══════════════════════════════════════════
+  // 启动 / 停止
+  // ═══════════════════════════════════════════
+  async start() {
+    this._log('Starting v13 智能趋势猎手...');
+    this.running = true;
+
+    // v14: getBalance 用 try-catch 包裹，API Key 无效时降级运行（只用公共数据）
+    let balance = null;
+    try {
+      balance = await this.trader.getBalance();
+      this._log(`余额: $${balance?.balance?.toFixed(2) || 'unknown'}`);
+    } catch(e) {
+      this._log(`⚠️ getBalance 失败: ${e.message}`);
+      this._log(`⚠️ API Key 可能无效，进入降级模式（仅分析，不下单）`);
+      this._degradedMode = true;
+    }
+
+    try {
+      await this.backupManager.init();
+      this.backupManager.startAuto();
+    } catch(e) { this._log(`备份失败: ${e.message}`); }
+
+    await this.guardian.syncAllPositions();
+    this.aiEngine.startSelfEvolution();
+
+    // 连接WS + 监控健康
+    // v14: 排除黑名单
+    const symbols = Object.keys(PAIRS).filter(s => !s.startsWith('_') && !this._blacklist.has(s));
+    this.dataBus.connectWS(symbols);
+    this._wsLastMessage = Date.now();
+    this._startWsHealthMonitor();
+    await new Promise(r => setTimeout(r, 3000));
+
+    // 拉取150根1h K线
+    this._log('拉取历史K线（1h×150根≈6天）...');
+    let loaded = 0;
+    for (const sym of symbols) {
+      try {
+        await this.dataBus.fetchKlines(sym, '1h', 150);
+        await this.dataBus.fetchTicker(sym);
+        this._klineFreshness[sym] = Date.now();
+        loaded++;
+        await new Promise(r => setTimeout(r, 200));
+      } catch(e) {
+        this._log(`${sym} K线加载失败: ${e.message}`);
+      }
+    }
+    this._log(`K线加载完成: ${loaded}/${symbols.length} 个`);
+    await this.dataBus.fetchFearGreedIndex().catch(() => {});
+
+    // Scanner精选
+    try {
+      const candidates = await this.scanner.scan({ minVolume: 30e6, maxResults: 20, accountInfo: { balance: balance?.balance || 80 } });
+      if (candidates.length > 0) {
+        this._candidateSymbols = [...new Set([...candidates.map(c => c.symbol), ...symbols])];
+        this._log(`Scanner 精选 ${candidates.length} 个 + 静态 ${symbols.length} 个 = ${this._candidateSymbols.length} 个候选`);
+      }
+    } catch(e) { this._log(`Scanner 失败: ${e.message}`); }
+
+    this._log('🚀 v13 主循环开始（智能趋势+死区终结+毫秒反转）...');
+    this._mainLoop();
+  }
+
+  async stop() {
+    this.running = false;
+    this.dataBus.disconnect();
+    if (this._wsHealthTimer) clearInterval(this._wsHealthTimer);
+    try { await this.backupManager.backupNow(); } catch(e) { this._log(`⚠️ 停止后备份失败: ${e.message}`); }
+    this.backupManager.stopAuto();
+    this._log('Stopped');
+  }
+
+  // ═══════════════════════════════════════════
+  // v13: WebSocket 健康监控（修复Bug6）
+  // WS断线超过10秒 → 自动补拉K线
+  // ═══════════════════════════════════════════
+  _startWsHealthMonitor() {
+    // [v14] 修复：不再维护独立的 _wsReconnectCount，直接用 DataBus 状态
+    let _restPollCount = 0;
+    this._wsHealthTimer = setInterval(async () => {
+      if (!this.running) return;
+      try {
+        const lastMsg = this.dataBus._wsLastMessage || this._wsLastMessage;
+        const wsDead = Date.now() - lastMsg > 30000; // 放宽到30秒
+        if (wsDead) {
+          _restPollCount++;
+          // v14: WS 不可用时用 REST 轮询替代（只拉持仓币种+前5候选）
+          const positionSymbols = Object.keys(this.guardian.getAllPositions());
+          const topCandidates = this._candidateSymbols.slice(0, 5);
+          const syms = [...new Set([...positionSymbols, ...topCandidates])].slice(0, 8);
+          if (_restPollCount % 3 === 0) { // 每30秒打一次日志
+            this._log(`⚠️ WS 无消息(${Math.floor((Date.now() - lastMsg)/1000)}s)，REST 轮询 ${syms.length} 个币种...`);
+          }
+          for (const sym of syms) {
+            try {
+              await this.dataBus.fetchTicker(sym);
+              await new Promise(r => setTimeout(r, 100));
+            } catch(e) { /* 忽略单个失败 */ }
+          }
+          // 每60秒尝试重连 WS（不是每次都重连）
+          if (_restPollCount % 6 === 0 && !this.dataBus.wsAlive) {
+            this._log('🔄 尝试重连WS...');
+            this.dataBus.connectWS(Object.keys(PAIRS).filter(s => !s.startsWith('_') && !this._blacklist.has(s)));
+          }
+        } else {
+          _restPollCount = 0;
+        }
+      } catch(e) { console.error(`[Engine] WS健康监控异常: ${e.message}`); }
+    }, 10000);
+  }
+
+  // ═══════════════════════════════════════════
+  // v13: 强制刷新K线（修复Bug1 - 竞态条件）
+  // 使用锁机制防止并发刷新
+  // ═══════════════════════════════════════════
+  async _forceRefreshKlines(symbol) {
+    if (!this._klineLock) this._klineLock = {};
+    if (this._klineLock[symbol]) return; // 正在刷新中，跳过
+    this._klineLock[symbol] = true;
+    try {
+      await this.dataBus.fetchKlines(symbol, '1h', 150);
+      this._klineFreshness[symbol] = Date.now();
+    } catch(e) { this._log(`⚠️ 强制刷新K线失败 ${symbol}: ${e.message}`); }
+    finally {
+      this._klineLock[symbol] = false;
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // v13: K线新鲜度检查
+  // ═══════════════════════════════════════════
+  _isKlineFresh(symbol, maxAgeMs = 120000) {
+    const lastFetch = this._klineFreshness[symbol] || 0;
+    return Date.now() - lastFetch < maxAgeMs;
+  }
+
+  // ═══════════════════════════════════════════
+  // 主循环
+  // ═══════════════════════════════════════════
+  async _mainLoop() {
+    while (this.running) {
+      const cycleStart = Date.now();
+      try {
+        this.cycleCount++;
+        if (this.paused) { await new Promise(r => setTimeout(r, 5000)); continue; }
+
+        this._checkDailyPnlReset();
+
+        // 紧急制动：只管理持仓，不开新仓
+        if (this._emergencyStop) {
+          if (this.cycleCount % 12 === 0) this._log('🚨 紧急制动中（仅管理持仓）');
+          await this._managePositions();
+          await new Promise(r => setTimeout(r, 30000));
+          continue;
+        }
+
+        // 阶段1: 管理持仓（每轮执行，最高优先级）
+        await this.guardian.syncAllPositions();
+
+        // 更新余额
+        try {
+          const bal = await this.trader.getBalance();
+          if (bal?.balance) {
+            this.engineState._lastBalance = bal.balance;
+            if (this._degradedMode && bal.balance > 0) {
+              this._degradedMode = false;
+              this._log('✅ API Key 恢复正常，退出降级模式');
+            }
+          }
+        } catch(e) {
+          if (!this._degradedMode) {
+            this._log(`⚠️ 余额查询失败: ${e.message}`);
+            this._degradedMode = true;
+            this._log('⚠️ 进入降级模式（仅分析，不下单）');
+          }
+        }
+
+        await this._managePositions();
+
+        // 阶段2: 扫描+开仓（3分钟间隔）— 降级模式下跳过开仓
+        const posCount = this.guardian.getPositionCount();
+        const maxPos = this.engineState.maxPositions || 6;
+        if (posCount < maxPos && !this._degradedMode) {
+          await this._scanAndOpen(maxPos - posCount);
+        } else if (this._degradedMode && this.cycleCount % 12 === 0) {
+          this._log(`📊 降级模式运行中（cycle #${this.cycleCount}，仅分析不下单）`);
+        }
+
+        // 定期刷新
+        if (this.cycleCount % 12 === 0) await this.dataBus.fetchFearGreedIndex().catch(() => {});
+        if (this.cycleCount % 60 === 0) await this.backupManager.backupNow().catch(() => {});
+        if (this.cycleCount % 3 === 0) this.trader.setMarketData(this.dataBus.marketData);
+
+        this._saveState();
+      } catch(e) {
+        this._log(`主循环错误: ${e.message}`);
+      }
+
+      // 精确5秒间隔（减去本轮耗时）
+      const elapsed = Date.now() - cycleStart;
+      const waitMs = Math.max(1000, 5000 - elapsed);
+      await new Promise(r => setTimeout(r, waitMs));
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // togglePause / stopEngine / startEngine / getConfig / updateConfig
+  // ═══════════════════════════════════════════
+  togglePause() {
+    this.paused = !this.paused;
+    this._log(this.paused ? '⏸ 已暂停' : '▶️ 已恢复');
+    return this.paused;
+  }
+
+  stopEngine() {
+    this.running = false;
+    this.paused = false;
+    this._log('🛑 引擎已停止');
+    return { running: false, paused: false };
+  }
+
+  startEngine() {
+    if (this.running) return { running: true, msg: '已在运行' };
+    this.running = true;
+    this.paused = false;
+    this._emergencyStop = false;
+    this._log('🟢 引擎已启动');
+    this._mainLoop();
+    return { running: true };
+  }
+
+  getConfig() {
+    return {
+      maxPositions: this.engineState.maxPositions || 4,
+      leverage: this.engineState.leverage || 4,
+      scoreThreshold: this.engineState.scoreThreshold || 12,
+      bbPctBLong: this.engineState.bbPctBLong || 0.6,
+      bbPctBShort: this.engineState.bbPctBShort || 0.4,
+      slPct: this.engineState.slPct ?? -5,
+      tpPct: this.engineState.tpPct ?? 15,
+      posSizePct: this.engineState.posSizePct || 10,
+      dailyLossLimit: this.engineState.dailyLossLimit ?? -7,
+    };
+  }
+
+  updateConfig(updates) {
+    const allowed = ['maxPositions','leverage','scoreThreshold','bbPctBLong','bbPctBShort','slPct','tpPct','posSizePct','dailyLossLimit'];
+    const applied = {};
+    for (const k of allowed) {
+      if (updates[k] !== undefined) {
+        this.engineState[k] = Number(updates[k]);
+        applied[k] = this.engineState[k];
+      }
+    }
+    this._saveState();
+    this._log('⚙️ 配置已更新: ' + JSON.stringify(applied));
+    return applied;
+  }
+
+  _checkDailyPnlReset() {
+    const todayStart = this._startOfDay();
+    if (todayStart > this._dailyPnlResetTime) {
+      this._dailyPnl = 0;
+      this._dailyPnlResetTime = todayStart;
+      this._emergencyStop = false;
+      this._log('📅 新的一天，日亏损计数重置');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // v13 持仓管理 — 智能趋势追踪 + 死区终结
+  // 
+  // 设计哲学：
+  //   做多 → 在趋势最低点附近买入，趋势最高点附近卖出
+  //   做空 → 在趋势最高点附近买入，趋势最低点附近卖出
+  //   止盈 = 趋势反转信号（不是固定百分比）
+  //   止损 = 多层保护，从硬止损到趋势消失
+  //   死区 = 任何「不买不卖」的卡死状态，v13全部消灭
+  // ═══════════════════════════════════════════════════════════════
+  async _managePositions() {
+    // [v14] 账户级最大回撤保护
+    const acctDrawdownLimit = CONFIG.strategy?.accountMaxDrawdownPct ?? -8;
+    const drawdownPauseHrs = CONFIG.strategy?.drawdownPauseHours ?? 24;
+    if (this._accountDrawdownPaused) {
+      const elapsed = (Date.now() - this._accountDrawdownPauseTime) / 3600000;
+      if (elapsed >= drawdownPauseHrs) {
+        this._accountDrawdownPaused = false;
+        this._log('✅ 回撤暂停期满，恢复交易');
+      } else {
+        this._log(`⏸ 回撤暂停中 (剩余 ${(drawdownPauseHrs - elapsed).toFixed(1)}h)`);
+        return;
+      }
+    }
+    const startBalance = this.engineState._lastBalance || 0;
+    if (startBalance > 0) {
+      let curBal = 0;
+      try {
+        const currentBalance = await this.trader.getBalance();
+        curBal = currentBalance?.balance || 0;
+      } catch(e) { /* 余额查询失败时不触发回撤保护 */ }
+      if (curBal > 0) {
+        const drawdownPct = ((curBal - startBalance) / startBalance) * 100;
+        if (drawdownPct <= acctDrawdownLimit) {
+          this._accountDrawdownPaused = true;
+          this._accountDrawdownPauseTime = Date.now();
+          this._log(`🚨 账户回撤 ${drawdownPct.toFixed(1)}% ≤ ${acctDrawdownLimit}% → 暂停交易 ${drawdownPauseHrs}h`);
+          // 平掉所有持仓止损
+          const allPos = this.guardian.getAllPositions();
+        for (const [sym, p] of Object.entries(allPos)) {
+          await this._executeClose(sym, `🚨 账户回撤保护 平仓 ${drawdownPct.toFixed(1)}%`);
+        }
+        this._saveState();
+          return;
+        }
+      }
+    }
+
+    const allPositions = this.guardian.getAllPositions();
+    for (const [symbol, pos] of Object.entries(allPositions)) {
+      try {
+        const currentPrice = this.dataBus.marketData?.[symbol]?.price || pos.markPrice;
+        if (!currentPrice || currentPrice <= 0) continue;
+
+        if (!this._isKlineFresh(symbol, 60000)) {
+          await this._forceRefreshKlines(symbol);
+        }
+
+        const isLong = pos.side === 'LONG';
+        const leverage = pos.leverage || 6;
+        const rawPnlPct = isLong
+          ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100
+          : ((pos.entryPrice - currentPrice) / pos.entryPrice) * 100;
+        const pnlPct = rawPnlPct * leverage;
+
+        if (pnlPct > (this._peakPnl[symbol] || 0)) this._peakPnl[symbol] = pnlPct;
+        if (!this._lowPnl) this._lowPnl = {};
+        if (pnlPct < (this._lowPnl[symbol] || Infinity)) this._lowPnl[symbol] = pnlPct;
+
+        const holdMs = Date.now() - (this._openTime[symbol] || Date.now());
+        const holdMinutes = holdMs / 60000;
+        const holdHours = holdMs / 3600000;
+
+        const ind = this.dataBus.calculateIndicators(symbol);
+        const curADX = ind?.adx || 0;
+        const plusDI = ind?.plusDI || 0;
+        const minusDI = ind?.minusDI || 0;
+        const curRSI = ind?.rsi || 50;
+        const curBB = ind?.bb;
+
+        // ══════════════════════════════════════════════
+        // 第0层：硬止损（最后防线，无条件执行）
+        // ══════════════════════════════════════════════
+        // 硬止损：默认 -5%（6x杠杆下价格跌0.83%即止损）
+        const userSlPct = this.engineState.slPct ?? -8;
+        const hardStop = Math.max(userSlPct, -15);
+        if (pnlPct <= hardStop) {
+          await this._executeClose(symbol, `🔴 硬止损 ${pnlPct.toFixed(1)}% ≤ ${hardStop}%`);
+          continue;
+        }
+
+        // ══════════════════════════════════════════════
+        // 核心原则：趋势好就拿住！
+        // 只有趋势明确反转 → 才平仓
+        // ══════════════════════════════════════════════
+        if (ind) {
+          // ═══ 趋势状态评估 ═══
+          const trendStrength = this._assessTrend(symbol, isLong, curADX, plusDI, minusDI, curRSI, curBB, currentPrice, ind);
+          // trendStrength: 1-5, 5=趋势很强（坚决持有）, 1=趋势很弱（考虑离场）
+
+          // ─── 趋势好（3-5）：坚决拿住，不管什么信号都不平 ───
+          if (trendStrength >= 3) {
+            // 只有一种情况例外：RSI极端反转（连续5根确认）
+            if (isLong && curRSI > 80) {
+              if (!this._overbought) this._overbought = {};
+              this._overbought[symbol] = (this._overbought[symbol] || 0) + 1;
+              if (this._overbought[symbol] >= 5) {
+                await this._executeClose(symbol, `🔴 RSI=${curRSI.toFixed(0)} 连续5根超买 → 极端顶部`);
+                continue;
+              }
+            } else if (!isLong && curRSI < 20) {
+              if (!this._oversold) this._oversold = {};
+              this._oversold[symbol] = (this._oversold[symbol] || 0) + 1;
+              if (this._oversold[symbol] >= 5) {
+                await this._executeClose(symbol, `🔴 RSI=${curRSI.toFixed(0)} 连续5根超卖 → 极端底部`);
+                continue;
+              }
+            } else {
+              if (this._overbought) this._overbought[symbol] = 0;
+              if (this._oversold) this._oversold = 0;
+            }
+            // 趋势好 → 继续持有 + 金字塔加仓
+            this._log(`💎 ${symbol} 趋势强劲(t=${trendStrength}) → 拿住 PnL=${pnlPct.toFixed(1)}%`);
+            // 金字塔加仓（趋势强+盈利中）
+            const trendScore = this._trendScore[symbol] || 5;
+            if (pnlPct > 5 && !this._addPositionState[symbol]?.maxed) {
+              const state = this._addPositionState[symbol] || { count: 0 };
+              const maxAdds = trendScore >= 14 ? 3 : trendScore >= 12 ? 2 : 1;
+              if (state.count < maxAdds) {
+                const addPct = trendScore >= 14 ? [30, 25, 20][state.count] : [20, 15][state.count];
+                const balance = await this.trader.getBalance();
+                const addAmount = (balance?.balance || 0) * (addPct / 100) * 0.15;
+                if (addAmount >= 5) {
+                  const newLev = Math.min(leverage + 1, 12);
+                  await this.guardian.executeDecision({ action: pos.side, leverage: newLev, positionSize: addAmount }, symbol);
+                  state.count++;
+                  if (state.count >= maxAdds) state.maxed = true;
+                  this._addPositionState[symbol] = state;
+                  this._recordTrade(symbol, 'ADD', newLev, addAmount, 0, `金字塔#${state.count} ${addPct}% lev=${newLev}x`);
+                  this._log(`➕ ${symbol} 金字塔#${state.count} $${addAmount.toFixed(2)} ${newLev}x`);
+                }
+              }
+            }
+            continue;
+          }
+
+          // ─── 趋势弱（1-2）：检查是否真正反转 ───
+          // 必须满足至少2个反转条件才平仓（交叉验证，防误判）
+          let reversalSignals = [];
+
+          // 信号A: DI方向反转
+          if (isLong && plusDI < minusDI) reversalSignals.push('DI反转');
+          if (!isLong && minusDI < plusDI) reversalSignals.push('DI反转');
+
+          // 信号B: MA结构破坏
+          if (ind.ma7 && ind.ma21) {
+            if (isLong && ind.ma7 < ind.ma21) reversalSignals.push('MA死叉');
+            if (!isLong && ind.ma7 > ind.ma21) reversalSignals.push('MA金叉');
+          }
+
+          // 信号C: 跌破BB中轨
+          if (curBB) {
+            if (isLong && currentPrice < curBB.middle * 0.998) reversalSignals.push('跌破BB中轨');
+            if (!isLong && currentPrice > curBB.middle * 1.002) reversalSignals.push('突破BB中轨');
+          }
+
+          // 信号D: RSI趋势背离
+          if (isLong && curRSI < 35) reversalSignals.push('RSI走弱');
+          if (!isLong && curRSI > 65) reversalSignals.push('RSI走强');
+
+          // 信号E: 持仓超时 + 亏损
+          if (holdHours >= 8 && pnlPct < -1) reversalSignals.push('超时亏损');
+
+          // [v14] 信号F: 超时衰减 — 持仓超过24h趋势弱直接平
+          const timeoutHrs = CONFIG.strategy?.positionTimeoutHours ?? 24;
+          if (holdHours >= timeoutHrs && trendStrength <= 2) {
+            await this._executeClose(symbol, `⏰ 超时${holdHours.toFixed(1)}h+趋势弱(t=${trendStrength}) → 平仓`);
+            continue;
+          }
+          // 超过36h即使趋势中等也平
+          if (holdHours >= 36 && trendStrength <= 3 && pnlPct < 2) {
+            await this._executeClose(symbol, `⏰ 长持${holdHours.toFixed(1)}h+趋势中等+低盈 → 平仓`);
+            continue;
+          }
+
+          // ═══ 持仓保护期：开仓后 30 分钟内不检查反转信号（避免刚买就卖） ═══
+          const protectionMs = 30 * 60 * 1000; // 30分钟
+          if (Date.now() - (this._openTime[symbol] || 0) < protectionMs) {
+            const remainMin = Math.round((protectionMs - (Date.now() - (this._openTime[symbol] || 0))) / 60000);
+            this._log(`⏳ ${symbol} 持仓保护期中（还剩${remainMin}分钟），跳过反转检查`);
+            continue;
+          }
+
+          // ═══ 必须≥2个反转信号（v14: 超12h降为≥1个） ═══
+          const reversalThreshold = holdHours >= 12 ? 1 : 2;
+          if (reversalSignals.length >= reversalThreshold) {
+            await this._executeClose(symbol, `⚡ 趋势反转确认(${reversalSignals.join('+')}) t=${trendStrength} ADX=${curADX.toFixed(0)} PnL=${pnlPct.toFixed(1)}% hold=${holdHours.toFixed(1)}h`);
+            continue;
+          }
+
+          // 趋势弱但反转信号不够 → 再给一次机会
+          this._log(`⏳ ${symbol} 趋势弱(t=${trendStrength}) 反转信号=${reversalSignals.length}个(<${reversalThreshold}) → 继续观察`);
+          continue;
+        }
+
+        // ═══ 无指标数据：只看硬止损 ═══
+      } catch(e) {
+        this._log(`⚠️ 持仓管理异常 ${symbol}: ${e.message}`);
+      }
+    }
+  }
+
+  /**
+   * v16: 趋势强度评估 — 持仓中趋势好就拿住
+   * 返回 1-5: 1=极弱/反转, 2=弱, 3=中等, 4=强, 5=很强
+   */
+  _assessTrend(symbol, isLong, adx, plusDI, minusDI, rsi, bb, price, ind) {
+    let score = 0;
+
+    // D1: ADX趋势强度 (0-2)
+    if (adx >= 35) score += 2;
+    else if (adx >= 25) score += 1.5;
+    else if (adx >= 18) score += 1;
+    else if (adx >= 12) score += 0.5;
+    // ADX<12 趋势几乎不存在
+
+    // D2: DI方向一致性 (0-1.5)
+    if (isLong && plusDI > minusDI) {
+      const gap = plusDI - minusDI;
+      score += Math.min(gap / 30, 1.5);
+    } else if (!isLong && minusDI > plusDI) {
+      const gap = minusDI - plusDI;
+      score += Math.min(gap / 30, 1.5);
+    }
+    // 方向不一致 → 0分
+
+    // D3: 均线排列 (0-1)
+    if (ind.ma7 && ind.ma21) {
+      if (isLong) {
+        if (price > ind.ma7 && ind.ma7 > ind.ma21) score += 1;  // 多头排列
+        else if (price > ind.ma21) score += 0.5;
+      } else {
+        if (price < ind.ma7 && ind.ma7 < ind.ma21) score += 1;  // 空头排列
+        else if (price < ind.ma21) score += 0.5;
+      }
+    }
+
+    // D4: RSI位置 (0-0.5)
+    if (isLong) {
+      if (rsi > 45 && rsi < 70) score += 0.5;  // 健康区间
+      else if (rsi >= 70) score += 0.3;  // 偏高但不算极端
+    } else {
+      if (rsi < 55 && rsi > 30) score += 0.5;  // 健康区间
+      else if (rsi <= 30) score += 0.3;  // 偏低但不算极端
+    }
+
+    // 归一化到 1-5
+    const raw = Math.round(score);
+    return Math.max(1, Math.min(5, raw || 1));
+  }
+
+  // ═══════════════════════════════════════════
+  // 扫描新机会 + 智能选币
+  // ═══════════════════════════════════════════
+  async _scanAndOpen(slotsNeeded) {
+    if (this._degradedMode) return; // v14: API Key 无效时跳过
+    const now = Date.now();
+    if (now - this._lastScanTime < this._scanIntervalMs) return;
+    this._lastScanTime = now;
+
+    const maxPos = this.engineState.maxPositions || 6;
+    const balance = await this.trader.getBalance();
+    const balanceUsd = balance?.balance || 0;
+
+    // Scanner精选
+    let candidates = this._candidateSymbols;
+    try {
+      const scanResult = await this.scanner.scan({
+        minVolume: 30e6, maxResults: 30,
+        accountInfo: { balance: balanceUsd }
+      });
+      if (scanResult.length > 0) {
+        candidates = [...new Set([...scanResult.map(c => c.symbol), ...this._candidateSymbols])];
+      }
+    } catch(e) { this._log(`⚠️ 周期扫描失败: ${e.message}`); }
+
+    // [v14] 动态权重过滤 — 根据历史表现降权/升权
+    const dwEnabled = CONFIG.strategy?.dynamicWeightEnabled !== false;
+    const dwMinTrades = CONFIG.strategy?.dynamicWeightMinTrades ?? 20;
+    const dwDecayPct = CONFIG.strategy?.dynamicWeightDecayPct ?? 50;
+    let filteredCandidates = candidates;
+    if (dwEnabled) {
+      filteredCandidates = candidates.filter(sym => {
+        const stats = this._pairStats[sym] || { wins: 0, losses: 0, total: 0 };
+        const total = stats.wins + stats.losses;
+        if (total < dwMinTrades) return true; // 样本不够，不惩罚
+        const wr = stats.wins / total;
+        if (wr < 0.2 && total >= dwMinTrades) {
+          this._log(`🚫 ${sym} 动态降权: 胜率${(wr*100).toFixed(0)}% (${total}笔) → 排除`);
+          return false;
+        }
+        return true;
+      });
+    }
+    // 评分排序（限制最多扫描15个以控制时间）
+    const scanLimit = Math.min(filteredCandidates.length, 15);
+    const scored = [];
+    this._log(`🔍 开始评分 ${scanLimit} 个币种 (候选池 ${filteredCandidates.length}/${candidates.length})`);
+    for (let i = 0; i < scanLimit; i++) {
+      const symbol = filteredCandidates[i];
+      if (this.guardian.getPosition(symbol)) continue;
+      try {
+        // v13: 先检查K线新鲜度，不新鲜才拉
+        if (!this._isKlineFresh(symbol, 180000)) {
+          await this._forceRefreshKlines(symbol);
+          await this.dataBus.fetchTicker(symbol);
+        }
+        const snapshot = await this.dataBus.getMarketSnapshot(symbol);
+        if (!snapshot?.indicators) { this._log(`⚠️ ${symbol} 无指标数据`); continue; }
+        const ind = snapshot.indicators;
+        const price = ind.price || snapshot.ticker?.price || 0;
+        if (!price || price <= 0) continue;
+
+        // 从 klines 取当前K线的 close/open（均值回归需要判断阳线/阴线）
+        const _klines = this.dataBus.klines?.[symbol];
+        const _lastK = _klines?.[_klines.length - 1];
+        if (_lastK) { ind.close = _lastK.close; ind.open = _lastK.open; }
+
+        const signal = this._v13Score(ind, symbol, price);
+        if (signal.canOpen) {
+          // 动态权重学习反馈：如果该币历史胜率低，降低权重
+          const stats = this._pairStats[symbol] || { wins: 0, losses: 0 };
+          const total = stats.wins + stats.losses;
+          if (total >= 10) {
+            const wr = stats.wins / total;
+            if (wr < 0.25) {
+              this._log(`🚫 ${symbol} 历史胜率 ${(wr*100).toFixed(0)}%，跳过`);
+              continue;
+            }
+          }
+          // AIDecisionEngine 用户反馈权重
+          if (this.aiEngine?._feedbackWeights?.[symbol]) {
+            const fb = this.aiEngine._feedbackWeights[symbol];
+            if (fb.count >= 3 && fb.score < 0.8) {
+              this._log(`🚫 ${symbol} 用户反馈差(${(fb.score*100).toFixed(0)}%)，跳过`);
+              continue;
+            }
+          }
+          scored.push({ symbol, signal, price });
+        } else {
+          const bbPctB = ind.bb?.pctB || 0.5;
+          const rsiVal = ind.rsi || 50;
+          this._log(`  ⛔ ${symbol} 评分不足: pctB=${bbPctB.toFixed(2)} rsi=${rsiVal.toFixed(1)} score=${signal.score||0}`);
+        }
+      } catch(e) { this._log(`⚠️ ${symbol} 评分异常: ${e.message}`); }
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    scored.sort((a, b) => b.signal.score - a.signal.score);
+    this._log(`📊 选币排名: ${scored.slice(0, 5).map(s => `${s.symbol}=${s.signal.score}分${s.signal.direction}`).join(', ')}`);
+
+    for (const pick of scored.slice(0, slotsNeeded)) {
+      if (this.guardian.getPositionCount() >= maxPos) break;
+
+      const trendStr = pick.signal.score;
+      const userPosPct = this.engineState.posSizePct || 10;
+      // 动态仓位：分数越高仓位越大
+      const posCoeff = trendStr >= 18 ? 1.5 : trendStr >= 15 ? 1.2 : trendStr >= 13 ? 1.0 : 0.8;
+      const posPct = Math.min(userPosPct * posCoeff, 15);
+      const positionSize = balanceUsd * (posPct / 100);
+      const leverage = pick.signal.leverage;
+      const notionalValue = positionSize * (leverage || 2);
+      if (notionalValue < 3) continue;  // 最小名义值约 $3（2x杠杆下保证金$1.5）
+
+      this._log(`🎯 ${pick.symbol} ${pick.signal.direction} ${leverage}x $${positionSize.toFixed(0)} | ${pick.signal.reason}`);
+      const decision = {
+        action: pick.signal.direction,
+        leverage,
+        positionSize,
+        reasoning: pick.signal.reason
+      };
+
+      const result = await this.guardian.executeDecision(decision, pick.symbol);
+      if (result.executed) {
+        this._openTime[pick.symbol] = Date.now();
+        this._peakPnl[pick.symbol] = 0;
+        this._trailSl[pick.symbol] = null;
+        this._trendScore[pick.symbol] = trendStr;
+        this._addPositionState[pick.symbol] = { count: 0 };
+        this._recordTrade(pick.symbol, pick.signal.direction, leverage, positionSize, 0, pick.signal.reason);
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // v13 智能评分 — 低点做多 / 高点做空
+  // ═══════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
+  // V2 均值回归评分（回测验证 71% 胜率）— 管理员版本，支持多空
+  // 核心逻辑：
+  //   做多：价格触及 BB 下轨 + RSI 超卖 + 大趋势向上
+  //   做空：价格触及 BB 上轨 + RSI 超买 + 大趋势向下
+  // ═══════════════════════════════════════════════════════════════
+  _v13Score(ind, symbol, price) {
+    const bb = ind.bb;
+    const rsi = ind.rsi || 50;
+    const volRatio = ind.volume?.ratio || 1;
+    const atrPct = ind.atrPercent || 1;
+    const ma7 = ind.ma7 || price;
+    const ma21 = ind.ma21 || price;
+    const ma55 = ind.ma55 || price;
+
+    if (!bb) { this._log(`❌ ${symbol} 无BB数据`); return { canOpen: false }; }
+
+    const pctB = bb.pctB || 0.5;
+    let score = 0, details = [], dir = null;
+
+    // ═══ 做多条件：BB 下轨 + RSI 超卖 + 大趋势向上 ═══
+    const longTrend = ma55 && ma21 > ma55;  // MA21 > MA55 = 大趋势向上
+    const shortTrend = ma55 && ma21 < ma55; // MA21 < MA55 = 大趋势向下
+
+    if (pctB < 0.20 && rsi < 38 && longTrend) {
+      // ─── 做多 ───
+      dir = 'LONG';
+
+      // 偏离程度 (0-3)
+      if (pctB < 0.05) { score += 3; details.push(`BB极低${pctB.toFixed(2)}`); }
+      else if (pctB < 0.10) { score += 2; details.push(`BB低${pctB.toFixed(2)}`); }
+      else { score += 1; details.push(`BB偏${pctB.toFixed(2)}`); }
+
+      // RSI 超卖程度 (0-2)
+      if (rsi < 25) { score += 2; details.push(`RSI${rsi.toFixed(0)}超卖`); }
+      else { score += 1; details.push(`RSI${rsi.toFixed(0)}偏低`); }
+
+      // 大趋势确认 (0-2)
+      if (ma55 && ma21 > ma55) { score += 2; details.push('大趋势↑'); }
+      else { score += 1; }
+
+      // 反转 K 线：当前阳线 (0-1)
+      if (ind.close && ind.open && ind.close > ind.open) { score += 1; details.push('阳线确认'); }
+
+      // 成交量放大 (0-1)
+      if (volRatio > 1.3) { score += 1; details.push(`放量${volRatio.toFixed(1)}x`); }
+
+      // ATR 波动率 (0-1)
+      if (atrPct > 0.008) { score += 1; details.push(`ATR${(atrPct*100).toFixed(1)}%`); }
+
+    }
+    // ═══ 做空条件：BB 上轨 + RSI 超买 + 大趋势向下 ═══
+    else if (pctB > 0.80 && rsi > 62 && shortTrend) {
+      // ─── 做空 ───
+      dir = 'SHORT';
+
+      // 偏离程度 (0-3)
+      if (pctB > 0.95) { score += 3; details.push(`BB极高${pctB.toFixed(2)}`); }
+      else if (pctB > 0.90) { score += 2; details.push(`BB高${pctB.toFixed(2)}`); }
+      else { score += 1; details.push(`BB偏${pctB.toFixed(2)}`); }
+
+      // RSI 超买程度 (0-2)
+      if (rsi > 75) { score += 2; details.push(`RSI${rsi.toFixed(0)}超买`); }
+      else { score += 1; details.push(`RSI${rsi.toFixed(0)}偏高`); }
+
+      // 大趋势确认 (0-2)
+      if (ma55 && ma21 < ma55) { score += 2; details.push('大趋势↓'); }
+      else { score += 1; }
+
+      // 反转 K 线：当前阴线 (0-1)
+      if (ind.close && ind.open && ind.close < ind.open) { score += 1; details.push('阴线确认'); }
+
+      // 成交量放大 (0-1)
+      if (volRatio > 1.3) { score += 1; details.push(`放量${volRatio.toFixed(1)}x`); }
+
+      // ATR 波动率 (0-1)
+      if (atrPct > 0.008) { score += 1; details.push(`ATR${(atrPct*100).toFixed(1)}%`); }
+
+    } else {
+      // 既不做多也不做空
+      return { canOpen: false };
+    }
+
+    // ══ 门槛：score >= 5 才入场（满分 10） ══
+    // 注意：不用 engineState.scoreThreshold（那是仪表盘用的，可能被设成不合理的值）
+    const threshold = 5;
+    if (score < threshold) {
+      this._log(`⛔ ${symbol} ${dir} 得分${score} < 门槛${threshold}: ${details.join('+')}`);
+      return { canOpen: false };
+    }
+
+    // ══ 动态杠杆（均值回归策略：低杠杆） ══
+    let leverage;
+    if (score >= 8) leverage = 4;        // 极强信号：4x
+    else if (score >= 7) leverage = 3;   // 强信号：3x
+    else if (score >= 6) leverage = 2;   // 中等：2x
+    else leverage = 2;                     // 最低：2x
+    // 高波动降杠杆
+    if (atrPct > 3) leverage = Math.max(leverage - 1, 2);
+
+    this._log(`🎯 ${symbol} ${dir} 得分${score} ${leverage}x | ${details.join('+')}`);
+
+    return {
+      canOpen: true,
+      direction: dir,
+      score,
+      leverage,
+      reason: `均值回归${score} ${dir} ${leverage}x | ${details.join('+')}`
+    };
+  }
+
+  // ═══════════════════════════════════════════
+  // 平仓 + 交易记录
+  // ═══════════════════════════════════════════
+  async _executeClose(symbol, reason) {
+    try {
+      this._log(`📤 平仓 ${symbol}: ${reason}`);
+      const result = await this.guardian.executeDecision({ action: 'CLOSE', leverage: 0, positionSize: 0 }, symbol);
+      const pnl = result.pnl || 0;
+      this._recordTrade(symbol, 'CLOSE', 0, 0, pnl, reason);
+      // 彻底清理所有追踪状态
+      delete this._peakPnl[symbol];
+      delete this._addPositionState[symbol];
+      delete this._openTime[symbol];
+      delete this._trendScore[symbol];
+      delete this._trailSl[symbol];
+      delete this._overbought?.[symbol];
+      delete this._oversold?.[symbol];
+      delete this.guardian.positions[symbol];
+      if (this.aiEngine) {
+        delete this.aiEngine.perSymbolCooldown[symbol];
+        delete this.aiEngine.openTime[symbol];
+      }
+      this._log(`${symbol} 所有状态已清理`);
+    } catch(e) {
+      this._log(`平仓失败 ${symbol}: ${e.message}`);
+      try {
+        const realPos = await this.trader.getRealPosition(symbol);
+        if (!realPos) {
+          delete this.guardian.positions[symbol];
+          delete this._peakPnl[symbol];
+          delete this._addPositionState[symbol];
+          delete this._openTime[symbol];
+          delete this._trendScore[symbol];
+          delete this._trailSl[symbol];
+          this._log(`${symbol} 链上已无持仓，本地状态已清理`);
+        }
+      } catch(e2) { this._log(`⚠️ ${symbol} 链上验证异常: ${e2.message}`); }
+    }
+  }
+
+  _recordTrade(symbol, action, leverage, size, pnl, reasoning) {
+    const trade = {
+      symbol, action, leverage, size, pnl, reasoning,
+      price: this.dataBus.marketData?.[symbol]?.price || 0,
+      timestamp: Date.now()
+    };
+    this.tradeLog.push(trade);
+    this._saveTradeLog();
+    if (pnl) {
+      this.engineState.totalPnl = (this.engineState.totalPnl || 0) + pnl;
+      this._dailyPnl += pnl;
+      const dailyLossLimit = this.engineState.dailyLossLimit ?? -7;
+      const balance = this.engineState._lastBalance || 100;
+      if (this._dailyPnl < dailyLossLimit) {
+        this._emergencyStop = true;
+        this._log(`🚨 日亏损 $${this._dailyPnl.toFixed(2)} 超限 $${dailyLossLimit} → 紧急制动！`);
+      }
+    }
+    this.engineState.totalTrades = (this.engineState.totalTrades || 0) + 1;
+    if (pnl > 0) this.engineState.wins = (this.engineState.wins || 0) + 1;
+    else if (pnl < 0) this.engineState.losses = (this.engineState.losses || 0) + 1;
+    // [v14] 动态权重统计
+    if (action === 'CLOSE' && pnl !== 0) {
+      if (!this._pairStats[symbol]) this._pairStats[symbol] = { wins: 0, losses: 0, totalPnl: 0 };
+      if (pnl > 0) this._pairStats[symbol].wins++;
+      else this._pairStats[symbol].losses++;
+      this._pairStats[symbol].totalPnl += pnl;
+    }
+    // V2: 反馈给 AIDecisionEngine 学习（自进化循环）
+    if (this.aiEngine && action === 'CLOSE' && pnl !== 0) {
+      try {
+        this.aiEngine.recordTradeResult({ symbol, action, leverage, size, reasoning }, pnl);
+      } catch(e) { /* 学习失败不阻塞 */ }
+    }
+  }
+
+  getStatus() {
+    return {
+      running: this.running, paused: this.paused, cycleCount: this.cycleCount,
+      emergencyStop: this._emergencyStop, dailyPnl: this._dailyPnl,
+      positions: this.guardian.getAllPositions(),
+      positionCount: this.guardian.getPositionCount(),
+      maxPositions: this.engineState.maxPositions || 6,
+      bbStatus: { addPositions: this._addPositionState, trailing: this._peakPnl },
+      state: this.engineState,
+      recentTrades: this.tradeLog.slice(-20),
+      scannerSummary: this.scanner ? this.scanner.getSummary() : null,
+      aiStats: this.aiEngine.getStats(),
+      guardianStats: this.guardian.getStats(),
+      balance: null,
+      timestamp: Date.now()
+    };
+  }
+}
+
+module.exports = Engine;

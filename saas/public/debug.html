@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Debug</title>
+<style>
+body{margin:0;padding:20px;background:#0a0e17;color:#fff;font-family:sans-serif}
+input{width:100%;padding:12px;font-size:16px;border:1px solid #555;border-radius:8px;background:#161b22;color:#fff;margin:6px 0}
+button{width:100%;padding:14px;font-size:16px;border:none;border-radius:8px;margin:6px 0;color:#fff}
+.g{background:#238636}
+.b{background:#1f6feb}
+#m{margin-top:12px;padding:10px;border-radius:8px;font-size:14px;min-height:20px}
+#d{margin-top:20px;padding:10px;background:#0d1117;border-radius:8px;font-size:11px;color:#8b949e;word-break:break-all}
+</style>
+</head>
+<body>
+<h3 style="color:#58a6ff;margin-bottom:20px">🔧 Debug Page</h3>
+<input type="text" id="a" placeholder="钱包地址 0x...">
+<input type="password" id="p" placeholder="密码">
+<button class="g" id="rb">注册</button>
+<button class="b" id="lb">登录</button>
+<div id="m"></div>
+<div id="d">log</div>
+
+<script>
+var d=document.getElementById('d');
+function L(s){d.innerHTML+='<br>'+new Date().toLocaleTimeString()+' '+s;d.scrollTop=d.scrollHeight;}
+function M(t,c){var m=document.getElementById('m');m.textContent=t;m.style.background=c==1?'#0d2818':'#2d1117';m.style.color=c==1?'#3fb950':'#f85149';}
+
+L('script started');
+
+function reg(){
+  L('reg clicked');
+  var a=document.getElementById('a').value.replace(/\s/g,'');
+  var p=document.getElementById('p').value;
+  if(!a||a.length<10){M('输入地址',0);return;}
+  if(p.length<6){M('密码6位+',0);return;}
+  M('注册中...',1);
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/auth/register',true);
+  x.setRequestHeader('Content-Type','application/json');
+  x.timeout=10000;
+  x.onreadystatechange=function(){
+    L('state='+x.readyState+' status='+x.status);
+    if(x.readyState==4){
+      try{var r=JSON.parse(x.responseText);M(r.success?'注册成功！':r.error,r.success?1:0);L('ok: '+x.responseText.substring(0,100));}
+      catch(e){M('错误:'+x.status,0);}
+    }
+  };
+  x.onerror=function(){M('网络错误',0);L('onerror');};
+  x.ontimeout=function(){M('超时',0);L('timeout');};
+  x.send(JSON.stringify({username:a.toLowerCase(),password:p,walletAddress:a.toLowerCase()}));
+}
+
+function login(){
+  L('login clicked');
+  var a=document.getElementById('a').value.replace(/\s/g,'');
+  var p=document.getElementById('p').value;
+  if(!a||!p){M('输入地址密码',0);return;}
+  M('登录中...',1);
+  var x=new XMLHttpRequest();
+  x.open('POST','/api/auth/login',true);
+  x.setRequestHeader('Content-Type','application/json');
+  x.timeout=10000;
+  x.onreadystatechange=function(){
+    L('state='+x.readyState+' status='+x.status);
+    if(x.readyState==4){
+      try{var r=JSON.parse(x.responseText);M(r.success?'登录成功！':r.error,r.success?1:0);L('ok: '+x.responseText.substring(0,100));}
+      catch(e){M('错误:'+x.status,0);}
+    }
+  };
+  x.onerror=function(){M('网络错误',0);};
+  x.ontimeout=function(){M('超时',0);};
+  x.send(JSON.stringify({username:a.toLowerCase(),password:p}));
+}
+
+// 三种方式绑定，确保至少一种生效
+document.getElementById('rb').onclick=reg;
+document.getElementById('lb').onclick=login;
+document.getElementById('rb').addEventListener('click',reg);
+document.getElementById('lb').addEventListener('click',login);
+
+// 检测环境
+L('ua: '+navigator.userAgent.substring(0,80));
+L('fetch: '+(typeof fetch));
+L('XMLHttpRequest: '+(typeof XMLHttpRequest));
+L('addEventListener: '+(typeof document.getElementById('rb').addEventListener));
+L('rb onclick: '+(typeof document.getElementById('rb').onclick));
+L('readyState: '+document.readyState);
+L('DONE');
+</script>
+</body>
+</html>

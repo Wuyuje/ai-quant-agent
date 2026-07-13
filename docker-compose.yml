@@ -1,0 +1,78 @@
+# ═══════════════════════════════════════════
+# MasterD Quant Agent — Docker Compose
+# ═══════════════════════════════════════════
+
+services:
+  # ── Main Trading Engine ──
+  quant-engine:
+    build: .
+    container_name: masterd-engine
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "10000:10000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    depends_on:
+      - ml-service
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http=require('http');const r=http.get('http://localhost:10000/api/health',res=>{process.exit(res.statusCode===200?0:1)});r.on('error',()=>process.exit(1));r.setTimeout(3000,()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["node", "index.js"]
+
+  # ── SaaS Dashboard (separate) ──
+  saas-dashboard:
+    build: .
+    container_name: masterd-saas
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "10001:10001"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    environment:
+      - PORT=10001
+    depends_on:
+      - quant-engine
+    command: ["node", "saas/start.js"]
+
+  # ── Python LSTM ML Service ──
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: masterd-ml
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    volumes:
+      - ./ml-service/models:/app/models
+    environment:
+      - MODEL_PATH=/app/models/lstm_model.h5
+      - FLASK_PORT=8100
+
+  # ── PostgreSQL (future: replace JSON file storage) ──
+  # Uncomment when ready to migrate from JSON files
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: masterd-db
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: quant
+  #     POSTGRES_USER: masterd
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+# volumes:
+#   pgdata:

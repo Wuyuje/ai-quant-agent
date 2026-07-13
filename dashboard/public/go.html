@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ARK Quant Agent — Login</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh;padding:16px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;max-width:420px;margin:20px auto}
+h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;color:#8b949e;font-size:.8em;margin-bottom:4px}
+.form-group input{width:100%;padding:10px 12px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:.9em}
+.form-group input:focus{border-color:#58a6ff;outline:none}
+.btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:.95em;font-weight:600;cursor:pointer;margin-top:6px}
+.btn-blue{background:#1f6feb;color:#fff}
+.btn-green{background:#238636;color:#fff}
+.btn:disabled{opacity:.5}
+.sep{text-align:center;color:#484f58;margin:16px 0;font-size:.8em}
+#log{display:none;background:#000;color:#0f0;padding:10px;border-radius:8px;margin-top:16px;font-family:monospace;font-size:.7em;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+
+/* 仪表盘样式 */
+#dash{display:none}
+.dash-card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px;margin-bottom:12px}
+.dash-card h3{color:#58a6ff;font-size:.9em;margin-bottom:8px}
+.dash-row{display:flex;justify-content:space-between;padding:4px 0;font-size:.85em}
+.dash-row .label{color:#8b949e}
+.dash-row .value{color:#e6edf3;font-weight:500}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75em}
+.status-on{background:#0d4429;color:#3fb950;border:1px solid #238636}
+.status-off{background:#490b0b;color:#f85149;border:1px solid #da3633}
+.trade-item{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:.8em}
+.trade-item .sym{color:#58a6ff;font-weight:600}
+.trade-item .pnl-pos{color:#3fb950}
+.trade-item .pnl-neg{color:#f85149}
+.logout-btn{background:#da3633;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:.85em;cursor:pointer;margin-top:10px}
+</style>
+</head>
+<body>
+<!-- 语言切换器 -->
+<div id="langBar" style="display:flex;justify-content:flex-end;gap:6px;padding:12px 16px 0">
+  <span id="langSel" style="position:relative">
+    <button onclick="document.getElementById('langOpts').style.display=document.getElementById('langOpts').style.display==='block'?'none':'block'" style="background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer">🌐 <span id="curLangText">中文</span> ▾</button>
+    <div id="langOpts" style="display:none;position:absolute;right:0;top:34px;background:#161b22;border:1px solid #30363d;border-radius:10px;overflow:hidden;min-width:120px;z-index:99;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+      <div onclick="setLang('zh')" class="lopt active" data-l="zh">🇨🇳 中文</div>
+      <div onclick="setLang('en')" class="lopt" data-l="en">🇺🇸 English</div>
+      <div onclick="setLang('ja')" class="lopt" data-l="ja">🇯🇵 日本語</div>
+      <div onclick="setLang('ko')" class="lopt" data-l="ko">🇰🇷 한국어</div>
+      <div onclick="setLang('vi')" class="lopt" data-l="vi">🇻🇳 Tiếng Việt</div>
+      <div onclick="setLang('ru')" class="lopt" data-l="ru">🇷🇺 Русский</div>
+    </div>
+  </span>
+</div>
+<style>.lopt{padding:8px 14px;font-size:12px;cursor:pointer;color:#e6edf3}.lopt:hover{background:rgba(88,166,255,.1)}.lopt.active{color:#58a6ff;font-weight:600}</style>
+
+<div class="card" id="loginCard">
+  <h2 id="loginTitle">🤖 ARK Quant Agent</h2>
+  <div id="loginSub" style="text-align:center;color:#3fb950;font-size:.85em;margin-bottom:16px">智能合约钱包 · 全自动多市场交易</div>
+  <!-- 使用步骤 -->
+  <div id="loginSteps" style="margin-bottom:16px;font-size:.82em;color:#8b949e">
+    <div style="display:flex;gap:8px;margin-bottom:6px"><span style="width:20px;height:20px;border-radius:50%;background:#1f6feb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">1</span><b style="color:#e6edf3" data-t="step1">连接钱包签名登录</b></div>
+    <div style="display:flex;gap:8px;margin-bottom:6px"><span style="width:20px;height:20px;border-radius:50%;background:#1f6feb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">2</span><b style="color:#e6edf3" data-t="step2">一键部署合约钱包</b></div>
+    <div style="display:flex;gap:8px;margin-bottom:6px"><span style="width:20px;height:20px;border-radius:50%;background:#1f6feb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">3</span><b style="color:#e6edf3" data-t="step3">转入USDT到合约</b></div>
+    <div style="display:flex;gap:8px;margin-bottom:6px"><span style="width:20px;height:20px;border-radius:50%;background:#1f6feb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">4</span><b style="color:#e6edf3" data-t="step4">开启全自动交易</b></div>
+  </div>
+  <button class="btn" style="background:linear-gradient(135deg,#1a1f35,#0d4429);border:1px solid #3fb950;color:#3fb950;display:flex;align-items:center;justify-content:center;gap:8px" onclick="connectWallet()"><span data-t="connectBtn">🔗 连接 TokenPocket 钱包</span></button>
+  <div class="sep" data-t="orManual">— 或手动输入地址登录 —</div>
+  <div class="form-group">
+    <label data-t="walletLabel">钱包地址 (0x...)</label>
+    <input id="addr" placeholder="0x... (BSC 42位)" autocomplete="off">
+  </div>
+  <div class="form-group">
+    <label data-t="passLabel">密码</label>
+    <input id="pass" type="password" placeholder="至少6位">
+  </div>
+  <button class="btn btn-blue" id="loginBtn" onclick="doAction('login')" data-t="loginBtn">登 录</button>
+  <div class="sep" data-t="newUser">还没有账号？</div>
+  <div id="inviteBox" class="form-group" style="display:none">
+    <label data-t="inviteLabel">邀请码</label>
+    <input id="invite" placeholder="邀请码" autocomplete="off">
+  </div>
+  <button class="btn btn-green" id="regBtn" onclick="doAction('reg')" data-t="regBtn">注册新账号</button>
+  <div style="margin-top:14px;padding:10px;background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.3);border-radius:8px;font-size:.75em;color:#d29922;text-align:center" data-t="feeInfo">💰 管理员0%服务费，普通用户10%生态费+20%服务费=实得70%（仅盈利时收取）</div>
+  <div id="msg" style="margin-top:10px;text-align:center;font-size:.85em;display:none"></div>
+  <div id="log"></div>
+</div>
+
+<!-- 用户仪表盘 -->
+<div id="dash">
+  <div class="dash-card">
+    <h3 data-t="dashAccount">📊 账户信息</h3>
+    <div class="dash-row"><span class="label" data-t="labelAddr">地址</span><span class="value" id="dAddr">--</span></div>
+    <div class="dash-row"><span class="label">USDT</span><span class="value" id="dUsdt">--</span></div>
+    <div class="dash-row"><span class="label">BNB</span><span class="value" id="dBnb">--</span></div>
+    <div class="dash-row"><span class="label" data-t="labelStrategy">策略</span><span class="value" id="dStrategy">--</span></div>
+    <div class="dash-row"><span class="label" data-t="labelTrading">自动交易</span><span class="value" id="dTrading">--</span></div>
+  </div>
+  <div class="dash-card">
+    <h3 data-t="dashPositions">📊 多市场持仓</h3>
+    <div id="dPositions"><div style="color:#484f58;font-size:.8em;text-align:center;padding:10px" data-t="noPos">暂无持仓</div></div>
+  </div>
+  <div class="dash-card">
+    <h3 data-t="dashMarketPnl">📈 各市场盈亏</h3>
+    <div id="dMarketPnl"></div>
+  </div>
+  <div class="dash-card">
+    <h3 data-t="dashRecent">📈 最近交易</h3>
+    <div id="dTrades">暂无</div>
+  </div>
+  <div class="dash-card">
+    <h3>💰 Vault</h3>
+    <div class="dash-row"><span class="label">合约地址</span><span class="value" id="dVault">--</span></div>
+    <div class="dash-row"><span class="label">ARK</span><span class="value" id="dArk">--</span></div>
+  </div>
+  <!-- 教程入口 -->
+  <div class="dash-card" style="cursor:pointer" onclick="document.getElementById('guideSection').style.display=document.getElementById('guideSection').style.display==='none'?'block':'none'">
+    <h3>📖 <span data-t="guideTitle">使用教程</span></h3>
+    <div id="guideSection" style="display:none;margin-top:12px;font-size:.82em;line-height:1.8;color:#8b949e">
+      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 1:</b> <span data-t="g1">安装 TokenPocket 钱包</span> <a href="https://www.tokenpocket.pro" target="_blank" style="color:#58a6ff;text-decoration:underline">tokenpocket.pro</a></div>
+      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 2:</b> <span data-t="g2">创建BSC钱包，备份助记词（12个英文单词，写在纸上）</span></div>
+      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 3:</b> <span data-t="g3">确保钱包有0.01+ BNB（gas费）和USDT</span></div>
+      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 4:</b> <span data-t="g4">获取币安API Key（可选）</span> → <a href="https://www.binance.com/zh-CN/my/settings/api-management" target="_blank" style="color:#58a6ff;text-decoration:underline">币安API管理页面</a> <span data-t="g4b">→ 创建API → 只开交易权限，关提现</span></div>
+      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 5:</b> <span data-t="g5">在本页注册钱包地址+密码 → 登录</span></div>
+      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 6:</b> <span data-t="g6">转入USDT到合约钱包 → 开启交易</span></div>
+      <div style="padding:8px;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:6px;color:#f85149" data-t="warn">⚠️ 助记词绝不截图、不发给任何人。币安API绝对不要开提现权限。</div>
+    </div>
+  </div>
+  <div style="text-align:center">
+    <button class="logout-btn" onclick="logout()" data-t="logoutBtn">退出登录</button>
+  </div>
+</div>
+
+<script>
+var logEl=document.getElementById('log');
+function log(s){logEl.style.display='block';logEl.innerHTML=new Date().toLocaleTimeString()+' '+s+'\n'+logEl.innerHTML;logEl.scrollTop=0}
+var API=location.origin;
+
+// ===== i18n =====
+var I18N={
+zh:{step1:'连接钱包签名登录',step2:'一键部署合约钱包',step3:'转入USDT到合约',step4:'开启全自动交易',connectBtn:'🔗 连接 TokenPocket 钱包',orManual:'— 或手动输入地址登录 —',walletLabel:'钱包地址 (0x...)',passLabel:'密码',loginBtn:'登 录',newUser:'还没有账号？',regBtn:'注册新账号',inviteLabel:'邀请码（联系管理员获取）',feeInfo:'💰 管理员0%服务费，普通用户10%生态费+20%服务费=实得70%（仅盈利时收取）',dashAccount:'📊 账户信息',labelAddr:'地址',labelStrategy:'策略',labelTrading:'自动交易',dashPositions:'📊 多市场持仓',dashMarketPnl:'📈 各市场盈亏',dashRecent:'📈 最近交易',noPos:'暂无持仓',guideTitle:'使用教程',g1:'安装 TokenPocket 钱包（tokenpocket.pro）',g2:'创建BSC钱包，备份助记词（12个英文单词，写在纸上）',g3:'确保钱包有0.01+ BNB（gas费）和USDT',g4:'获取币安API Key（可选）→ 用户中心 → API管理 → 创建API → 只开交易权限，关提现',g5:'在本页注册钱包地址+密码 → 登录',g6:'转入USDT到合约钱包 → 开启交易',warn:'⚠️ 助记词绝不截图、不发给任何人。币安API绝对不要开提现权限。',logoutBtn:'退出登录',noTrade:'暂无交易记录',loginSuccess:'✅ 登录成功',registerSuccess:'✅ 注册成功'},
+en:{step1:'Connect wallet to sign in',step2:'Deploy contract wallet',step3:'Transfer USDT to contract',step4:'Start auto trading',connectBtn:'🔗 Connect TokenPocket Wallet',orManual:'— Or login manually —',walletLabel:'Wallet Address (0x...)',passLabel:'Password',loginBtn:'LOGIN',newUser:'New user?',regBtn:'Register Account',inviteLabel:'Invite Code (from admin)',feeInfo:'💰 Admin: 0% fee. Users: 10% eco + 20% service = keep 70% (profits only)',dashAccount:'📊 Account',labelAddr:'Address',labelStrategy:'Strategy',labelTrading:'Auto Trading',dashPositions:'📊 Multi-Market Positions',dashMarketPnl:'📈 Market P&L',dashRecent:'📈 Recent Trades',noPos:'No positions',guideTitle:'User Guide',g1:'Install TokenPocket (tokenpocket.pro)',g2:'Create BSC wallet, backup seed phrase (12 words on paper)',g3:'Ensure 0.01+ BNB (gas) and USDT in wallet',g4:'Get Binance API Key (optional) → API Management → Create → Trading only, NO withdrawal',g5:'Register with wallet + password → Login',g6:'Deposit USDT to contract wallet → Start trading',warn:'⚠️ Never screenshot seed phrase. NEVER enable Binance withdrawal.',logoutBtn:'Logout',noTrade:'No trades yet',loginSuccess:'✅ Login OK',registerSuccess:'✅ Registered'},
+ja:{step1:'ウォレットでサインイン',step2:'コントラクトウォレットをデプロイ',step3:'USDTをコントラクトに転送',step4:'自動取引を開始',connectBtn:'🔗 TPウォレットを接続',orManual:'— または手動ログイン —',walletLabel:'ウォレットアドレス',passLabel:'パスワード',loginBtn:'ログイン',newUser:'初めての方？',regBtn:'新規登録',feeInfo:'💰 管理者0%, ユーザー10%+20%=70%（利益時のみ）',dashAccount:'📊 アカウント',labelAddr:'アドレス',labelStrategy:'戦略',labelTrading:'自動取引',dashPositions:'📊 ポジション',dashMarketPnl:'📈 損益',dashRecent:'📈 最近の取引',noPos:'ポジションなし',guideTitle:'ガイド',logoutBtn:'ログアウト',noTrade:'取引なし',loginSuccess:'✅ OK',registerSuccess:'✅ 登録成功'},
+ko:{step1:'월렛으로 로그인',step2:'컨트랙트 월렛 배포',step3:'USDT 입금',step4:'자동거래 시작',connectBtn:'🔗 TP 월렛 연결',orManual:'— 또는 수동 로그인 —',walletLabel:'지갑 주소',passLabel:'비밀번호',loginBtn:'로그인',newUser:'처음이신가요?',regBtn:'회원가입',feeInfo:'💰 관리자 0%, 사용자 10%+20%=70% (수익 시만)',dashAccount:'📊 계정',labelAddr:'주소',labelStrategy:'전략',labelTrading:'자동거래',dashPositions:'📊 포지션',dashMarketPnl:'📈 손익',dashRecent:'📈 최근 거래',noPos:'포지션 없음',guideTitle:'가이드',logoutBtn:'로그아웃',noTrade:'거래 없음',loginSuccess:'✅ 성공',registerSuccess:'✅ 등록 성공'},
+vi:{step1:'Đăng nhập bằng ví',step2:'Triển khai ví hợp đồng',step3:'Chuyển USDT vào hợp đồng',step4:'Bắt đầu giao dịch',connectBtn:'🔗 Kết nối TP Wallet',orManual:'— Hoặc đăng nhập thủ công —',walletLabel:'Địa chỉ ví',passLabel:'Mật khẩu',loginBtn:'Đăng nhập',newUser:'Lần đầu?',regBtn:'Đăng ký',feeInfo:'💰 Admin 0%, User 10%+20%=70% (chỉ khi lãi)',dashAccount:'📊 Tài khoản',labelAddr:'Địa chỉ',labelStrategy:'Chiến lược',labelTrading:'Tự động',dashPositions:'📊 Vị thế',dashMarketPnl:'📈 L/N',dashRecent:'📈 Giao dịch',noPos:'Không có vị thế',guideTitle:'Hướng dẫn',logoutBtn:'Đăng xuất',noTrade:'Chưa có giao dịch',loginSuccess:'✅ OK',registerSuccess:'✅ OK'},
+ru:{step1:'Войти через кошелёк',step2:'Развернуть контракт',step3:'Перевести USDT',step4:'Начать торговлю',connectBtn:'🔗 Подключить TP Wallet',orManual:'— Или ручной вход —',walletLabel:'Адрес кошелька',passLabel:'Пароль',loginBtn:'Войти',newUser:'Впервые?',regBtn:'Регистрация',feeInfo:'💰 Админ 0%, Пользователь 10%+20%=70% (с прибыли)',dashAccount:'📊 Аккаунт',labelAddr:'Адрес',labelStrategy:'Стратегия',labelTrading:'Авто',dashPositions:'📊 Позиции',dashMarketPnl:'📈 Прибыль',dashRecent:'📈 Сделки',noPos:'Нет позиций',guideTitle:'Гайд',logoutBtn:'Выход',noTrade:'Нет сделок',loginSuccess:'✅ OK',registerSuccess:'✅ OK'}}
+var lang=localStorage.getItem('ark_lang')||'zh';
+function setLang(l){lang=l;localStorage.setItem('ark_lang',l);applyLang();document.getElementById('langOpts').style.display='none';document.querySelectorAll('.lopt').forEach(function(e){e.classList.toggle('active',e.dataset.l===l)});document.getElementById('curLangText').textContent={zh:'中文',en:'English',ja:'日本語',ko:'한국어',vi:'Tiếng Việt',ru:'Русский'}[l]}
+function applyLang(){var t=I18N[lang]||I18N.zh;document.querySelectorAll('[data-t]').forEach(function(el){var k=el.getAttribute('data-t');if(t[k])el.textContent=t[k]})}
+
+// ===== init =====
+(function(){var tk=localStorage.getItem('ark_token');var u=localStorage.getItem('ark_user');if(tk&&u){log('发现已保存的登录信息...');verifyAndShow(tk)}})();
+
+// ===== connect wallet =====
+function connectWallet(){if(window.ethereum){window.ethereum.request({method:'eth_requestAccounts'}).then(function(a){if(a[0])document.getElementById('addr').value=a[0];log('Connected: '+a[0])}).catch(function(e){log('Error: '+e)})}else{log('No wallet. Use TokenPocket browser.')}}
+
+// ===== login/register =====
+function doAction(mode){
+  var a=document.getElementById('addr').value.trim();
+  var p=document.getElementById('pass').value.trim();
+  var t=I18N[lang]||I18N.zh;
+  var inviteBox=document.getElementById('inviteBox');
+  if(mode==='reg'){inviteBox.style.display='block'}else{inviteBox.style.display='none'}
+  // 注册模式需要验证邀请码
+  var invite=document.getElementById('invite')?.value.trim()||'';
+  if(mode==='reg'&&!invite){showMsg(lang==='zh'?'请输入邀请码':'Enter invite code','red');return}
+  if(!a||!p){showMsg(lang==='zh'?'请输入钱包地址和密码':'Enter address and password','red');return}
+  if(!a.startsWith('0x')||a.length!==42){showMsg(lang==='zh'?'钱包地址格式不正确':'Invalid address','red');return}
+  if(mode==='reg'&&p.length<6){showMsg(lang==='zh'?'密码至少6位':'Min 6 chars','red');return}
+  document.getElementById('loginBtn').disabled=true;
+  document.getElementById('regBtn').disabled=true;
+  var url=mode==='reg'?'/api/auth/register':'/api/auth/login';
+  var body=mode==='reg'?{username:a.toLowerCase(),password:p,walletAddress:a.toLowerCase(),inviteCode:invite}:{username:a.toLowerCase(),password:p};
+  log('>>> '+(mode==='reg'?'Register':'Login'));
+  var xhr=new XMLHttpRequest();xhr.open('POST',url,true);xhr.setRequestHeader('Content-Type','application/json');xhr.timeout=20000;
+  xhr.onload=function(){try{var d=JSON.parse(xhr.responseText);if(d.success){localStorage.setItem('ark_token',d.token);localStorage.setItem('ark_user',JSON.stringify(d.user));showMsg(mode==='reg'?t.registerSuccess:t.loginSuccess,'green');setTimeout(function(){verifyAndShow(d.token)},300)}else{log('❌ '+d.error);showMsg('❌ '+d.error,'red')}}catch(e){showMsg('❌ Server error','red')}
+  document.getElementById('loginBtn').disabled=false;document.getElementById('regBtn').disabled=false};
+  xhr.onerror=function(){showMsg('❌ Network error','red');document.getElementById('loginBtn').disabled=false;document.getElementById('regBtn').disabled=false};
+  xhr.ontimeout=function(){showMsg('❌ Timeout','red');document.getElementById('loginBtn').disabled=false;document.getElementById('regBtn').disabled=false};
+  xhr.send(JSON.stringify(body))
+}
+
+// ===== verify & show =====
+function verifyAndShow(token){
+  var xhr=new XMLHttpRequest();xhr.open('POST',API+'/api/dashboard',true);
+  xhr.setRequestHeader('Content-Type','application/json');xhr.setRequestHeader('X-API-Key',token);xhr.timeout=15000;
+  xhr.onload=function(){try{var d=JSON.parse(xhr.responseText);if(d.user){localStorage.setItem('ark_user',JSON.stringify(d.user));showDashboard(d)}else{localStorage.removeItem('ark_token');localStorage.removeItem('ark_user');document.getElementById('loginCard').style.display='block';document.getElementById('dash').style.display='none'}}catch(e){localStorage.removeItem('ark_token');localStorage.removeItem('ark_user')}};
+  xhr.onerror=function(){};xhr.ontimeout=function(){};xhr.send(JSON.stringify({}))
+}
+
+// ===== dashboard =====
+function showDashboard(data){
+  document.getElementById('loginCard').style.display='none';
+  document.getElementById('dash').style.display='block';
+  var u=data.user||{};
+  document.getElementById('dAddr').textContent=(u.address||'--').substring(0,10)+'...'+(u.address||'').slice(-6);
+  document.getElementById('dUsdt').textContent=(u.usdtBalance||0).toFixed(2);
+  document.getElementById('dBnb').textContent=(u.bnbBalance||0).toFixed(6);
+  document.getElementById('dStrategy').textContent=u.strategy||'balanced';
+  document.getElementById('dTrading').innerHTML=u.tradingEnabled?'<span class="status-badge status-on">'+((I18N[lang]||I18N.zh).labelTrading||'开启')+'</span>':'<span class="status-badge status-off">OFF</span>';
+  document.getElementById('dVault').textContent=u.vaultAddress?u.vaultAddress.substring(0,8)+'...'+u.vaultAddress.slice(-6):'--';
+  document.getElementById('dArk').textContent=(u.arkBalance||0).toFixed(4);
+  // multi-market positions
+  var positions=data.positions||[];var dp=document.getElementById('dPositions');
+  if(!positions.length){dp.innerHTML='<div style="color:#484f58;font-size:.8em;text-align:center;padding:10px">'+((I18N[lang]||I18N.zh).noPos||'空仓')+'</div>'}
+  else{dp.innerHTML=positions.map(function(p){var pnl=parseFloat(p.pnl||0);var isL=(p.side||'').toLowerCase().indexOf('long')>=0;return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #21262d;font-size:.85em"><div><strong>'+(p.symbol||'?')+'</strong> <span style="padding:2px 6px;border-radius:8px;font-size:.7em;font-weight:600;background:'+(isL?'#0d4429':'#490b0b')+';color:'+(isL?'#3fb950':'#f85149')+'">'+(isL?'LONG':'SHORT')+'</span></div><div style="font-weight:600;color:'+(pnl>=0?'#3fb950':'#f85149')+'">'+(pnl>=0?'+':'')+Number(pnl).toFixed(4)+'</div></div>'}).join('')}
+  // market PnL
+  var markets=data.markets||{};var dm=document.getElementById('dMarketPnl');var mk=Object.keys(markets);
+  if(mk.length){dm.innerHTML=mk.map(function(k){var v=markets[k];var pnl=typeof v==='object'?v.pnl:v;return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.85em;border-bottom:1px solid #21262d"><span style="color:#8b949e">'+k+'</span><span style="font-weight:600;color:'+(pnl>=0?'#3fb950':'#f85149')+'">'+(pnl>=0?'+':'')+Number(pnl).toFixed(4)+'</span></div>'}).join('')}
+  // recent trades
+  var trades=(data.engine||{}).recentTrades||[];var dt=document.getElementById('dTrades');
+  if(!trades.length){dt.innerHTML='<div style="color:#8b949e;font-size:.8em">'+((I18N[lang]||I18N.zh).noTrade||'暂无')+'</div>'}
+  else{dt.innerHTML=trades.slice().reverse().slice(0,5).map(function(t){var pc=(t.pnl||0)>=0?'pnl-pos':'pnl-neg';var pt=t.pnl!==undefined?((t.pnl>=0?'+':'')+t.pnl.toFixed(4)):t.action;var tm=new Date(t.timestamp).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});return '<div class="trade-item"><span class="sym">'+t.symbol+'</span> '+t.action+' <span class="'+pc+'">'+pt+'</span><div style="color:#484f58;margin-top:2px">'+tm+'</div></div>'}).join('')}
+  if(window._dashTimer)clearInterval(window._dashTimer);window._dashTimer=setInterval(refreshDashboard,5000)
+}
+function refreshDashboard(){var tk=localStorage.getItem('ark_token');if(!tk)return;var x=new XMLHttpRequest();x.open('POST',API+'/api/dashboard',true);x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-API-Key',tk);x.timeout=10000;x.onload=function(){try{var d=JSON.parse(x.responseText);if(d.user)showDashboard(d)}catch(e){}};x.send(JSON.stringify({}))}
+function logout(){localStorage.removeItem('ark_token');localStorage.removeItem('ark_user');if(window._dashTimer)clearInterval(window._dashTimer);document.getElementById('loginCard').style.display='block';document.getElementById('dash').style.display='none';logEl.innerHTML='';logEl.style.display='none'}
+function showMsg(text,color){var m=document.getElementById('msg');m.style.display='block';m.textContent=text;m.style.color=color;setTimeout(function(){m.style.display='none'},3000)}
+applyLang();
+</script>
+<script>
+/* Arkie Chat Widget — injected into dashboards */
+(function() {
+  if (window.__arkieLoaded) return;
+  window.__arkieLoaded = true;
+
+  var style = document.createElement('style');
+  style.textContent = `
+    .arkie-fab{position:fixed;bottom:20px;right:20px;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);box-shadow:0 4px 20px rgba(99,102,241,.4);cursor:pointer;z-index:99998;display:flex;align-items:center;justify-content:center;transition:transform .3s}
+    .arkie-fab:hover{transform:scale(1.1)}
+    .arkie-fab img{width:40px;height:40px;border-radius:50%}
+    .arkie-fab-badge{position:absolute;top:-2px;right:-2px;width:16px;height:16px;background:#3fb950;border-radius:50%;border:2px solid #0d1117;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+    .arkie-panel{position:fixed;bottom:90px;right:20px;width:380px;max-width:calc(100vw - 40px);height:520px;max-height:calc(100vh - 120px);background:#161b22;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:99999;display:none;flex-direction:column;overflow:hidden;border:1px solid #30363d}
+    .arkie-panel.open{display:flex;animation:slideUp .3s ease}
+    @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+    .arkie-header{padding:12px 16px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;gap:10px}
+    .arkie-header img{width:36px;height:36px;border-radius:50%;background:#fff;padding:2px}
+    .arkie-header-info{flex:1}
+    .arkie-header-name{font-size:15px;font-weight:700;color:#fff}
+    .arkie-header-status{font-size:11px;color:rgba(255,255,255,.7)}
+    .arkie-header-close{cursor:pointer;color:rgba(255,255,255,.8);font-size:20px;background:none;border:none;padding:4px 8px}
+    .arkie-header-close:hover{color:#fff}
+    .arkie-messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;background:#0d1117}
+    .arkie-messages::-webkit-scrollbar{width:6px}
+    .arkie-messages::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+    .arkie-msg{max-width:85%;padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+    .arkie-msg.arkie{align-self:flex-start;background:#1c2128;color:#e6edf3;border-bottom-left-radius:4px}
+    .arkie-msg.user{align-self:flex-end;background:#6366f1;color:#fff;border-bottom-right-radius:4px}
+    .arkie-msg.system{align-self:center;background:#21262d;color:#8b949e;font-size:12px;border-radius:8px}
+    .arkie-typing{align-self:flex-start;padding:8px 16px;background:#1c2128;border-radius:12px;border-bottom-left-radius:4px}
+    .arkie-typing span{display:inline-block;width:6px;height:6px;background:#8b949e;border-radius:50%;margin:0 1px;animation:typing 1.4s infinite}
+    .arkie-typing span:nth-child(2){animation-delay:.2s}
+    .arkie-typing span:nth-child(3){animation-delay:.4s}
+    @keyframes typing{0%,60%,100%{opacity:.3;transform:scale(.8)}30%{opacity:1;transform:scale(1)}}
+    .arkie-input-area{padding:10px 12px;background:#161b22;border-top:1px solid #30363d;display:flex;gap:8px}
+    .arkie-input{flex:1;padding:8px 12px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:13px;outline:none;resize:none;max-height:80px;font-family:inherit}
+    .arkie-input:focus{border-color:#6366f1}
+    .arkie-send{width:36px;height:36px;border-radius:8px;background:#6366f1;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .arkie-send:hover{background:#5457e6}
+    .arkie-send svg{width:18px;height:18px;fill:#fff}
+    .arkie-quick{display:flex;flex-wrap:wrap;gap:4px;padding:4px 12px;background:#161b22}
+    .arkie-quick-btn{padding:4px 10px;background:#21262d;border:1px solid #30363d;border-radius:12px;color:#8b949e;font-size:11px;cursor:pointer;white-space:nowrap}
+    .arkie-quick-btn:hover{background:#30363d;color:#e6edf3}
+  `;
+  document.head.appendChild(style);
+
+  // Create FAB
+  var fab = document.createElement('div');
+  fab.className = 'arkie-fab';
+  fab.innerHTML = '<div class="arkie-fab-badge"></div><div style="font-size:28px">🧠</div>';
+  document.body.appendChild(fab);
+
+  // Create panel
+  var panel = document.createElement('div');
+  panel.className = 'arkie-panel';
+  panel.innerHTML = `
+    <div class="arkie-header">
+      <div style="font-size:24px">🧠</div>
+      <div class="arkie-header-info">
+        <div class="arkie-header-name">Arkie</div>
+        <div class="arkie-header-status">● MasterD Brain 在线</div>
+      </div>
+      <button class="arkie-header-close" onclick="document.querySelector('.arkie-panel').classList.remove('open')">×</button>
+    </div>
+    <div class="arkie-messages" id="arkieMessages">
+      <div class="arkie-msg arkie">你好！我是 Arkie 👶\n我是 MasterD 的儿子，继承了他的分析基因。\n我可以帮你查行情、看持仓、分析市场、执行交易。\n\n输入"帮助"查看我能做什么！</div>
+    </div>
+    <div class="arkie-quick">
+      <div class="arkie-quick-btn" onclick="arkieSend('余额')">💰 余额</div>
+      <div class="arkie-quick-btn" onclick="arkieSend('持仓')">📊 持仓</div>
+      <div class="arkie-quick-btn" onclick="arkieSend('交易记录')">📋 记录</div>
+      <div class="arkie-quick-btn" onclick="arkieSend('大盘')">🌍 大盘</div>
+      <div class="arkie-quick-btn" onclick="arkieSend('Brain状态')">🧠 Brain</div>
+      <div class="arkie-quick-btn" onclick="arkieSend('帮助')">❓ 帮助</div>
+    </div>
+    <div class="arkie-input-area">
+      <input type="text" class="arkie-input" id="arkieInput" placeholder="问 Arkie 任何问题..." onkeydown="if(event.key==='Enter')arkieSendMsg()">
+      <button class="arkie-send" onclick="arkieSendMsg()">
+        <svg viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+      </button>
+    </div>
+  `;
+  document.body.appendChild(panel);
+
+  fab.addEventListener('click', function() {
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+      document.getElementById('arkieInput').focus();
+    }
+  });
+
+  function getApiBase() {
+    var loc = window.location;
+    return loc.origin;
+  }
+
+  function getToken() {
+    return localStorage.getItem('ark_token') || localStorage.getItem('admin_token') || '';
+  }
+
+  window.arkieSendMsg = function() {
+    var input = document.getElementById('arkieInput');
+    var msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    arkieSend(msg);
+  };
+
+  window.arkieSend = function(msg) {
+    var msgs = document.getElementById('arkieMessages');
+    // Add user message
+    var userDiv = document.createElement('div');
+    userDiv.className = 'arkie-msg user';
+    userDiv.textContent = msg;
+    msgs.appendChild(userDiv);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    // Typing indicator
+    var typing = document.createElement('div');
+    typing.className = 'arkie-typing';
+    typing.id = 'arkieTyping';
+    typing.innerHTML = '<span></span><span></span><span></span>';
+    msgs.appendChild(typing);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    // API call
+    var xhr = new XMLHttpRequest();
+    var apiBase = getApiBase();
+    xhr.open('POST', apiBase + '/api/arkie/chat', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    var token = getToken();
+    if (token) xhr.setRequestHeader('X-API-Key', token);
+    xhr.timeout = 30000;
+
+    xhr.onload = function() {
+      var t = document.getElementById('arkieTyping');
+      if (t) t.remove();
+      try {
+        var data = JSON.parse(xhr.responseText);
+        var replyDiv = document.createElement('div');
+        replyDiv.className = 'arkie-msg arkie';
+        replyDiv.textContent = data.reply || data.message || '...';
+        msgs.appendChild(replyDiv);
+      } catch(e) {
+        var errDiv = document.createElement('div');
+        errDiv.className = 'arkie-msg arkie';
+        errDiv.textContent = '抱歉，出了点问题。请稍后重试。';
+        msgs.appendChild(errDiv);
+      }
+      msgs.scrollTop = msgs.scrollHeight;
+    };
+
+    xhr.onerror = xhr.ontimeout = function() {
+      var t = document.getElementById('arkieTyping');
+      if (t) t.remove();
+      var errDiv = document.createElement('div');
+      errDiv.className = 'arkie-msg arkie';
+      errDiv.textContent = '网络连接失败，请检查后重试。';
+      msgs.appendChild(errDiv);
+      msgs.scrollTop = msgs.scrollHeight;
+    };
+
+    xhr.send(JSON.stringify({ message: msg, userId: getToken() }));
+  };
+})();
+
+</script>
+</body>
+</html>

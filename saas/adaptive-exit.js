@@ -1,0 +1,343 @@
+/**
+ * AdaptiveExitManager v114 — 世界顶级量化止盈止损引擎
+ * 
+ * 对标策略:
+ * - Renaissance Medallion: 统计套利+短周期均值回归
+ * - Two Sigma: 多因子趋势跟踪，止盈目标3-5R
+ * - Citadel: ATR动态止损+移动止盈
+ * - AQR: 波动率自适应仓位+风险预算
+ * - Turtle Trading: 2 ATR止损，突破入场
+ * 
+ * 核心原则:
+ * 1. 止损 = 2 ATR (过滤噪音，不被洗出去)
+ * 2. 止盈目标 = 4 ATR (盈亏比2:1以上)
+ * 3. 移动止盈: 峰值回撤1.5 ATR锁定，底线=0
+ * 4. 不搞保本止损 — 从赚到亏的元凶已删除
+ * 5. 到手利润>0时可以平仓锁定
+ * 6. 超额止盈>15%立刻锁定
+ * 7. 时间衰减: 30分钟后逐步收紧止损
+ * 8. 连亏保护: 3次收紧20%，5次收紧40%
+ */
+
+class AdaptiveExitManager {
+  constructor(config = {}) {
+    // ═══ ATR倍数参数 (v116: 取v13+v115之长) ═══
+    // v116: 止损从2 ATR→3 ATR（给趋势空间，对标v13宽止损风格）
+    // v116: 止盈从4 ATR→6 ATR（吃大趋势，对标v13趋势跟踪）
+    // v116: 移动止盈回撤从1.5 ATR→2.0 ATR（给回调空间，不轻易被洗出）
+    this.slAtrMult = config.slAtrMult || 3.0;    // 止损 = 3 ATR (v13风格宽止损)
+    this.tpAtrMult = config.tpAtrMult || 6.0;    // 止盈目标 = 6 ATR (吃大趋势)
+    this.trailingAtrMult = config.trailingAtrMult || 2.0;  // 移动止损回撤 = 2.0 ATR (给回调空间)
+
+    // ═══ 交易成本 ═══
+    this.FEE_RATE = 0.0004;
+    this.ROUND_TRIP_FEE = 0.0008;
+    this.FUNDING_RATE = 0.0001;
+    this.SLIPPAGE_PCT = 0.0005;
+    this.PLATFORM_FEE_RATE = 0.20;
+
+    // ═══ 时间衰减 ═══
+    this.timeDecayStartMin = 30;
+    this.timeDecayRate = 0.1;
+
+    // ═══ 连亏保护 ═══
+    this.consecutiveLosses = 0;
+    this.recentPnls = [];
+
+    // ═══ 持仓追踪 ═══
+    this.positionData = new Map();
+
+    // ═══ 是否管理员 ═══
+    this._isAdminWallet = config.isAdminWallet || false;
+  }
+
+  calculateCosts(leverage, holdHours = 4) {
+    const feeCost = this.ROUND_TRIP_FEE * leverage;
+    const slippageCost = this.SLIPPAGE_PCT * 2 * leverage;
+    const fundingCost = this.FUNDING_RATE * Math.floor(holdHours / 8) * leverage;
+    const totalCostPct = feeCost + slippageCost + fundingCost;
+    return {
+      totalCostPct, feeCost, slippageCost, fundingCost,
+      breakdown: `手续费=${(feeCost*100).toFixed(3)}% 滑点=${(slippageCost*100).toFixed(3)}% 资金费=${(fundingCost*100).toFixed(3)}% 总=${(totalCostPct*100).toFixed(3)}%`
+    };
+  }
+
+  toNetPnl(grossPnlPct, leverage, holdHours = 4) {
+    const costs = this.calculateCosts(leverage, holdHours);
+    return grossPnlPct - costs.totalCostPct * 100;
+  }
+
+  toTakeHome(grossPnlPct, leverage, holdHours = 4) {
+    const netPnl = this.toNetPnl(grossPnlPct, leverage, holdHours);
+    if (netPnl <= 0) return netPnl;
+    if (this._isAdminWallet) return netPnl;
+    return netPnl * 0.70;
+  }
+
+  /**
+   * 核心止盈止损计算 — v114 世界顶级策略
+   */
+  calculate(symbol, pos, marketData, context = {}) {
+    const {
+      price = pos.entryPrice,
+      atr = 0,
+      atrPct = 1.5,
+      klines = [],
+    } = marketData || {};
+
+    const leverage = pos.leverage || 1;
+    const _openTs = pos.openTime || pos.openedAt;
+    const heldMinutes = _openTs ? (Date.now() - (typeof _openTs === 'number' ? _openTs : new Date(_openTs).getTime())) / 60000 : 0;
+    const holdHours = heldMinutes / 60;
+
+    // ═══ 成本计算 ═══
+    const costInfo = this.calculateCosts(leverage, holdHours);
+    const costPct = costInfo.totalCostPct * 100;
+    // 最低毛利 = 成本 + 0.3%安全垫
+    const minGrossProfit = costPct + 0.3;
+
+    const reasons = [`成本=${costInfo.breakdown}`];
+
+    // ═══ 波动率自适应参数 (对标AQR) ═══
+    let slMult = this.slAtrMult;
+    let tpMult = this.tpAtrMult;
+
+    if (atrPct > 3.0) {
+      // v116: 高波动放宽 — 给趋势更多空间
+      slMult = 4.0; tpMult = 8.0;
+      reasons.push('高波动: SL=4ATR TP=8ATR');
+    } else if (atrPct < 0.5) {
+      // v116: 低波动收紧
+      slMult = 2.0; tpMult = 4.0;
+      reasons.push('低波动: SL=2ATR TP=4ATR');
+    } else {
+      reasons.push(`标准: SL=${slMult}ATR TP=${tpMult}ATR`);
+    }
+
+    // ═══ 连亏保护 (对标Citadel风控) ═══
+    if (this.consecutiveLosses >= 5) {
+      slMult *= 0.6; tpMult *= 0.8;
+      reasons.push(`连亏${this.consecutiveLosses}次: SL收紧40%`);
+    } else if (this.consecutiveLosses >= 3) {
+      slMult *= 0.8;
+      reasons.push(`连亏${this.consecutiveLosses}次: SL收紧20%`);
+    }
+
+    // ═══ 时间衰减 (对标Two Sigma) ═══
+    if (heldMinutes > this.timeDecayStartMin) {
+      const decayFactor = Math.max(0.3, 1 - this.timeDecayRate * Math.floor(heldMinutes / 30));
+      slMult *= decayFactor;
+      reasons.push(`时间衰减: ${Math.floor(heldMinutes)}min ×${decayFactor.toFixed(2)}`);
+    }
+
+    // ═══ 支撑阻力位 ═══
+    let slFromStructure = null;
+    let tpFromStructure = null;
+    if (klines.length >= 20) {
+      const recent = klines.slice(-20);
+      const maxHigh = Math.max(...recent.map(k => k.high));
+      const minLow = Math.min(...recent.map(k => k.low));
+      if (pos.side === 'LONG') {
+        slFromStructure = ((pos.entryPrice - minLow) / pos.entryPrice) * 100;
+        tpFromStructure = ((maxHigh - pos.entryPrice) / pos.entryPrice) * 100;
+      } else {
+        slFromStructure = ((maxHigh - pos.entryPrice) / pos.entryPrice) * 100;
+        tpFromStructure = ((pos.entryPrice - minLow) / pos.entryPrice) * 100;
+      }
+    }
+
+    // ═══ 止损 = ATR × slMult (对标Turtle) ═══
+    let slPct = -(atrPct * slMult);
+    // 如果有结构位，取更紧的
+    if (slFromStructure !== null) {
+      slPct = Math.max(slPct, -Math.min(slFromStructure, atrPct * slMult));
+    }
+    // 绝对上限-5%
+    slPct = Math.max(slPct, -5.0);
+    // 止损至少 > 成本×1.5
+    const minSlAbs = Math.max(costPct * 1.5, 0.3);
+    slPct = Math.min(slPct, -minSlAbs);
+
+    // ═══ 止盈 = ATR × tpMult (对标Two Sigma 3-5R) ═══
+    let tpPct = atrPct * tpMult;
+    if (tpFromStructure !== null && tpFromStructure > atrPct * 1.5) {
+      tpPct = Math.max(tpFromStructure, atrPct * 1.5);
+      tpPct = Math.min(tpPct, atrPct * tpMult);
+    }
+    // 止盈下限 = 成本 + 0.3%
+    tpPct = Math.max(tpPct, minGrossProfit);
+
+    // ═══ R值 ═══
+    const rDist = Math.abs(slPct);
+    reasons.push(`1R=${rDist.toFixed(2)}% TP=${tpPct.toFixed(2)}% RR=1:${(tpPct/rDist).toFixed(1)}`);
+
+    // ═══ 移动止盈 (对标Citadel ATR Trailing) ═══
+    const peakPnlPct = pos._peakPnlPct || 0;
+    let trailingActive = false;
+    let trailingSlPct = null;
+
+    // 峰值利润 > 1R → 启动移动止盈
+    if (peakPnlPct >= rDist) {
+      trailingActive = true;
+      // 阶梯式移动止盈: 利润越大回撤容忍越小
+      if (peakPnlPct > 15.0) {
+        // v116: 超大趋势回撤从0.5→0.8 ATR
+        trailingSlPct = peakPnlPct - atrPct * 0.8;
+        reasons.push(`移动止损(超大): peak-${(atrPct*0.8).toFixed(2)}%`);
+      } else if (peakPnlPct > 8.0) {
+        // v116: 大趋势回撤从0.8→1.2 ATR
+        trailingSlPct = peakPnlPct - atrPct * 1.2;
+        reasons.push(`移动止损(大): peak-${(atrPct*1.2).toFixed(2)}%`);
+      } else if (peakPnlPct > 4.0) {
+        // v116: 中等趋势回撤从1.0→1.5 ATR
+        trailingSlPct = peakPnlPct - atrPct * 1.5;
+        reasons.push(`移动止损(中等): peak-${(atrPct*1.5).toFixed(2)}%`);
+      } else {
+        // v116: 早期回撤从1.5→2.0 ATR — 给趋势更多发展空间
+        trailingSlPct = peakPnlPct - atrPct * 2.0;
+        reasons.push(`移动止损(早期): peak-${(atrPct*2.0).toFixed(2)}%`);
+      }
+      // v116: 底线=0, 不让盈利变亏损（保持不变）
+      trailingSlPct = Math.max(trailingSlPct, 0);
+    }
+
+    return {
+      slPct: parseFloat(slPct.toFixed(2)),
+      tpPct: parseFloat(tpPct.toFixed(2)),
+      trailingActive,
+      trailingSlPct: trailingSlPct ? parseFloat(trailingSlPct.toFixed(2)) : null,
+      rDist: parseFloat(rDist.toFixed(2)),
+      rr: parseFloat((tpPct / rDist).toFixed(2)),
+      reasons,
+      costInfo: {
+        grossCostPct: parseFloat(costPct.toFixed(3)),
+        minGrossForProfit: parseFloat(minGrossProfit.toFixed(3)),
+        breakdown: costInfo.breakdown,
+        leverage, holdHours: Math.round(holdHours)
+      }
+    };
+  }
+
+  /**
+   * v114: 判断是否平仓 — 世界顶级止盈止损
+   */
+  shouldClose(symbol, pos, grossPnlPct, exitCalc) {
+    const leverage = pos.leverage || 1;
+    const openTs = pos.openTime || pos.openedAt;
+    const holdHours = openTs ? (Date.now() - (typeof openTs === 'number' ? openTs : new Date(openTs).getTime())) / 3600000 : 0;
+
+    const netPnlPct = this.toNetPnl(grossPnlPct, leverage, holdHours);
+    const takeHome = this.toTakeHome(grossPnlPct, leverage, holdHours);
+    const peakPnlPct = pos._peakPnlPct || 0;
+    const peakTakeHome = this.toTakeHome(peakPnlPct, leverage, holdHours);
+    const costPct = this.calculateCosts(leverage, holdHours).totalCostPct * 100;
+
+    // ═══ 1. 硬止损 — equity 3.5% (v116: 从2%放宽到3.5%，给趋势空间) ═══
+    const hardStop = -3.5;
+    if (netPnlPct <= hardStop) {
+      return {
+        shouldClose: true,
+        reason: `🔴 硬止损 净=${netPnlPct.toFixed(2)}% ≤ -3.50%`,
+        type: 'STOP_LOSS'
+      };
+    }
+
+    // ═══ 2. ATR止损 ═══
+    const netSlPct = this.toNetPnl(exitCalc.slPct, leverage, holdHours);
+    if (netSlPct < 0 && netPnlPct <= netSlPct) {
+      return {
+        shouldClose: true,
+        reason: `🔴 ATR止损 净=${netPnlPct.toFixed(2)}% ≤ ${netSlPct.toFixed(2)}% [${exitCalc.reasons?.slice(0,2).join(',')}]`,
+        type: 'STOP_LOSS'
+      };
+    }
+
+    // ═══ 3. 移动止盈 — 峰值回撤锁定 ═══
+    if (exitCalc.trailingActive && exitCalc.trailingSlPct !== null) {
+      const trailingNetThreshold = this.toNetPnl(exitCalc.trailingSlPct, leverage, holdHours);
+      if (trailingNetThreshold > 0 && netPnlPct > 0 && netPnlPct <= trailingNetThreshold) {
+        return {
+          shouldClose: true,
+          reason: `🔄 移动止盈 净=${netPnlPct.toFixed(2)}% ≤ ${trailingNetThreshold.toFixed(2)}% (峰值${peakTakeHome.toFixed(2)}%) 到手=${takeHome.toFixed(2)}%`,
+          type: 'TRAILING_STOP'
+        };
+      }
+    }
+
+    // ═══ 4. 超额止盈 — 毛利>20%立刻锁定 (v116: 从15%→20%，让大趋势跑更远) ═══
+    if (grossPnlPct >= 20.0 && exitCalc.trailingActive) {
+      return {
+        shouldClose: true,
+        reason: `🟢 超额止盈 毛利=${grossPnlPct.toFixed(2)}% 到手=${takeHome.toFixed(2)}%`,
+        type: 'TAKE_PROFIT'
+      };
+    }
+
+    // ═══ 5. 到手利润止盈 — 扣全部费用+抽成后到手>0.5%就锁利 ═══
+    // 只在移动止盈已激活时才触发（峰值超过1R后才考虑）
+    if (exitCalc.trailingActive && takeHome > 0.5) {
+      // 峰值回撤超过0.3%且到手仍>0.5% → 锁利
+      const drawdown = peakPnlPct - grossPnlPct;
+      if (drawdown > 0.3 && takeHome > 0.5) {
+        return {
+          shouldClose: true,
+          reason: `🟢 锁利止盈 到手=${takeHome.toFixed(2)}% (峰值${peakTakeHome.toFixed(2)}% 回撤${drawdown.toFixed(2)}%)`,
+          type: 'TAKE_PROFIT'
+        };
+      }
+    }
+
+    // ═══ 6. 时间止损 (v116: 放宽时间限制) ═══
+    // v116: 时间止损从4h→6h，超时从12h→18h，最大持仓从24h→36h
+    if (holdHours >= 6 && netPnlPct < -costPct * 2) {
+      return {
+        shouldClose: true,
+        reason: `⏰ 时间止损 ${holdHours.toFixed(1)}h 净=${netPnlPct.toFixed(2)}%`,
+        type: 'TIME_STOP'
+      };
+    }
+    if (holdHours >= 18 && netPnlPct < 0) {
+      return {
+        shouldClose: true,
+        reason: `⏰ 超时止损 ${holdHours.toFixed(1)}h 净=${netPnlPct.toFixed(2)}%`,
+        type: 'TIME_STOP'
+      };
+    }
+    if (holdHours >= 36) {
+      return {
+        shouldClose: true,
+        reason: `⏰ 最大持仓时间 ${holdHours.toFixed(1)}h 毛利=${grossPnlPct.toFixed(2)}%`,
+        type: 'MAX_HOLD'
+      };
+    }
+
+    return null;
+  }
+
+  recordResult(netPnlPct) {
+    this.recentPnls.push(netPnlPct);
+    if (this.recentPnls.length > 20) this.recentPnls.shift();
+    if (netPnlPct < 0) {
+      this.consecutiveLosses++;
+    } else {
+      this.consecutiveLosses = 0;
+    }
+  }
+
+  getDiagnostics() {
+    const wins = this.recentPnls.filter(p => p > 0);
+    const losses = this.recentPnls.filter(p => p < 0);
+    const avgWin = wins.length ? wins.reduce((a,b) => a+b, 0) / wins.length : 0;
+    const avgLoss = losses.length ? losses.reduce((a,b) => a+b, 0) / losses.length : 0;
+    return {
+      consecutiveLosses: this.consecutiveLosses,
+      recentTrades: this.recentPnls.length,
+      winRate: this.recentPnls.length ? `${(wins.length / this.recentPnls.length * 100).toFixed(1)}%` : 'N/A',
+      avgWin: avgWin.toFixed(4),
+      avgLoss: avgLoss.toFixed(4),
+      profitFactor: avgLoss !== 0 ? Math.abs(avgWin / avgLoss).toFixed(2) : '∞',
+    };
+  }
+}
+
+module.exports = AdaptiveExitManager;

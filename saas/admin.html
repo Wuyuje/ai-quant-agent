@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARK Admin — 量化管理仪表盘</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--green:#3fb950;--red:#f85149;--blue:#58a6ff;--yellow:#d29922;--purple:#bc8cff;--accent:#58a6ff}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.header{background:linear-gradient(135deg,#1a1e2e 0%,#0d1117 100%);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:1.3em;display:flex;align-items:center;gap:8px}
+.header h1 span{color:var(--accent);font-size:.7em;font-weight:400}
+.header .status{display:flex;gap:12px;align-items:center;font-size:.85em}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot.off{background:var(--red)}
+
+.login-box{max-width:400px;margin:100px auto;padding:32px;background:var(--card);border:1px solid var(--border);border-radius:12px;text-align:center}
+.login-box h2{margin-bottom:16px}
+.login-box input{width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:1em;margin-bottom:12px}
+.login-box button{width:100%;padding:12px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:1em;cursor:pointer;font-weight:600}
+.login-box button:hover{opacity:.9}
+.login-box .err{color:var(--red);font-size:.85em;margin-top:8px}
+
+.dashboard{padding:20px 24px;display:none}
+.grid{display:grid;gap:16px;margin-bottom:16px}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:900px){.g4,.g3{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.g4,.g3,.g2{grid-template-columns:1fr}}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.card h3{font-size:.8em;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.card .val{font-size:1.6em;font-weight:700}
+.card .sub{font-size:.8em;color:var(--muted);margin-top:4px}
+.green{color:var(--green)}.red{color:var(--red)}.blue{color:var(--blue)}.yellow{color:var(--yellow)}.purple{color:var(--purple)}
+
+.table{width:100%;border-collapse:collapse;font-size:.85em}
+.table th{text-align:left;padding:10px 12px;border-bottom:2px solid var(--border);color:var(--muted);font-weight:600;font-size:.8em;text-transform:uppercase}
+.table td{padding:8px 12px;border-bottom:1px solid var(--border)}
+.table tr:hover{background:rgba(88,166,255,.05)}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75em;font-weight:600}
+.tag.on{background:rgba(63,185,80,.15);color:var(--green)}
+.tag.off{background:rgba(248,81,73,.15);color:var(--red)}
+
+.trade-list{max-height:400px;overflow-y:auto}
+.trade-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:.85em}
+.trade-item:last-child{border:none}
+
+.refresh-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.btn{padding:6px 14px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);cursor:pointer;font-size:.85em}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+</style>
+</head>
+<body>
+
+<!-- ═══ 登录页 ═══ -->
+<div class="login-box" id="loginBox">
+  <h2>🔑 管理员登录</h2>
+  <input id="adminKeyInput" type="text" placeholder="输入管理员密钥" onkeydown="if(event.key==='Enter')doLogin()">
+  <button onclick="doLogin()">登录</button>
+  <div class="err" id="loginErr"></div>
+</div>
+
+<!-- ═══ 仪表盘 ═══ -->
+<div class="dashboard" id="dashboard">
+  <div class="header">
+    <h1>📊 ARK Admin <span>v16</span></h1>
+    <div class="status">
+      <span><span class="dot on" id="engineDot"></span> 引擎</span>
+      <span id="uptimeLabel">--</span>
+      <span id="versionLabel">v16</span>
+    </div>
+  </div>
+
+  <div style="padding:20px 24px">
+    <!-- 平台概览 -->
+    <div class="grid g4">
+      <div class="card"><h3>注册用户</h3><div class="val blue" id="totalUsers">0</div><div class="sub" id="activeTraders">0 交易中</div></div>
+      <div class="card"><h3>已部署 Vault</h3><div class="val purple" id="deployedVaults">0</div><div class="sub">智能合约钱包</div></div>
+      <div class="card"><h3>累计盈亏</h3><div class="val" id="totalPnl">$0.00</div><div class="sub" id="tradeStats">0 笔交易</div></div>
+      <div class="card"><h3>今日盈亏</h3><div class="val" id="dailyPnl">$0.00</div><div class="sub" id="winRate">胜率 --%</div></div>
+    </div>
+
+    <!-- 管理员持仓 -->
+    <div class="grid g3">
+      <div class="card"><h3>Vault 余额</h3><div class="val green" id="vaultBalance">$0.00</div><div class="sub" id="vaultBnb">BNB: --</div></div>
+      <div class="card"><h3>当前持仓</h3><div class="val" id="posCount">0</div><div class="sub" id="posDetail">空仓</div></div>
+      <div class="card"><h3>交易参数</h3><div class="val" id="tradingParams">--</div><div class="sub" id="paramDetail">--</div></div>
+    </div>
+
+    <!-- UserTrader 状态 -->
+    <div class="grid g3">
+      <div class="card"><h3>🤖 用户交易引擎</h3><div class="val" id="utStatus">--</div><div class="sub" id="utDetail">--</div></div>
+      <div class="card"><h3>👥 活跃用户</h3><div class="val blue" id="utActiveUsers">0</div><div class="sub" id="utUserDetail">0 / 0 用户 / 交易中</div></div>
+      <div class="card"><h3>📊 用户交易次数</h3><div class="val" id="utTradeCount">0</div><div class="sub" id="utLastTrade">最近交易: --</div></div>
+    </div>
+
+    <!-- 持仓详情 -->
+    <div class="card" style="margin-bottom:16px">
+      <h3>💎 管理员持仓详情</h3>
+      <div id="posBox" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:12px">
+        <div class="sub">空仓</div>
+      </div>
+    </div>
+
+    <!-- 最近交易 -->
+    <div class="card" style="margin-bottom:16px">
+      <h3>📋 最近交易记录</h3>
+      <div class="trade-list" id="tradeList" style="margin-top:8px">
+        <div class="sub">暂无交易</div>
+      </div>
+    </div>
+
+    <!-- 用户列表 -->
+    <div class="card">
+      <h3>👥 用户列表</h3>
+      <table class="table" style="margin-top:8px">
+        <thead><tr><th>地址</th><th>策略</th><th>交易</th><th>Vault</th><th>最后登录</th></tr></thead>
+        <tbody id="userTable"><tr><td colspan="5" class="sub">暂无用户</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- 服务费收入 -->
+    <div class="card" style="margin-bottom:16px;border-color:#58a6ff">
+      <h3 style="color:#58a6ff">💰 服务费收入</h3>
+      <div id="feeBox" style="margin-top:12px">
+        <div class="sub">加载中...</div>
+      </div>
+    </div>
+
+    <!-- 待充值通知 -->
+    <div class="card" style="border-color:#f0a500">
+      <h3 style="color:#f0a500">⚠️ 待充值通知</h3>
+      <div id="pendingFundBox" style="margin-top:8px"><div class="sub">暂无待充值</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let adminKey = '';
+let refreshTimer = null;
+
+async function doLogin() {
+  adminKey = document.getElementById('adminKeyInput').value.trim();
+  if (!adminKey) { document.getElementById('loginErr').textContent = '请输入密钥'; return; }
+  try {
+    // P0-1 fix: 用 POST body + X-Admin-Key header 传递密钥，不再用 URL query
+    const r = await fetch('/api/admin/dashboard', {
+      method: 'GET',
+      headers: { 'X-Admin-Key': adminKey }
+    });
+    if (!r.ok) throw new Error('认证失败');
+    document.getElementById('loginBox').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('dashboard').style.padding = '0';
+    // [SECURITY#5-LOW] sessionStorage存储密钥可被XSS读取，生产环境应改用HttpOnly Cookie
+    try { sessionStorage.setItem('adminKey', adminKey); } catch(e) {}
+    refresh();
+    refreshTimer = setInterval(refresh, 10000);
+  } catch(e) {
+    document.getElementById('loginErr').textContent = '❌ ' + e.message;
+  }
+}
+
+async function refresh() {
+  try {
+    // P0-1 fix: 用 X-Admin-Key header
+    const r = await fetch('/api/admin/dashboard', {
+      headers: { 'X-Admin-Key': adminKey }
+    });
+    if (!r.ok) { if (r.status === 403) { clearInterval(refreshTimer); location.reload(); } return; }
+    const d = await r.json();
+    render(d);
+  } catch(e) {}
+}
+
+function render(d) {
+  // 平台概览
+  text('totalUsers', d.platform.totalUsers);
+  text('activeTraders', d.platform.activeTraders + ' 交易中');
+  text('deployedVaults', d.platform.deployedVaults);
+  text('uptimeLabel', '⏱ ' + fmtTime(d.platform.uptime));
+
+  // 引擎
+  const e = d.engine;
+  const pnlColor = e.totalPnl >= 0 ? 'green' : 'red';
+  html('totalPnl', '<span class="' + pnlColor + '">' + fmt$(e.totalPnl) + '</span>');
+  text('tradeStats', e.totalTrades + ' 笔交易 (' + e.wins + '胜/' + e.losses + '负)');
+  const dayColor = e.dailyPnl >= 0 ? 'green' : 'red';
+  html('dailyPnl', '<span class="' + dayColor + '">' + fmt$(e.dailyPnl) + '</span>');
+  const winRate = e.totalTrades > 0 ? ((e.wins / (e.wins + e.losses)) * 100).toFixed(0) : '--';
+  text('winRate', '胜率 ' + winRate + '%');
+
+  // Vault 余额
+  text('vaultBalance', '$' + (d.adminWallet.balance.usdt || 0).toFixed(2));
+  text('vaultBnb', 'BNB: ' + (d.adminWallet.balance.bnb || 0).toFixed(4) + ' | 总余额: $' + (e.lastBalance || 0).toFixed(2));
+  text('tradingParams', '门槛' + e.totalTrades + '分');
+  text('paramDetail', '止损' + (d.adminWallet.slPct||'-15') + '% | 止盈' + (d.adminWallet.tpPct||'25') + '% | 最多' + (d.adminWallet.maxPositions||'6') + '仓');
+
+  // 持仓
+  const positions = e.positions || {};
+  const posArr = Object.entries(positions);
+  text('posCount', posArr.length);
+  if (posArr.length === 0) {
+    html('posBox', '<div class="sub">空仓</div>');
+    text('posDetail', '空仓');
+  } else {
+    const details = posArr.map(([s, p]) => s.replace('USDT','') + ' ' + p.side + ' ' + (p.leverage||6) + 'x');
+    text('posDetail', details.join(' | '));
+    let h = '';
+    posArr.forEach(([sym, p]) => {
+      const isL = p.side === 'LONG';
+      const pnl = p.pnl || 0;
+      const pnlPct = p.pnlPct || 0;
+      const holdTime = p.holdTime || '--';
+      h += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">'
+        + '<div style="display:flex;justify-content:space-between;margin-bottom:6px">'
+        + '<b>' + sym.replace('USDT','') + '</b>'
+        + '<span class="tag ' + (isL ? 'on' : 'off') + '">' + p.side + ' ' + (p.leverage||2) + 'x</span></div>'
+        + '<div style="font-size:.8em;color:var(--muted)">Entry: $' + (p.entryPrice||0).toFixed(4) + ' | Now: $' + (p.markPrice||0).toFixed(4) + '</div>'
+        + '<div style="font-size:1.1em;font-weight:700;margin-top:4px" class="' + (pnl >= 0 ? 'green' : 'red') + '">'
+        + fmt$(pnl) + ' (' + pnlPct.toFixed(1) + '%)</div>'
+        + '<div style="font-size:.75em;color:var(--muted);margin-top:2px">持仓: ' + holdTime + ' | 趋势分: ' + (p.trendScore || '--') + '</div>'
+        + '</div>';
+    });
+    html('posBox', h);
+  }
+
+  // 交易记录
+  const trades = e.recentTrades || [];
+  if (trades.length === 0) {
+    html('tradeList', '<div class="sub">暂无交易</div>');
+  } else {
+    let h = '';
+    trades.slice().reverse().forEach(t => {
+      const time = new Date(t.timestamp).toLocaleString();
+      const cls = t.action === 'LONG' ? 'green' : t.action === 'SHORT' ? 'red' : 'yellow';
+      const pnlStr = t.pnl ? (t.pnl > 0 ? '<span class="green">+$' + t.pnl.toFixed(2) + '</span>' : '<span class="red">-$' + Math.abs(t.pnl).toFixed(2) + '</span>') : '<span style="color:var(--muted)">--</span>';
+      h += '<div class="trade-item"><span>' + time + ' <span class="' + cls + '">' + t.action + '</span> ' + t.symbol + ' ' + (t.leverage||'') + 'x</span><span>' + pnlStr + '</span></div>';
+    });
+    html('tradeList', h);
+  }
+
+  // 用户列表
+  const users = d.users || [];
+  if (users.length === 0) {
+    html('userTable', '<tr><td colspan="5" class="sub">暂无用户</td></tr>');
+  } else {
+    let h = '';
+    users.forEach(u => {
+      const lastLogin = u.lastLogin ? new Date(u.lastLogin).toLocaleDateString() : '--';
+      h += '<tr><td title="' + u.fullAddress + '">' + u.address + '</td>'
+        + '<td>' + u.strategy + '</td>'
+        + '<td><span class="tag ' + (u.tradingEnabled ? 'on' : 'off') + '">' + (u.tradingEnabled ? 'ON' : 'OFF') + '</span></td>'
+        + '<td>' + (u.vaultAddress ? '✅' : '❌') + '</td>'
+        + '<td>' + lastLogin + '</td></tr>';
+    });
+    html('userTable', h);
+  }
+
+  // 待充值通知
+  const pf = d.pendingFunds || [];
+  if (pf.length === 0) {
+    html('pendingFundBox', '<div class="sub">暂无待充值</div>');
+  } else {
+    let h = '';
+    pf.forEach(p => {
+      const ago = Math.floor((Date.now() - p.timestamp) / 60000);
+      const agoStr = ago < 60 ? ago + '分钟前' : Math.floor(ago/60) + '小时前';
+      h += '<div style="background:#1a1208;border:1px solid #f0a500;border-radius:10px;padding:14px;margin-bottom:10px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center">'
+        + '<div><span style="color:#f0a500;font-weight:700">⚠️ 需要充值 BNB</span> '
+        + '<span style="font-size:.75em;color:var(--muted)">' + agoStr + '</span></div>'
+        + '<button onclick="clearPending(\'' + p.userAddress + '\')" style="background:#1a3a1a;border:1px solid #4caf50;color:#4caf50;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:.75em">已处理</button>'
+        + '</div>'
+        + '<div style="margin-top:8px;font-size:.8em;color:var(--muted)">'
+        + '<div>用户: <span style="color:var(--green);font-family:monospace">' + p.userAddress.slice(0,10) + '...' + p.userAddress.slice(-6) + '</span></div>'
+        + '<div>交易器钱包: <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.9em">' + p.wallet + '</code></div>'
+        + '<div style="margin-top:4px">原因: ' + p.reason + '</div>'
+        + '</div>'
+        + '</div>';
+    });
+    html('pendingFundBox', h);
+  }
+
+  // 服务费收入
+  const fees = d.fees || {};
+  const grandPlatform = parseFloat(fees.grandTotal?.platformFee || 0);
+  const grandEco = parseFloat(fees.grandTotal?.ecoFund || 0);
+  let feeH = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:12px">'
+    + '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center">'
+    + '<div style="font-size:.75em;color:var(--muted)">平台服务费 (20%)</div>'
+    + '<div style="font-size:1.3em;font-weight:700;color:var(--green);margin-top:4px">$' + grandPlatform.toFixed(2) + '</div>'
+    + '<div style="font-size:.7em;color:var(--muted);margin-top:2px;font-family:monospace;word-break:break-all">' + (fees.platformWallet||'--').slice(0,10) + '...' + (fees.platformWallet||'').slice(-6) + '</div>'
+    + '</div>'
+    + '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center">'
+    + '<div style="font-size:.75em;color:var(--muted)">生态基金 (10%)</div>'
+    + '<div style="font-size:1.3em;font-weight:700;color:#58a6ff;margin-top:4px">$' + grandEco.toFixed(2) + '</div>'
+    + '<div style="font-size:.7em;color:var(--muted);margin-top:2px;font-family:monospace;word-break:break-all">' + (fees.ecoFundWallet||'--').slice(0,10) + '...' + (fees.ecoFundWallet||'').slice(-6) + '</div>'
+    + '</div>'
+    + '</div>';
+  const feeUsers = fees.users || {};
+  const feeUserKeys = Object.keys(feeUsers);
+  if (feeUserKeys.length > 0) {
+    feeH += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px">';
+    feeUserKeys.forEach(w => {
+      const u = feeUsers[w];
+      feeH += '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:.82em">'
+        + '<span style="color:var(--muted);font-family:monospace" title="' + w + '">' + w.slice(0,8) + '...' + w.slice(-6) + '</span>'
+        + '<span>盈利 <b style="color:var(--green)">$' + u.totalPnl + '</b> | 平台 <b>$' + u.totalPlatformFee + '</b> | 生态 <b style="color:#58a6ff">$' + u.totalEcoFund + '</b></span>'
+        + '</div>';
+    });
+    feeH += '</div>';
+  } else {
+    feeH += '<div class="sub">暂无服务费记录</div>';
+  }
+  html('feeBox', feeH);
+
+  // UserTrader 状态
+  const ut = d.userTrader || {};
+  html('utStatus', '<span class="' + (ut.running ? 'green' : 'red') + '">' + (ut.running ? '🟢 运行中' : '🔴 停止') + '</span>');
+  text('utDetail', '循环 ' + (ut.cycleCount||0) + ' 轮 | 活跃 ' + (ut.activeUsers||0) + ' 人');
+  text('utActiveUsers', ut.activeUsers || 0);
+  text('utUserDetail', (ut.activeUsers||0) + ' / ' + (ut.totalUsers||0) + ' 用户 / 交易中');
+  const utTrades = ut.recentTrades || [];
+  text('utTradeCount', utTrades.length + ' 笔');
+  if (utTrades.length > 0) {
+    const last = utTrades[utTrades.length - 1];
+    text('utLastTrade', '最近: ' + (last.symbol||'--') + ' ' + (last.action||'') + ' $' + (last.amount||0).toFixed(2));
+  } else {
+    text('utLastTrade', '最近交易: 暂无');
+  }
+}
+
+function text(id, v) { document.getElementById(id).textContent = v; }
+function html(id, v) { document.getElementById(id).innerHTML = v; }
+function fmt$(n) { return (n >= 0 ? '+$' : '-$') + Math.abs(n).toFixed(2); }
+function fmtTime(s) { const h = Math.floor(s/3600); const m = Math.floor((s%3600)/60); return h + 'h ' + m + 'm'; }
+
+async function api(method, url, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+async function clearPending(userAddress) {
+  try {
+    await api('POST', '/api/admin/pending-funds/clear', { userAddress });
+    refresh();
+  } catch(e) { alert('清除失败: ' + e.message); }
+}
+
+// 安全恢复：从 sessionStorage 读取 key（不从 URL 读取）
+(function() {
+  try {
+    const saved = sessionStorage.getItem('adminKey');
+    if (saved) {
+      document.getElementById('adminKeyInput').value = saved;
+      doLogin();
+    }
+  } catch(e) {}
+})();
+</script>
+</body>
+</html>

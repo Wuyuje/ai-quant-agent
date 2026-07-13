@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>部署新 Factory 合约</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0e17;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            color: #e0e0e0;
+        }
+        .container {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 16px;
+            max-width: 480px;
+            width: 100%;
+            padding: 28px;
+        }
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h1 { color: #fff; font-size: 20px; margin-bottom: 6px; }
+        .header p { color: #8b949e; font-size: 13px; }
+        .warn {
+            background: #1c1206;
+            border: 1px solid #d29922;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #d29922;
+            line-height: 1.6;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #21262d;
+            font-size: 13px;
+        }
+        .info-row .label { color: #8b949e; }
+        .info-row .value { color: #e0e0e0; font-family: monospace; font-size: 12px; }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 14px;
+            color: #fff;
+        }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-connect { background: linear-gradient(135deg, #238636, #2ea043); }
+        .btn-deploy { background: linear-gradient(135deg, #58a6ff, #1f6feb); }
+        .btn:not(:disabled):hover { filter: brightness(1.15); }
+        .steps { margin-top: 18px; }
+        .step {
+            display: flex; align-items: center; padding: 6px 0;
+            font-size: 13px; color: #8b949e;
+        }
+        .step-dot {
+            width: 22px; height: 22px; border-radius: 50%;
+            margin-right: 10px; display: flex; align-items: center;
+            justify-content: center; font-size: 11px; flex-shrink: 0;
+        }
+        .wait { background: #21262d; color: #8b949e; }
+        .run  { background: #d29922; color: #000; }
+        .done { background: #238636; color: #fff; }
+        .fail { background: #da3633; color: #fff; }
+        .result {
+            background: #0d2818; border: 1px solid #238636;
+            border-radius: 10px; padding: 16px; margin-top: 16px; display: none;
+        }
+        .result h3 { color: #3fb950; font-size: 15px; margin-bottom: 6px; }
+        .result .addr {
+            font-family: monospace; font-size: 13px; color: #3fb950;
+            word-break: break-all; background: #000; padding: 10px;
+            border-radius: 6px; margin-top: 8px; display: block;
+        }
+        .copy-btn {
+            margin-top: 10px; padding: 8px 16px; background: #238636;
+            color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+        }
+        .error-box {
+            background: #2d0b0b; border: 1px solid #da3633;
+            border-radius: 10px; padding: 14px; margin-top: 14px;
+            display: none; font-size: 13px; color: #f85149;
+        }
+        #debug { margin-top: 14px; font-size: 11px; color: #6e7681; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>部署 AgentVaultFactoryV2</h1>
+            <p>用户自由入金 / 自由提现 / 平台只能交易</p>
+        </div>
+
+        <div class="warn">
+            ⚠️ 此页面不会发送私钥到任何服务器<br>
+            所有签名在 Trust Wallet 本地完成<br>
+            钱包需 ≥ 0.05 BNB（gas 费）
+        </div>
+
+        <div id="infoSection">
+            <div class="info-row">
+                <span class="label">部署钱包</span>
+                <span class="value" id="dispAddr">未连接</span>
+            </div>
+            <div class="info-row">
+                <span class="label">BNB 余额</span>
+                <span class="value" id="dispBal">-</span>
+            </div>
+            <div class="info-row">
+                <span class="label">网络</span>
+                <span class="value" id="dispNet">-</span>
+            </div>
+        </div>
+
+        <button class="btn btn-connect" id="connectBtn" onclick="doConnect()">
+            连接钱包
+        </button>
+
+        <button class="btn btn-deploy" id="deployBtn" onclick="doDeploy()" disabled>
+            部署新 Factory 合约
+        </button>
+
+        <div class="steps" id="stepsSection" style="display:none;">
+            <div class="step"><span class="step-dot wait" id="s1">1</span>获取合约字节码</div>
+            <div class="step"><span class="step-dot wait" id="s2">2</span>构造部署交易</div>
+            <div class="step"><span class="step-dot wait" id="s3">3</span>Trust Wallet 签名</div>
+            <div class="step"><span class="step-dot wait" id="s4">4</span>等待链上确认</div>
+        </div>
+
+        <div class="result" id="resultBox">
+            <h3>✅ 部署成功！</h3>
+            <p style="font-size:13px;color:#8b949e;">新 Factory 地址：</p>
+            <span class="addr" id="factoryAddr"></span>
+            <button class="copy-btn" onclick="copyAddr()">复制地址</button>
+            <p style="font-size:12px;color:#8b949e;margin-top:10px;">请把这个地址发给管理员更新系统配置。</p>
+        </div>
+
+        <div class="error-box" id="errorBox"></div>
+        <div id="debug"></div>
+    </div>
+
+<script>
+/* ============================================================
+   零依赖版本 — 不使用 ethers.js，只用原生 window.ethereum API
+   ============================================================ */
+
+var REQUIRED = '0x99146cE2C7b42b42C6E6A62aaDABF2db295050E8';
+var BSC_CHAIN_ID = '0x38'; // 56 in hex
+var connected = false;
+
+function dbg(msg) {
+    var el = document.getElementById('debug');
+    el.innerHTML += '<div>' + msg + '</div>';
+}
+function setStep(n, s) {
+    var el = document.getElementById('s' + n);
+    el.className = 'step-dot ' + s;
+    el.textContent = s === 'done' ? '✓' : s === 'fail' ? '✗' : n;
+}
+function showErr(m) {
+    var el = document.getElementById('errorBox');
+    el.textContent = m;
+    el.style.display = 'block';
+}
+function toHex(num) {
+    return '0x' + num.toString(16);
+}
+function padLeft(str, len) {
+    while (str.length < len) str = '0' + str;
+    return str;
+}
+function toUint256(num) {
+    return padLeft(num.toString(16), 64);
+}
+function toAddr(addr) {
+    return addr.toLowerCase().replace('0x', '').padStart(64, '0');
+}
+
+// 构造 constructor 参数编码: (address _trader, address _platformFeeWallet, uint256 _defaultFeeBps)
+function encodeConstructorArgs(trader, feeWallet, feeBps) {
+    return toAddr(trader) + toAddr(feeWallet) + toUint256(feeBps);
+}
+
+async function doConnect() {
+    dbg('开始连接...');
+    
+    if (typeof window.ethereum === 'undefined') {
+        showErr('未检测到钱包！请确保在 Trust Wallet DApp 浏览器中打开。');
+        dbg('window.ethereum 不存在');
+        return;
+    }
+    dbg('window.ethereum 存在');
+
+    try {
+        // 先检查是否已授权
+        var accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        dbg('eth_accounts: ' + JSON.stringify(accounts));
+        
+        if (!accounts || accounts.length === 0) {
+            // 需要用户授权
+            dbg('请求 eth_requestAccounts...');
+            accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+        }
+        
+        var addr = accounts[0];
+        dbg('地址: ' + addr);
+
+        // 检查链 ID（Trust Wallet 可能返回数字或 hex 字符串）
+        var rawChainId = await window.ethereum.request({ method: 'eth_chainId' });
+        var chainId = typeof rawChainId === 'number' ? '0x' + rawChainId.toString(16) : String(rawChainId);
+        dbg('链 ID: ' + chainId + ' (原始: ' + rawChainId + ', type: ' + typeof rawChainId + ')');
+        
+        if (chainId.toLowerCase() !== BSC_CHAIN_ID.toLowerCase()) {
+            // 先尝试切换到 BSC
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: BSC_CHAIN_ID }]
+                });
+            } catch (switchErr) {
+                // 如果 BSC 不在钱包列表里，尝试添加
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [{
+                            chainId: BSC_CHAIN_ID,
+                            chainName: 'BNB Smart Chain',
+                            nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+                            rpcUrls: ['https://bsc-dataseed.binance.org/', 'https://bsc-dataseed1.binance.org/'],
+                            blockExplorerUrls: ['https://bscscan.com/']
+                        }]
+                    });
+                } catch (addErr) {
+                    showErr('⚠️ 请手动切换到 BSC 主网！\n\n当前链 ID: ' + rawChainId + '\n需要链 ID: 56 (BSC)\n\n在 Trust Wallet 中：设置 → 网络 → BNB Smart Chain');
+                    return;
+                }
+            }
+        }
+
+        // 允许任何钱包部署
+        dbg('连接钱包: ' + addr);
+
+        // 获取余额 (eth_getBalance)
+        var balHex = await window.ethereum.request({
+            method: 'eth_getBalance',
+            params: [addr, 'latest']
+        });
+        var balWei = parseInt(balHex, 16);
+        var balEth = (balWei / 1e18).toFixed(4);
+        dbg('余额: ' + balEth + ' BNB');
+
+        document.getElementById('dispAddr').textContent = addr.slice(0,6) + '...' + addr.slice(-4);
+        document.getElementById('dispBal').textContent = balEth + ' BNB';
+        document.getElementById('dispNet').textContent = 'BSC Mainnet (56)';
+        document.getElementById('connectBtn').textContent = '✅ 已连接';
+        document.getElementById('connectBtn').disabled = true;
+        document.getElementById('deployBtn').disabled = false;
+        connected = true;
+        
+        if (parseFloat(balEth) < 0.05) {
+            document.getElementById('dispBal').textContent += ' ⚠️不足';
+        }
+    } catch (e) {
+        showErr('连接失败: ' + (e.message || JSON.stringify(e)));
+        dbg('错误: ' + JSON.stringify(e));
+    }
+}
+
+async function doDeploy() {
+    if (!connected) { showErr('请先连接钱包'); return; }
+    
+    document.getElementById('stepsSection').style.display = 'block';
+    document.getElementById('deployBtn').disabled = true;
+    document.getElementById('errorBox').style.display = 'none';
+
+    try {
+        // 获取当前连接的钱包地址
+        var accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        var addr = accounts[0];
+        
+        // Step 1: 获取合约字节码
+        setStep(1, 'run');
+        var resp = await fetch('/api/contract/factory-v2');
+        if (!resp.ok) throw new Error('获取合约数据失败: ' + resp.status);
+        var data = await resp.json();
+        setStep(1, 'done');
+        dbg('合约数据获取成功, bytecode长度: ' + data.factoryBytecode.length);
+
+        // Step 2: 构造部署交易
+        setStep(2, 'run');
+        var bytecode = data.factoryBytecode.replace('0x', '');
+        var args = encodeConstructorArgs(data.trader, data.platformFeeWallet, data.defaultFeeBps);
+        var deployData = '0x' + bytecode + args;
+        dbg('部署数据长度: ' + deployData.length);
+        setStep(2, 'done');
+
+        // Step 3: 签名部署交易
+        setStep(3, 'run');
+        
+        // 先估算 gas
+        var gasEstimate;
+        try {
+            gasEstimate = await window.ethereum.request({
+                method: 'eth_estimateGas',
+                params: [{
+                    from: REQUIRED,
+                    data: deployData
+                }]
+            });
+            dbg('估算 gas: ' + parseInt(gasEstimate, 16));
+        } catch (gasErr) {
+            dbg('gas 估算失败: ' + (gasErr.message || JSON.stringify(gasErr)));
+            gasEstimate = '0x' + (5000000).toString(16);
+        }
+        
+        // 获取 gas price
+        var gasPrice;
+        try {
+            gasPrice = await window.ethereum.request({ method: 'eth_gasPrice' });
+            dbg('gasPrice: ' + gasPrice);
+        } catch (gpErr) {
+            dbg('gasPrice 获取失败');
+        }
+        
+        var txParams = {
+            from: addr,
+            to: '',  // 部署合约时 to 为空
+            data: deployData,
+            value: '0x0',
+            gas: gasEstimate
+        };
+        if (gasPrice) txParams.gasPrice = gasPrice;
+        
+        dbg('发送交易: ' + JSON.stringify(txParams).substring(0, 200));
+        var txHash;
+        try {
+            txHash = await window.ethereum.request({
+                method: 'eth_sendTransaction',
+                params: [txParams]
+            });
+        } catch (sendErr) {
+            dbg('eth_sendTransaction 失败: ' + JSON.stringify(sendErr));
+            throw sendErr;
+        }
+        dbg('交易哈希: ' + txHash);
+        setStep(3, 'done');
+
+        // Step 4: 等待确认 (轮询 eth_getTransactionReceipt)
+        setStep(4, 'run');
+        var receipt = null;
+        var maxAttempts = 60; // 最多等 60 次 ≈ 3 分钟
+        for (var i = 0; i < maxAttempts; i++) {
+            await new Promise(function(r) { setTimeout(r, 5000); });
+            receipt = await window.ethereum.request({
+                method: 'eth_getTransactionReceipt',
+                params: [txHash]
+            });
+            if (receipt) break;
+            dbg('等待确认... (' + (i+1) + '/' + maxAttempts + ')');
+        }
+
+        if (!receipt) {
+            throw new Error('交易超时未确认，请在 BSCScan 上查看: https://bscscan.com/tx/' + txHash);
+        }
+        
+        if (receipt.status === '0x0' || receipt.status === 0) {
+            throw new Error('交易失败！请在 BSCScan 上查看: https://bscscan.com/tx/' + txHash);
+        }
+        
+        setStep(4, 'done');
+        dbg('交易确认! 区块: ' + parseInt(receipt.blockNumber, 16));
+
+        // 从 receipt 中提取合约地址
+        var contractAddr = receipt.contractAddress;
+        if (!contractAddr) {
+            throw new Error('未找到合约地址，交易可能失败');
+        }
+
+        // 成功
+        document.getElementById('resultBox').style.display = 'block';
+        document.getElementById('factoryAddr').textContent = contractAddr;
+        dbg('合约地址: ' + contractAddr);
+
+    } catch (e) {
+        console.error(e);
+        for (var j = 1; j <= 4; j++) setStep(j, 'wait');
+        showErr('部署失败: ' + (e.reason || e.message || e));
+        document.getElementById('deployBtn').disabled = false;
+    }
+}
+
+function copyAddr() {
+    var a = document.getElementById('factoryAddr').textContent;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(a);
+    } else {
+        var ta = document.createElement('textarea');
+        ta.value = a; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    document.querySelector('.copy-btn').textContent = '已复制 ✓';
+    setTimeout(function(){ document.querySelector('.copy-btn').textContent = '复制地址'; }, 2000);
+}
+
+// 页面加载后自动检测
+window.addEventListener('load', function() {
+    dbg('ethereum: ' + (typeof window.ethereum));
+    if (typeof window.ethereum !== 'undefined') {
+        window.ethereum.request({ method: 'eth_accounts' })
+            .then(function(accs) {
+                if (accs.length > 0 && accs[0].toLowerCase() === REQUIRED.toLowerCase()) {
+                    doConnect();
+                }
+            });
+    }
+});
+</script>
+</body>
+</html>

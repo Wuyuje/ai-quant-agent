@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>注册测试</title>
+<style>
+body { font-family: sans-serif; padding: 20px; background: #111; color: #fff; }
+input { display: block; width: 100%; padding: 12px; margin: 8px 0; font-size: 16px; border: 1px solid #444; border-radius: 8px; background: #222; color: #fff; }
+button { display: block; width: 100%; padding: 14px; margin: 12px 0; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; }
+.btn-reg { background: #22c55e; color: #fff; }
+.btn-login { background: #3b82f6; color: #fff; }
+.msg { margin-top: 10px; padding: 10px; border-radius: 8px; display: none; }
+.msg.show { display: block; }
+.msg.ok { background: #166534; color: #86efac; }
+.msg.err { background: #7f1d1d; color: #fca5a5; }
+</style>
+</head>
+<body>
+<h2>🔧 注册/登录测试页</h2>
+<input type="text" id="addr" placeholder="钱包地址 (0x...)" />
+<input type="password" id="pwd" placeholder="密码 (至少6位)" />
+<button class="btn-reg" id="regBtn">注册新账号</button>
+<button class="btn-login" id="loginBtn">登录</button>
+<div class="msg" id="msg"></div>
+<hr style="margin-top:20px;border-color:#333">
+<h3>调试日志</h3>
+<pre id="log" style="background:#000;padding:10px;border-radius:8px;font-size:12px;max-height:300px;overflow:auto;"></pre>
+
+<script>
+var API_HOST = window.location.origin;
+var logEl = document.getElementById('log');
+function debugLog(msg) {
+  logEl.textContent += new Date().toLocaleTimeString() + ' ' + msg + '\n';
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log('[DEBUG]', msg);
+}
+
+function showMsg(text, ok) {
+  var msg = document.getElementById('msg');
+  msg.textContent = text;
+  msg.className = 'msg show ' + (ok ? 'ok' : 'err');
+}
+
+// 注册
+document.getElementById('regBtn').addEventListener('click', function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  var addr = document.getElementById('addr').value.trim();
+  var pwd = document.getElementById('pwd').value;
+  debugLog('点击注册 addr=' + addr + ' pwd=' + pwd);
+  
+  if (!addr) { showMsg('请输入钱包地址', false); debugLog('ERROR: addr为空'); return; }
+  if (!addr.startsWith('0x')) { showMsg('地址必须0x开头', false); debugLog('ERROR: addr无0x前缀'); return; }
+  if (pwd.length < 6) { showMsg('密码至少6位', false); debugLog('ERROR: pwd<6'); return; }
+  
+  showMsg('注册中...', true);
+  debugLog('开始请求: POST ' + API_HOST + '/api/auth/register');
+  
+  fetch(API_HOST + '/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: addr.toLowerCase(), password: pwd, walletAddress: addr.toLowerCase() })
+  })
+  .then(function(r) {
+    debugLog('收到响应: status=' + r.status);
+    return r.text();
+  })
+  .then(function(text) {
+    debugLog('响应内容: ' + text.substring(0, 300));
+    var data = JSON.parse(text);
+    if (data.success) {
+      showMsg('✅ 注册成功！token: ' + data.token.substring(0, 12) + '...', true);
+      debugLog('注册成功! token=' + data.token.substring(0, 12));
+    } else {
+      showMsg('❌ ' + (data.error || '未知错误'), false);
+      debugLog('注册失败: ' + JSON.stringify(data));
+    }
+  })
+  .catch(function(err) {
+    showMsg('❌ 网络错误: ' + err.message, false);
+    debugLog('CATCH错误: ' + err.message);
+  });
+});
+
+// 登录
+document.getElementById('loginBtn').addEventListener('click', function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  var addr = document.getElementById('addr').value.trim();
+  var pwd = document.getElementById('pwd').value;
+  debugLog('点击登录 addr=' + addr);
+  
+  if (!addr || !pwd) { showMsg('请输入地址和密码', false); return; }
+  
+  showMsg('登录中...', true);
+  debugLog('开始请求: POST ' + API_HOST + '/api/auth/login');
+  
+  fetch(API_HOST + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: addr.toLowerCase(), password: pwd })
+  })
+  .then(function(r) {
+    debugLog('收到响应: status=' + r.status);
+    return r.text();
+  })
+  .then(function(text) {
+    debugLog('响应内容: ' + text.substring(0, 300));
+    var data = JSON.parse(text);
+    if (data.success) {
+      showMsg('✅ 登录成功！', true);
+    } else {
+      showMsg('❌ ' + (data.error || '未知错误'), false);
+    }
+  })
+  .catch(function(err) {
+    showMsg('❌ 网络错误: ' + err.message, false);
+    debugLog('CATCH: ' + err.message);
+  });
+});
+
+debugLog('页面加载完成，事件已绑定');
+debugLog('API_HOST = ' + API_HOST);
+</script>
+</body>
+</html>

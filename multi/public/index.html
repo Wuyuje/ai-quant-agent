@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARK Quant Agent — AI 量化机器人</title>
+<style>
+/* ═══════════════════════════════════════
+   ARK Brand + Dark Cyber Theme
+   ═══════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0e17;--bg2:#111827;--bg3:#1a2332;
+  --ark-blue:#3b82f6;--ark-cyan:#06b6d4;--ark-green:#10b981;
+  --ark-red:#ef4444;--ark-orange:#f59e0b;--ark-purple:#8b5cf6;
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+  --border:#1e293b;--glass:rgba(15,23,42,.85);
+}
+body{font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+.bg-grid{position:fixed;inset:0;background-image:linear-gradient(rgba(59,130,246,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0}
+
+/* Header */
+.header{position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);background:rgba(10,14,23,.9);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;justify-content:space-between;align-items:center}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--ark-blue),var(--ark-cyan));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff}
+.logo h1{font-size:18px;font-weight:700;background:linear-gradient(135deg,var(--ark-blue),var(--ark-cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo .ver{font-size:11px;color:var(--text3)}
+.wallet-btn{padding:10px 20px;border-radius:12px;border:1px solid var(--ark-blue);background:rgba(59,130,246,.1);color:var(--ark-blue);font-size:14px;font-weight:600;cursor:pointer;transition:all .3s}
+.wallet-btn:hover{background:rgba(59,130,246,.2);transform:translateY(-1px)}
+.wallet-btn.connected{border-color:var(--ark-green);color:var(--ark-green);background:rgba(16,185,129,.1)}
+.wallet-btn .addr{font-family:monospace;font-size:12px;opacity:.8}
+
+/* Container */
+.container{max-width:1200px;margin:0 auto;padding:20px;position:relative;z-index:1}
+
+/* Auth Screen */
+.auth-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;text-align:center}
+.auth-card{background:var(--glass);border:1px solid var(--border);border-radius:24px;padding:48px;max-width:480px;width:100%;backdrop-filter:blur(20px)}
+.auth-card h2{font-size:28px;font-weight:700;margin-bottom:8px;background:linear-gradient(135deg,var(--ark-blue),var(--ark-cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.auth-card p{color:var(--text2);margin-bottom:32px;line-height:1.6}
+.auth-requirements{text-align:left;background:var(--bg2);border-radius:12px;padding:20px;margin-bottom:32px}
+.auth-requirements h3{font-size:14px;color:var(--text2);margin-bottom:12px}
+.req-item{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:14px;color:var(--text2)}
+.req-icon{width:24px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.req-icon.ok{background:rgba(16,185,129,.15);color:var(--ark-green)}
+.req-icon.no{background:rgba(239,68,68,.15);color:var(--ark-red)}
+.connect-main{width:100%;padding:16px;border-radius:16px;border:none;background:linear-gradient(135deg,var(--ark-blue),var(--ark-cyan));color:#fff;font-size:16px;font-weight:700;cursor:pointer;transition:all .3s}
+.connect-main:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(59,130,246,.3)}
+.connect-main:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.auth-footer{margin-top:24px;font-size:12px;color:var(--text3)}
+
+/* Dashboard */
+.dash-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.stat-card{background:var(--glass);border:1px solid var(--border);border-radius:16px;padding:20px;backdrop-filter:blur(20px)}
+.stat-label{font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:1px}
+.stat-value{font-size:28px;font-weight:700;margin-top:4px}
+.stat-sub{font-size:12px;color:var(--text2);margin-top:2px}
+.stat-value.green{color:var(--ark-green)}
+.stat-value.red{color:var(--ark-red)}
+.stat-value.blue{color:var(--ark-blue)}
+.stat-value.cyan{color:var(--ark-cyan)}
+
+/* Engine Control */
+.engine-panel{background:var(--glass);border:1px solid var(--border);border-radius:20px;padding:24px;margin-bottom:20px;backdrop-filter:blur(20px)}
+.panel-title{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.engine-controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.btn{padding:10px 20px;border-radius:12px;border:none;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-primary{background:linear-gradient(135deg,var(--ark-blue),var(--ark-cyan));color:#fff}
+.btn-danger{background:linear-gradient(135deg,var(--ark-red),var(--ark-orange));color:#fff}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text2)}
+.btn-outline.active{border-color:var(--ark-blue);color:var(--ark-blue);background:rgba(59,130,246,.1)}
+.btn:hover{transform:translateY(-1px)}
+
+/* Positions */
+.positions-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.pos-card{background:var(--bg2);border-radius:12px;padding:16px;border:1px solid var(--border)}
+.pos-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.pos-symbol{font-weight:700;font-size:16px}
+.pos-side{padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;text-transform:uppercase}
+.pos-side.long{background:rgba(16,185,129,.15);color:var(--ark-green)}
+.pos-side.short{background:rgba(239,68,68,.15);color:var(--ark-red)}
+.pos-row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:var(--text2)}
+.pos-pnl{font-weight:700;font-size:15px;margin-top:8px}
+
+/* Trades */
+.trade-list{max-height:300px;overflow-y:auto}
+.trade-item{display:grid;grid-template-columns:80px 60px 1fr 80px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;align-items:center}
+.trade-item:last-child{border-bottom:none}
+.trade-sym{font-weight:600}
+.trade-side{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;text-align:center}
+.trade-pnl{font-weight:600;text-align:right}
+.trade-time{color:var(--text3);font-size:11px;text-align:right}
+
+/* Revenue */
+.revenue-bar{display:flex;height:24px;border-radius:8px;overflow:hidden;margin:12px 0}
+.revenue-seg{transition:width .5s}
+.revenue-legend{display:flex;gap:20px;font-size:12px;color:var(--text2)}
+.legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
+
+/* Strategy selector */
+.strat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.strat-card{background:var(--bg2);border:2px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;transition:all .2s;text-align:center}
+.strat-card:hover{border-color:var(--ark-blue)}
+.strat-card.active{border-color:var(--ark-cyan);background:rgba(6,182,212,.05)}
+.strat-name{font-weight:700;font-size:15px;margin-bottom:4px}
+.strat-desc{font-size:12px;color:var(--text3)}
+.strat-leverage{font-size:22px;font-weight:700;color:var(--ark-cyan);margin:8px 0}
+
+/* Loading overlay */
+.loading-overlay{position:fixed;inset:0;background:rgba(10,14,23,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999}
+.spinner{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--ark-blue);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:var(--text2);margin-top:16px;font-size:14px}
+
+/* Toast */
+.toast{position:fixed;top:80px;right:20px;padding:16px 24px;border-radius:12px;font-size:14px;font-weight:600;z-index:200;transform:translateX(120%);transition:transform .3s}
+.toast.show{transform:translateX(0)}
+.toast.success{background:rgba(16,185,129,.9);color:#fff}
+.toast.error{background:rgba(239,68,68,.9);color:#fff}
+.toast.info{background:rgba(59,130,246,.9);color:#fff}
+
+/* Responsive */
+@media(max-width:768px){
+  .dash-grid{grid-template-columns:repeat(2,1fr)}
+  .strat-grid{grid-template-columns:1fr}
+  .auth-card{padding:32px 20px}
+  .positions-grid{grid-template-columns:1fr}
+}
+
+/* Footer */
+.footer{text-align:center;padding:20px;color:var(--text3);font-size:12px}
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<!-- Header -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">A</div>
+    <div>
+      <h1>ARK Quant Agent</h1>
+      <div class="ver">v2.0 SaaS — AI 量化机器人</div>
+    </div>
+  </div>
+  <div>
+    <button class="wallet-btn" id="walletBtn" onclick="handleWalletClick()">
+      <span id="walletLabel">🔗 连接钱包</span>
+    </button>
+  </div>
+</header>
+
+<!-- Loading -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">正在连接...</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Auth Screen (未登录) -->
+<div class="container" id="authScreen" style="display:none">
+  <div class="auth-screen">
+    <div class="auth-card">
+      <h2>🔗 连接钱包开始赚钱</h2>
+      <p>用 TokenPocket 钱包签名登录<br>质押 ARK 即可使用 AI 量化机器人</p>
+      
+      <div class="auth-requirements">
+        <h3>使用条件</h3>
+        <div class="req-item">
+          <div class="req-icon ok">✓</div>
+          <span>BNB Smart Chain 钱包</span>
+        </div>
+        <div class="req-item">
+          <div class="req-icon no" id="arkReqIcon">!</div>
+          <span id="arkReqText">持有 ≥ 100 ARK（链上验证）</span>
+        </div>
+        <div class="req-item">
+          <div class="req-icon ok">✓</div>
+          <span>少量 BNB 用于 Gas（≈0.01 BNB）</span>
+        </div>
+      </div>
+
+      <button class="connect-main" id="connectBtn" onclick="connectWallet()">
+        用 TokenPocket 连接
+      </button>
+      
+      <div class="auth-footer">
+        签名验证完全免费 · 不会发起任何链上交易<br>
+        收益分成：用户 70% · 平台 20% · 生态基金 10%
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Dashboard (已登录) -->
+<div class="container" id="dashScreen" style="display:none">
+  <!-- Stats Row -->
+  <div class="dash-grid">
+    <div class="stat-card">
+      <div class="stat-label">我的 ARK</div>
+      <div class="stat-value cyan" id="myArk">-</div>
+      <div class="stat-sub">门槛: ≥100 ARK</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">账户余额</div>
+      <div class="stat-value blue" id="myBalance">$0.00</div>
+      <div class="stat-sub" id="myBnb">BNB: -</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">累计收益</div>
+      <div class="stat-value green" id="myPnl">+$0.00</div>
+      <div class="stat-sub" id="myWinRate">胜率: -</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">在线用户</div>
+      <div class="stat-value" id="onlineUsers">0</div>
+      <div class="stat-sub">平台总用户: <span id="totalUsers">0</span></div>
+    </div>
+  </div>
+
+  <!-- Engine Control -->
+  <div class="engine-panel">
+    <div class="panel-title">⚡ 量化引擎</div>
+    <div class="engine-controls">
+      <button class="btn btn-primary" id="startBtn" onclick="startEngine()">▶ 启动引擎</button>
+      <button class="btn btn-danger" id="stopBtn" onclick="stopEngine()" style="display:none">⏹ 停止引擎</button>
+      <button class="btn btn-outline" id="pauseBtn" onclick="togglePause()" style="display:none">⏸ 暂停</button>
+    </div>
+    
+    <!-- Strategy -->
+    <div class="panel-title" style="margin-top:8px">📊 选择策略</div>
+    <div class="strat-grid">
+      <div class="strat-card" data-strategy="conservative" onclick="setStrategy('conservative')">
+        <div class="strat-name">🛡️ 保守</div>
+        <div class="strat-leverage">3x</div>
+        <div class="strat-desc">低风险 · 稳健收益<br>最大回撤 ≤8%</div>
+      </div>
+      <div class="strat-card active" data-strategy="balanced" onclick="setStrategy('balanced')">
+        <div class="strat-name">⚖️ 平衡</div>
+        <div class="strat-leverage">6x</div>
+        <div class="strat-desc">中风险 · 攻守兼备<br>最大回撤 ≤15%</div>
+      </div>
+      <div class="strat-card" data-strategy="aggressive" onclick="setStrategy('aggressive')">
+        <div class="strat-name">🚀 激进</div>
+        <div class="strat-leverage">12x</div>
+        <div class="strat-desc">高风险 · 追求暴利<br>最大回撤 ≤30%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Positions -->
+  <div class="engine-panel">
+    <div class="panel-title">📈 当前持仓 <span id="posCount" style="font-size:12px;color:var(--text3);margin-left:8px">0/6</span></div>
+    <div class="positions-grid" id="positionsGrid">
+      <div style="color:var(--text3);font-size:14px;padding:20px">暂无持仓</div>
+    </div>
+  </div>
+
+  <!-- Revenue -->
+  <div class="engine-panel">
+    <div class="panel-title">💰 收益分配（每次平仓自动执行）</div>
+    <div class="revenue-bar">
+      <div class="revenue-seg" style="width:70%;background:var(--ark-green)"></div>
+      <div class="revenue-seg" style="width:20%;background:var(--ark-blue)"></div>
+      <div class="revenue-seg" style="width:10%;background:var(--ark-purple)"></div>
+    </div>
+    <div class="revenue-legend">
+      <span><span class="legend-dot" style="background:var(--ark-green)"></span>用户 70%</span>
+      <span><span class="legend-dot" style="background:var(--ark-blue)"></span>平台 20%</span>
+      <span><span class="legend-dot" style="background:var(--ark-purple)"></span>生态基金 10%</span>
+    </div>
+    <div style="margin-top:12px;font-size:13px;color:var(--text2)">
+      平台钱包: <code style="color:var(--text)">0xb6DE...C28A</code>
+    </div>
+  </div>
+
+  <!-- Recent Trades -->
+  <div class="engine-panel">
+    <div class="panel-title">📋 最近交易</div>
+    <div class="trade-list" id="tradeList">
+      <div style="color:var(--text3);font-size:14px;padding:20px">暂无交易记录</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    ARK Quant Agent v2.0 · AI 量化机器人 · 策略自动进化<br>
+    <span style="color:var(--ark-blue)">ARK</span> 是本平台唯一使用代币 · 合约: 0xCae1...8B9D
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// State
+// ═══════════════════════════════════════
+const API_BASE = window.location.origin;
+let currentUser = null;
+let authToken = null;
+let refreshTimer = null;
+
+// ═══════════════════════════════════════
+// Init
+// ═══════════════════════════════════════
+window.addEventListener('load', () => {
+  authToken = localStorage.getItem('ark_quant_token');
+  if (authToken) {
+    loadDashboard();
+  } else {
+    hideLoading();
+    showScreen('auth');
+  }
+});
+
+function showScreen(screen) {
+  document.getElementById('authScreen').style.display = screen === 'auth' ? 'block' : 'none';
+  document.getElementById('dashScreen').style.display = screen === 'dash' ? 'block' : 'none';
+}
+
+function showLoading(text) {
+  document.getElementById('loadingOverlay').style.display = 'flex';
+  document.getElementById('loadingText').textContent = text || '加载中...';
+}
+
+function hideLoading() {
+  document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ═══════════════════════════════════════
+// Wallet Connect (TP Wallet)
+// ═══════════════════════════════════════
+function handleWalletClick() {
+  if (authToken) {
+    // 已登录 → 退出
+    if (confirm('确定退出登录？')) {
+      authToken = null;
+      localStorage.removeItem('ark_quant_token');
+      currentUser = null;
+      updateWalletBtn();
+      showScreen('auth');
+      if (refreshTimer) clearInterval(refreshTimer);
+    }
+  } else {
+    connectWallet();
+  }
+}
+
+async function connectWallet() {
+  const btn = document.getElementById('connectBtn');
+  btn.disabled = true;
+  btn.textContent = '检查钱包...';
+
+  // 1. 检查是否有 TP 钱包注入
+  if (!window.ethereum && !window.tpwallet) {
+    showToast('请在 TokenPocket 中打开此页面', 'error');
+    btn.disabled = false;
+    btn.textContent = '用 TokenPocket 连接';
+    return;
+  }
+
+  const provider = window.tpwallet || window.ethereum;
+
+  try {
+    // 2. 请求钱包地址
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    if (!accounts || accounts.length === 0) throw new Error('未获取到钱包地址');
+    
+    const address = accounts[0];
+    btn.textContent = '获取签名...';
+
+    // 3. 获取签名消息
+    const nonceRes = await fetch(`${API_BASE}/api/auth/nonce?address=${address}`);
+    const nonceData = await nonceRes.json();
+    if (nonceData.error) throw new Error(nonceData.error);
+
+    // 4. TP 钱包签名
+    const signature = await provider.request({
+      method: 'personal_sign',
+      params: [nonceData.message, address],
+    });
+
+    btn.textContent = '验证 ARK 持仓...';
+
+    // 5. 后端验证
+    const verifyRes = await fetch(`${API_BASE}/api/auth/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, message: nonceData.message, signature }),
+    });
+    const verifyData = await verifyRes.json();
+
+    if (!verifyData.success) {
+      throw new Error(verifyData.error || '验证失败');
+    }
+
+    // 6. 登录成功
+    authToken = verifyData.token;
+    currentUser = verifyData.user;
+    localStorage.setItem('ark_quant_token', authToken);
+
+    showToast(`✅ 登录成功！ARK: ${currentUser.arkBalance?.toFixed(2)}`, 'success');
+    loadDashboard();
+
+  } catch (e) {
+    showToast(e.message || '连接失败', 'error');
+    btn.disabled = false;
+    btn.textContent = '用 TokenPocket 连接';
+  }
+}
+
+// ═══════════════════════════════════════
+// Dashboard
+// ═══════════════════════════════════════
+async function loadDashboard() {
+  showLoading('加载数据...');
+  try {
+    const res = await apiFetch('/api/dashboard/data');
+    if (res.error) throw new Error(res.error);
+    
+    currentUser = res.user;
+    renderDashboard(res);
+    showScreen('dash');
+    updateWalletBtn();
+
+    // 自动刷新
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(() => refreshData(), 10000);
+  } catch (e) {
+    showToast(e.message, 'error');
+    authToken = null;
+    localStorage.removeItem('ark_quant_token');
+    showScreen('auth');
+  }
+  hideLoading();
+}
+
+async function refreshData() {
+  try {
+    const res = await apiFetch('/api/dashboard/data');
+    if (res && !res.error) renderDashboard(res);
+  } catch (e) {}
+}
+
+function renderDashboard(data) {
+  const { user, engine, platform } = data;
+
+  // Stats
+  document.getElementById('myArk').textContent = user.arkBalance?.toFixed(2) || '-';
+  document.getElementById('myBalance').textContent = '$' + (engine?.stats?.totalPnl?.toFixed(2) || '0.00');
+  document.getElementById('myBnb').textContent = '策略: ' + (user.strategy || 'balanced');
+  document.getElementById('myPnl').textContent = (engine?.stats?.totalPnl >= 0 ? '+$' : '-$') + Math.abs(engine?.stats?.totalPnl || 0).toFixed(2);
+  document.getElementById('myPnl').className = 'stat-value ' + ((engine?.stats?.totalPnl || 0) >= 0 ? 'green' : 'red');
+  document.getElementById('myWinRate').textContent = '胜率: ' + (engine?.winRate || 'N/A');
+  document.getElementById('onlineUsers').textContent = platform?.activeUsers || 0;
+  document.getElementById('totalUsers').textContent = platform?.totalUsers || 0;
+
+  // Engine buttons
+  const running = engine?.running;
+  document.getElementById('startBtn').style.display = running ? 'none' : '';
+  document.getElementById('stopBtn').style.display = running ? '' : 'none';
+  document.getElementById('pauseBtn').style.display = running ? '' : 'none';
+
+  // Strategy
+  document.querySelectorAll('.strat-card').forEach(c => {
+    c.classList.toggle('active', c.dataset.strategy === user.strategy);
+  });
+
+  // Positions
+  const positions = engine?.positions || {};
+  const posKeys = Object.keys(positions);
+  document.getElementById('posCount').textContent = `${posKeys.length}/6`;
+  
+  const grid = document.getElementById('positionsGrid');
+  if (posKeys.length === 0) {
+    grid.innerHTML = '<div style="color:var(--text3);font-size:14px;padding:20px">暂无持仓</div>';
+  } else {
+    grid.innerHTML = posKeys.map(sym => {
+      const pos = positions[sym];
+      const pnl = pos.unrealizedPnl || 0;
+      const pnlPct = pos.pnlPct || 0;
+      return `
+        <div class="pos-card">
+          <div class="pos-header">
+            <span class="pos-symbol">${sym}</span>
+            <span class="pos-side ${pos.side?.toLowerCase() || 'long'}">${pos.side || 'LONG'}</span>
+          </div>
+          <div class="pos-row"><span>杠杆</span><span>${pos.leverage || '-'}x</span></div>
+          <div class="pos-row"><span>开仓价</span><span>${pos.entryPrice?.toFixed(4) || '-'}</span></div>
+          <div class="pos-row"><span>当前价</span><span>${pos.currentPrice?.toFixed(4) || '-'}</span></div>
+          <div class="pos-pnl" style="color:${pnl >= 0 ? 'var(--ark-green)' : 'var(--ark-red)'}">
+            ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%)
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // Trades
+  const trades = engine?.recentTrades || [];
+  const tradeList = document.getElementById('tradeList');
+  if (trades.length === 0) {
+    tradeList.innerHTML = '<div style="color:var(--text3);font-size:14px;padding:20px">暂无交易记录</div>';
+  } else {
+    tradeList.innerHTML = trades.reverse().map(t => {
+      const time = new Date(t.timestamp).toLocaleString('zh-CN');
+      const pnl = t.pnl || 0;
+      return `
+        <div class="trade-item">
+          <span class="trade-sym">${t.symbol}</span>
+          <span class="trade-side" style="background:${t.action === 'LONG' ? 'rgba(16,185,129,.15);color:var(--ark-green)' : t.action === 'SHORT' ? 'rgba(239,68,68,.15);color:var(--ark-red)' : 'rgba(100,116,139,.15);color:var(--text3)'}">${t.action}</span>
+          <span style="color:var(--text2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.reasoning || ''}</span>
+          <span class="trade-pnl" style="color:${pnl >= 0 ? 'var(--ark-green)' : 'var(--ark-red)'}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(2)}</span>
+          <span class="trade-time">${time}</span>
+        </div>`;
+    }).join('');
+  }
+}
+
+function updateWalletBtn() {
+  const btn = document.getElementById('walletBtn');
+  const label = document.getElementById('walletLabel');
+  if (currentUser) {
+    const short = currentUser.address ? currentUser.address.slice(0, 6) + '...' + currentUser.address.slice(-4) : '已连接';
+    label.innerHTML = `<span class="addr">${short}</span>`;
+    btn.className = 'wallet-btn connected';
+  } else {
+    label.textContent = '🔗 连接钱包';
+    btn.className = 'wallet-btn';
+  }
+}
+
+// ═══════════════════════════════════════
+// Engine Controls
+// ═══════════════════════════════════════
+async function startEngine() {
+  showLoading('启动引擎...');
+  try {
+    const res = await apiFetch('/api/engine/start', { method: 'POST' });
+    if (res.success) {
+      showToast('✅ 引擎已启动', 'success');
+      refreshData();
+    } else {
+      showToast(res.reason || '启动失败', 'error');
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+  hideLoading();
+}
+
+async function stopEngine() {
+  if (!confirm('确定停止引擎？')) return;
+  try {
+    const res = await apiFetch('/api/engine/stop', { method: 'POST' });
+    if (res.success) {
+      showToast('引擎已停止', 'info');
+      refreshData();
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function togglePause() {
+  try {
+    const res = await apiFetch('/api/engine/pause', { method: 'POST' });
+    showToast(res.paused ? '已暂停' : '已恢复', 'info');
+    refreshData();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function setStrategy(strategy) {
+  try {
+    const res = await apiFetch('/api/engine/strategy', {
+      method: 'POST',
+      body: JSON.stringify({ strategy }),
+    });
+    if (res.success) {
+      showToast(`策略切换为 ${strategy}`, 'success');
+      document.querySelectorAll('.strat-card').forEach(c => {
+        c.classList.toggle('active', c.dataset.strategy === strategy);
+      });
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ═══════════════════════════════════════
+// API Helper
+// ═══════════════════════════════════════
+async function apiFetch(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+  
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  return res.json();
+}
+</script>
+</body>
+</html>

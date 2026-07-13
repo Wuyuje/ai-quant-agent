@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>AI Quant 登录</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh;padding:16px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;max-width:420px;margin:20px auto}
+h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;color:#8b949e;font-size:.8em;margin-bottom:4px}
+.form-group input{width:100%;padding:10px 12px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:.9em}
+.form-group input:focus{border-color:#58a6ff;outline:none}
+.btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:.95em;font-weight:600;cursor:pointer;margin-top:6px}
+.btn-blue{background:#1f6feb;color:#fff}
+.btn-green{background:#238636;color:#fff}
+.btn:disabled{opacity:.5}
+.sep{text-align:center;color:#484f58;margin:16px 0;font-size:.8em}
+#log{display:none;background:#000;color:#0f0;padding:10px;border-radius:8px;margin-top:16px;font-family:monospace;font-size:.7em;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+
+/* 仪表盘样式 */
+#dash{display:none}
+.dash-card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px;margin-bottom:12px}
+.dash-card h3{color:#58a6ff;font-size:.9em;margin-bottom:8px}
+.dash-row{display:flex;justify-content:space-between;padding:4px 0;font-size:.85em}
+.dash-row .label{color:#8b949e}
+.dash-row .value{color:#e6edf3;font-weight:500}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.75em}
+.status-on{background:#0d4429;color:#3fb950;border:1px solid #238636}
+.status-off{background:#490b0b;color:#f85149;border:1px solid #da3633}
+.trade-item{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:.8em}
+.trade-item .sym{color:#58a6ff;font-weight:600}
+.trade-item .pnl-pos{color:#3fb950}
+.trade-item .pnl-neg{color:#f85149}
+.logout-btn{background:#da3633;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:.85em;cursor:pointer;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="card" id="loginCard">
+  <h2>🔐 AI Quant Agent</h2>
+  <div class="form-group">
+    <label>钱包地址 (0x...)</label>
+    <input id="addr" placeholder="0x..." autocomplete="off">
+  </div>
+  <div class="form-group">
+    <label>密码</label>
+    <input id="pass" type="password" placeholder="密码">
+  </div>
+  <button class="btn btn-blue" id="loginBtn" onclick="doAction('login')">登录</button>
+  <div class="sep">─── 或 ───</div>
+  <button class="btn btn-green" id="regBtn" onclick="doAction('reg')">注册新账号</button>
+  <div id="msg" style="margin-top:10px;text-align:center;font-size:.85em;display:none"></div>
+  <div id="log"></div>
+</div>
+
+<!-- 仪表盘 -->
+<div id="dash">
+  <div class="dash-card">
+    <h3>📊 账户信息</h3>
+    <div class="dash-row"><span class="label">地址</span><span class="value" id="dAddr">--</span></div>
+    <div class="dash-row"><span class="label">USDT</span><span class="value" id="dUsdt">--</span></div>
+    <div class="dash-row"><span class="label">BNB</span><span class="value" id="dBnb">--</span></div>
+    <div class="dash-row"><span class="label">策略</span><span class="value" id="dStrategy">--</span></div>
+    <div class="dash-row"><span class="label">自动交易</span><span class="value" id="dTrading">--</span></div>
+  </div>
+  <div class="dash-card">
+    <h3>📈 最近交易</h3>
+    <div id="dTrades">暂无</div>
+  </div>
+  <div class="dash-card">
+    <h3>💰 Vault</h3>
+    <div class="dash-row"><span class="label">合约地址</span><span class="value" id="dVault">--</span></div>
+    <div class="dash-row"><span class="label">ARK</span><span class="value" id="dArk">--</span></div>
+  </div>
+  <div style="text-align:center">
+    <button class="logout-btn" onclick="logout()">退出登录</button>
+  </div>
+</div>
+
+<script>
+var logEl = document.getElementById('log');
+function log(s) {
+  logEl.style.display = 'block';
+  var t = new Date().toLocaleTimeString();
+  logEl.innerHTML += t + ' ' + s + '\n';
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+var API = location.origin;
+
+// 页面加载时检查是否已登录
+(function() {
+  var token = localStorage.getItem('ark_token');
+  var user = localStorage.getItem('ark_user');
+  if (token && user) {
+    log('发现已保存的登录信息，正在验证...');
+    verifyAndShow(token);
+  }
+})();
+
+function doAction(mode) {
+  var a = document.getElementById('addr').value.trim();
+  var p = document.getElementById('pass').value.trim();
+  if (!a || !p) { showMsg('请输入钱包地址和密码', 'red'); return; }
+  if (!a.startsWith('0x') || a.length !== 42) { showMsg('钱包地址格式不正确', 'red'); return; }
+  if (mode === 'reg' && p.length < 6) { showMsg('密码至少6位', 'red'); return; }
+
+  document.getElementById('loginBtn').disabled = true;
+  document.getElementById('regBtn').disabled = true;
+
+  var url = mode === 'reg' ? '/api/auth/register' : '/api/auth/login';
+  var body = mode === 'reg'
+    ? { username: a.toLowerCase(), password: p, walletAddress: a.toLowerCase() }
+    : { username: a.toLowerCase(), password: p };
+
+  log('>>> ' + (mode === 'reg' ? '注册' : '登录'));
+  log('POST ' + url);
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', url, true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.timeout = 20000;
+  xhr.onload = function() {
+    log('状态: ' + xhr.status);
+    try {
+      var d = JSON.parse(xhr.responseText);
+      if (d.success) {
+        log('✅ 成功！token=' + d.token.substring(0, 15) + '...');
+        localStorage.setItem('ark_token', d.token);
+        localStorage.setItem('ark_user', JSON.stringify(d.user));
+        showMsg('✅ 成功！', 'green');
+        setTimeout(function() { verifyAndShow(d.token); }, 300);
+      } else {
+        log('❌ ' + d.error);
+        showMsg('❌ ' + d.error, 'red');
+      }
+    } catch(e) {
+      log('❌ 解析错误');
+      showMsg('❌ 服务器错误', 'red');
+    }
+    document.getElementById('loginBtn').disabled = false;
+    document.getElementById('regBtn').disabled = false;
+  };
+  xhr.onerror = function() {
+    log('❌ 网络错误');
+    showMsg('❌ 网络错误', 'red');
+    document.getElementById('loginBtn').disabled = false;
+    document.getElementById('regBtn').disabled = false;
+  };
+  xhr.ontimeout = function() {
+    log('❌ 超时');
+    showMsg('❌ 超时', 'red');
+    document.getElementById('loginBtn').disabled = false;
+    document.getElementById('regBtn').disabled = false;
+  };
+  xhr.send(JSON.stringify(body));
+}
+
+function verifyAndShow(token) {
+  log('验证token并加载仪表盘...');
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', API + '/api/dashboard', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('X-API-Key', token);
+  xhr.timeout = 15000;
+  xhr.onload = function() {
+    log('dashboard状态: ' + xhr.status);
+    try {
+      var d = JSON.parse(xhr.responseText);
+      if (d.user) {
+        log('✅ 验证通过！');
+        localStorage.setItem('ark_user', JSON.stringify(d.user));
+        showDashboard(d);
+      } else {
+        log('❌ 验证失败: ' + xhr.responseText.substring(0, 100));
+        showMsg('请重新登录', 'red');
+        localStorage.removeItem('ark_token');
+        localStorage.removeItem('ark_user');
+        document.getElementById('loginCard').style.display = 'block';
+        document.getElementById('dash').style.display = 'none';
+      }
+    } catch(e) {
+      log('❌ 解析错误');
+      showMsg('请重新登录', 'red');
+      localStorage.removeItem('ark_token');
+      localStorage.removeItem('ark_user');
+    }
+    document.getElementById('loginBtn').disabled = false;
+    document.getElementById('regBtn').disabled = false;
+  };
+  xhr.onerror = function() {
+    log('❌ 网络错误');
+    showMsg('网络错误，请重试', 'red');
+    document.getElementById('loginBtn').disabled = false;
+    document.getElementById('regBtn').disabled = false;
+  };
+  xhr.ontimeout = function() {
+    log('❌ 超时');
+    showMsg('超时，请重试', 'red');
+  };
+  xhr.send(JSON.stringify({}));
+}
+
+function showDashboard(data) {
+  document.getElementById('loginCard').style.display = 'none';
+  document.getElementById('dash').style.display = 'block';
+
+  var u = data.user || {};
+  document.getElementById('dAddr').textContent = (u.address || '--').substring(0, 10) + '...' + (u.address || '').slice(-6);
+  document.getElementById('dUsdt').textContent = (u.usdtBalance || 0).toFixed(2);
+  document.getElementById('dBnb').textContent = (u.bnbBalance || 0).toFixed(6);
+  document.getElementById('dStrategy').textContent = u.strategy || 'balanced';
+  document.getElementById('dTrading').innerHTML = u.tradingEnabled
+    ? '<span class="status-badge status-on">开启</span>'
+    : '<span class="status-badge status-off">关闭</span>';
+  document.getElementById('dVault').textContent = u.vaultAddress ? u.vaultAddress.substring(0, 8) + '...' + u.vaultAddress.slice(-6) : '--';
+  document.getElementById('dArk').textContent = (u.arkBalance || 0).toFixed(4);
+
+  // 最近交易
+  var trades = (data.engine || {}).recentTrades || [];
+  var tradesHtml = '';
+  if (trades.length === 0) {
+    tradesHtml = '<div style="color:#8b949e;font-size:.8em">暂无交易记录</div>';
+  } else {
+    for (var i = 0; i < Math.min(trades.length, 5); i++) {
+      var t = trades[i];
+      var pnlClass = (t.pnl || 0) >= 0 ? 'pnl-pos' : 'pnl-neg';
+      var pnlText = t.pnl !== undefined ? ((t.pnl >= 0 ? '+' : '') + t.pnl.toFixed(4)) : t.action;
+      var time = new Date(t.timestamp).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      tradesHtml += '<div class="trade-item">'
+        + '<span class="sym">' + t.symbol + '</span> '
+        + t.action + ' '
+        + '<span class="' + pnlClass + '">' + pnlText + '</span>'
+        + '<div style="color:#484f58;margin-top:2px">' + time + '</div>'
+        + '</div>';
+    }
+  }
+  document.getElementById('dTrades').innerHTML = tradesHtml;
+
+  log('仪表盘已显示');
+}
+
+function logout() {
+  localStorage.removeItem('ark_token');
+  localStorage.removeItem('ark_user');
+  document.getElementById('loginCard').style.display = 'block';
+  document.getElementById('dash').style.display = 'none';
+  logEl.innerHTML = '';
+  logEl.style.display = 'none';
+  showMsg('已退出', 'gray');
+}
+
+function showMsg(text, color) {
+  var m = document.getElementById('msg');
+  m.style.display = 'block';
+  m.textContent = text;
+  m.style.color = color;
+  setTimeout(function() { m.style.display = 'none'; }, 3000);
+}
+</script>
+</body>
+</html>

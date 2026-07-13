@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+coverage
+data/*.json
+logs/*
+.env
+*.md
+backtest/results/*
+artifacts
+cache
+ml-service/models/*.h5
+ml-service/models/*.pkl
+ml-service/__pycache__

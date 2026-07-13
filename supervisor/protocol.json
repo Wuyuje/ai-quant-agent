@@ -1,0 +1,49 @@
+{
+  "_protocol": "三机器人通信协议 v1.0",
+  "_flow": "Supervisor发现问题 → 写issue文件 → RepairBot监听到 → 修复 → 写fix文件 → Supervisor验证",
+
+  "directories": {
+    "issues": "supervisor/issues/ — Supervisor写入问题文件,RepairBot消费后删除",
+    "fixes": "supervisor/fixes/ — RepairBot写入修复结果,Supervisor读取后删除",
+    "logs": "supervisor/logs/ — 各自日志"
+  },
+
+  "issue_format": {
+    "id": "issue_时间戳_序号",
+    "timestamp": 1783620000000,
+    "severity": "critical|high|medium|low",
+    "type": "position_heavy_loss|consecutive_losses|api_banned|program_error|strategy_anomaly|balance_drop|ws_disconnect|stale_klines|memory_leak|user_loss|engine_crash|...",
+    "target": "BTCUSDT|all|engine|user:0xabc...|sub_engine:XAG-PERP",
+    "description": "BTCUSDT LONG 亏损12%",
+    "context": {},
+    "suggested_fix": "close_position|adjust_params|restart_engine|fix_code|pause_sub_engine|..."
+  },
+
+  "fix_format": {
+    "id": "fix_时间戳_序号",
+    "issue_id": "对应issue的id",
+    "timestamp": 1783620000000,
+    "action": "close_position|adjust_params|restart_engine|fix_code|...",
+    "description": "已平仓BTCUSDT+止损收紧到2%",
+    "success": true,
+    "details": {}
+  },
+
+  "api_endpoints": {
+    "quant_engine": {
+      "status": "GET http://localhost:10010/api/status",
+      "positions": "GET http://localhost:10010/api/status (positions字段)",
+      "trades": "GET http://localhost:10010/api/trades",
+      "evolution": "GET http://localhost:10010/api/evolution",
+      "balance": "GET http://localhost:10010/api/balance",
+      "close_position": "POST http://localhost:10010/api/close/:symbol",
+      "start_engine": "POST http://localhost:10010/api/engine/start",
+      "stop_engine": "POST http://localhost:10010/api/engine/stop",
+      "config": "GET/POST http://localhost:10010/api/config"
+    },
+    "multi_engine": {
+      "overview": "GET http://localhost:10030/admin/overview?token=ark-admin-v3-secret",
+      "users": "GET http://localhost:10030/admin/users?token=ark-admin-v3-secret"
+    }
+  }
+}

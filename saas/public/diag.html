@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>诊断</title>
+<style>
+body{background:#000;color:#0f0;font:14px monospace;padding:20px;word-break:break-all}
+.ok{color:#0f0}.err{color:#f00}.warn{color:#ff0}
+</style>
+</head>
+<body>
+<h3>🔍 诊断页面</h3>
+<div id="log"></div>
+<script>
+var log = document.getElementById('log');
+function add(msg, cls) {
+  log.innerHTML += '<div class="'+(cls||'')+'">' + new Date().toLocaleTimeString() + ' ' + msg + '</div>';
+  log.scrollTop = log.scrollHeight;
+}
+add('JS 运行了 ✅');
+
+// Step 1: 检查 localStorage
+try {
+  var token = localStorage.getItem('ark_token');
+  var user = localStorage.getItem('ark_user');
+  add('localStorage token: ' + (token ? token.substring(0,20)+'...' : '无'), token ? 'ok' : 'warn');
+  add('localStorage user: ' + (user ? user.substring(0,50)+'...' : '无'), user ? 'ok' : 'warn');
+} catch(e) { add('localStorage 错误: ' + e.message, 'err'); }
+
+// Step 2: 测试 API 登录
+add('开始登录测试...');
+var xhr = new XMLHttpRequest();
+xhr.open('POST', '/api/auth/login', true);
+xhr.setRequestHeader('Content-Type', 'application/json');
+xhr.timeout = 10000;
+xhr.onreadystatechange = function() {
+  add('readyState=' + xhr.readyState + ' status=' + xhr.status);
+  if (xhr.readyState === 4) {
+    try {
+      var r = JSON.parse(xhr.responseText);
+      if (r.success) {
+        add('✅ 登录成功! token=' + r.token.substring(0,20) + '...', 'ok');
+        localStorage.setItem('ark_token', r.token);
+        localStorage.setItem('ark_user', JSON.stringify(r.user));
+        
+        // Step 3: 测试 dashboard API
+        add('测试 dashboard...');
+        var xhr2 = new XMLHttpRequest();
+        xhr2.open('POST', '/api/dashboard', true);
+        xhr2.setRequestHeader('Content-Type', 'application/json');
+        xhr2.setRequestHeader('X-API-Key', r.token);
+        xhr2.timeout = 10000;
+        xhr2.onreadystatechange = function() {
+          if (xhr2.readyState === 4) {
+            try {
+              var d = JSON.parse(xhr2.responseText);
+              if (d.user) {
+                add('✅ Dashboard 数据获取成功! 余额: ' + (d.user.usdtBalance||0).toFixed(2) + ' USDT', 'ok');
+                add('现在可以访问 <a href="/" style="color:#0ff">主页</a>', 'ok');
+              } else {
+                add('❌ Dashboard 数据为空', 'err');
+              }
+            } catch(e) { add('❌ Dashboard 解析失败: ' + e.message, 'err'); }
+          }
+        };
+        xhr2.onerror = function() { add('❌ Dashboard 网络错误', 'err'); };
+        xhr2.send('{}');
+      } else {
+        add('❌ 登录失败: ' + r.error, 'err');
+      }
+    } catch(e) { add('❌ 解析失败: ' + e.message + ' raw=' + xhr.responseText.substring(0,100), 'err'); }
+  }
+};
+xhr.onerror = function() { add('❌ 网络错误', 'err'); };
+xhr.ontimeout = function() { add('❌ 超时', 'err'); };
+xhr.send(JSON.stringify({username:'0xb5e113dd2fcb87a458191c3b0e2d606129455d4e', password:'Zxzfwwdq138'}));
+</script>
+</body>
+</html>

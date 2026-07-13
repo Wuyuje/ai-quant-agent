@@ -1,0 +1,19 @@
+/**
+ * Trading Pairs Configuration
+ * 合约交易对配置 - 含精度、最小下单量、流动性评估
+ */
+module.exports = {
+  BTCUSDT:  { qtyPrecision: 3, minQty: 0.001, tickSize: 0.1,  baseAsset: 'BTC',  category: 'major',   liquidity: 'AAA' },
+  ETHUSDT:  { qtyPrecision: 3, minQty: 0.001, tickSize: 0.01, baseAsset: 'ETH',  category: 'major',   liquidity: 'AAA' },
+  SOLUSDT:  { qtyPrecision: 1, minQty: 0.1,   tickSize: 0.01, baseAsset: 'SOL',  category: 'major',   liquidity: 'AA' },
+  BNBUSDT:  { qtyPrecision: 2, minQty: 0.01,  tickSize: 0.01, baseAsset: 'BNB',  category: 'major',   liquidity: 'AA' },
+  XRPUSDT:  { qtyPrecision: 0, minQty: 1,     tickSize: 0.0001,baseAsset: 'XRP',  category: 'major',   liquidity: 'AA' },
+  DOGEUSDT: { qtyPrecision: 0, minQty: 1,     tickSize: 0.00001,baseAsset: 'DOGE', category: 'meme',    liquidity: 'A' },
+  SUIUSDT:  { qtyPrecision: 0, minQty: 1,     tickSize: 0.0001,baseAsset: 'SUI',  category: 'layer1',  liquidity: 'A' },
+  ADAUSDT:  { qtyPrecision: 0, minQty: 1,     tickSize: 0.0001,baseAsset: 'ADA',  category: 'layer1',  liquidity: 'A' },
+  NEARUSDT: { qtyPrecision: 0, minQty: 1,     tickSize: 0.001, baseAsset: 'NEAR', category: 'layer1',  liquidity: 'A' },
+  AVAXUSDT: { qtyPrecision: 1, minQty: 0.1,   tickSize: 0.01, baseAsset: 'AVAX', category: 'layer1',  liquidity: 'A' },
+  LINKUSDT: { qtyPrecision: 1, minQty: 0.1,   tickSize: 0.01, baseAsset: 'LINK', category: 'defi',    liquidity: 'A' },
+  ARBUSDT:  { qtyPrecision: 0, minQty: 1,     tickSize: 0.0001,baseAsset: 'ARB',  category: 'layer2',  liquidity: 'A' },
+  SPCXUSDT: { qtyPrecision: 0, minQty: 1,     tickSize: 0.0001,baseAsset: 'SPCX', category: 'micro',   liquidity: 'B' }
+};

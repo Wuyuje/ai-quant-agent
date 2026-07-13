@@ -1,0 +1,53 @@
+{
+  "binance": {
+    "apiKey": "${BINANCE_API_KEY}",
+    "apiSecret": "${BINANCE_API_SECRET}",
+    "futuresBase": "https://fapi.binance.com",
+    "wsBase": "wss://fstream.binance.com"
+  },
+  "trading": {
+    "maxLeverage": 3,
+    "defaultLeverage": 2,
+    "maxPositionPercent": 10,
+    "maxSingleTradePercent": 8,
+    "stopLossPercent": 3,
+    "takeProfitPercent": 8,
+    "maxDrawdownPercent": 6,
+    "dailyLossLimitPercent": 5,
+    "cooldownAfterLossMs": 600000,
+    "maxPositions": 6
+  },
+  "strategy": {
+    "scoreThreshold": 20,
+    "hardStopLossPct": -5,
+    "accountMaxDrawdownPct": -4,
+    "drawdownPauseHours": 48,
+    "positionTimeoutHours": 24,
+    "dynamicWeightEnabled": true,
+    "dynamicWeightMinTrades": 15,
+    "dynamicWeightDecayPct": 40
+  },
+  "data": {
+    "klineInterval": "1h",
+    "klineLimit": 150,
+    "wsReconnectMs": 5000,
+    "sentimentRefreshMs": 300000,
+    "onchainRefreshMs": 60000
+  },
+  "ai": {
+    "enabled": true,
+    "mode": "onchain_plus_rule",
+    "minConfidence": 0.25,
+    "modelVersion": "v9-aggressive-trend"
+  },
+  "deepseek": {
+    "apiKey": "${DEEPSEEK_API_KEY}",
+    "model": "deepseek-chat"
+  },
+  "openrouter": {
+    "apiKey": "${OPENROUTER_API_KEY}"
+  },
+  "ml": {
+    "serviceUrl": "${ML_SERVICE_URL:http://localhost:8100}"
+  }
+}

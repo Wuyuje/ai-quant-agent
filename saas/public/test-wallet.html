@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wallet Test</title>
+</head>
+<body style="background:#000;color:#fff;font-family:monospace;padding:20px;">
+<h3>Wallet Debug Test</h3>
+<div id="log"></div>
+<script>
+function log(msg) {
+    document.getElementById('log').innerHTML += '<p>' + msg + '</p>';
+    console.log(msg);
+}
+
+log('1. 页面加载完成');
+log('2. window.ethereum: ' + (typeof window.ethereum));
+log('3. window.web3: ' + (typeof window.web3));
+log('4. navigator.userAgent: ' + navigator.userAgent);
+
+if (typeof window.ethereum !== 'undefined') {
+    log('5. ethereum.isTrust: ' + window.ethereum.isTrust);
+    log('5b. ethereum.isMetaMask: ' + window.ethereum.isMetaMask);
+    log('5c. ethereum.chainId: ' + window.ethereum.chainId);
+    log('5d. ethereum.selectedAddress: ' + window.ethereum.selectedAddress);
+    
+    // 尝试最简单的连接
+    window.ethereum.request({ method: 'eth_accounts' })
+        .then(function(accs) { log('6. eth_accounts: ' + JSON.stringify(accs)); })
+        .catch(function(e) { log('6. eth_accounts ERROR: ' + e.message); });
+    
+    window.ethereum.request({ method: 'eth_chainId' })
+        .then(function(id) { log('7. eth_chainId: ' + id); })
+        .catch(function(e) { log('7. eth_chainId ERROR: ' + e.message); });
+} else {
+    log('5. 没有检测到 window.ethereum!');
+}
+
+// 检查 ethers
+log('8. ethers loaded: ' + (typeof ethers));
+</script>
+</body>
+</html>

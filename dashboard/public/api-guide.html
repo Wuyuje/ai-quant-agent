@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>连接币安账户 - 量化机器人</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/@phosphor-icons/web@2.0.3"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0e17;--card:#111827;--card2:#1a2332;--border:#1e2d3d;
+  --primary:#00d4aa;--primary-dim:rgba(0,212,170,.12);
+  --yellow:#f0b90b;--yellow-dim:rgba(240,185,11,.12);
+  --red:#ef4444;--red-dim:rgba(239,68,68,.12);
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+  --radius:16px;--radius-sm:10px;
+}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden}
+.container{max-width:720px;margin:0 auto;padding:20px 16px 80px}
+
+/* Hero */
+.hero{text-align:center;padding:40px 0 32px;position:relative}
+.hero::before{content:'';position:absolute;top:-100px;left:50%;transform:translateX(-50%);width:400px;height:400px;background:radial-gradient(circle,rgba(0,212,170,.08) 0%,transparent 70%);pointer-events:none}
+.hero .icon-wrap{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--primary),#00a88a);display:inline-flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 0 40px rgba(0,212,170,.3)}
+.hero .icon-wrap i{font-size:40px;color:#fff}
+.hero h1{font-size:28px;font-weight:800;margin-bottom:8px;background:linear-gradient(135deg,#fff,var(--primary));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero p{color:var(--text2);font-size:15px}
+
+/* Progress Bar */
+.progress-bar{display:flex;align-items:center;justify-content:center;gap:0;margin:24px 0 36px;padding:0 20px}
+.progress-step{display:flex;flex-direction:column;align-items:center;position:relative;z-index:1}
+.progress-dot{width:36px;height:36px;border-radius:50%;border:2px solid var(--border);background:var(--card);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--text3);transition:all .4s}
+.progress-dot.active{border-color:var(--primary);background:var(--primary-dim);color:var(--primary)}
+.progress-dot.done{border-color:var(--primary);background:var(--primary);color:#fff}
+.progress-label{font-size:11px;color:var(--text3);margin-top:6px;white-space:nowrap;text-align:center}
+.progress-label.active{color:var(--primary)}
+.progress-line{flex:1;height:2px;background:var(--border);margin:0 -8px;margin-bottom:20px;transition:background .4s}
+.progress-line.done{background:var(--primary)}
+
+/* Section */
+.section{margin-bottom:28px;opacity:0;transform:translateY(20px);animation:fadeUp .6s ease forwards}
+.section:nth-child(2){animation-delay:.1s}
+.section:nth-child(3){animation-delay:.2s}
+@keyframes fadeUp{to{opacity:1;transform:none}}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:16px;transition:border-color .3s}
+.card:hover{border-color:rgba(0,212,170,.3)}
+.card-header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.card-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card-icon.green{background:var(--primary-dim);color:var(--primary)}
+.card-icon.yellow{background:var(--yellow-dim);color:var(--yellow)}
+.card-icon.red{background:var(--red-dim);color:var(--red)}
+.card-title{font-size:17px;font-weight:700}
+.card-desc{color:var(--text2);font-size:14px}
+
+/* Features Grid */
+.features{display:grid;grid-template-columns:1fr;gap:12px;margin:24px 0}
+.feature-card{background:var(--card2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:20px;display:flex;align-items:flex-start;gap:14px}
+.feature-num{width:32px;height:32px;border-radius:8px;background:var(--primary-dim);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0}
+.feature-card h3{font-size:15px;font-weight:600;margin-bottom:4px}
+.feature-card p{font-size:13px;color:var(--text2);line-height:1.5}
+
+/* Step Cards */
+.step{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:0;margin-bottom:12px;overflow:hidden;transition:all .3s}
+.step.active{border-color:var(--primary);box-shadow:0 0 20px rgba(0,212,170,.1)}
+.step.warning{border-color:var(--yellow);box-shadow:0 0 20px rgba(240,185,11,.1)}
+.step.critical{border-color:var(--red);box-shadow:0 0 20px rgba(239,68,68,.1)}
+.step-header{display:flex;align-items:center;gap:14px;padding:18px 20px;cursor:pointer;user-select:none}
+.step-num{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;flex-shrink:0}
+.step-num.green{background:var(--primary-dim);color:var(--primary)}
+.step-num.yellow{background:var(--yellow-dim);color:var(--yellow)}
+.step-num.red{background:var(--red-dim);color:var(--red)}
+.step-title{flex:1;font-size:15px;font-weight:600}
+.step-badge{font-size:11px;padding:3px 8px;border-radius:20px;font-weight:600;white-space:nowrap}
+.step-badge.critical{background:var(--red-dim);color:var(--red)}
+.step-badge.important{background:var(--yellow-dim);color:var(--yellow)}
+.step-chevron{color:var(--text3);font-size:20px;transition:transform .3s}
+.step.open .step-chevron{transform:rotate(180deg)}
+.step-body{display:none;padding:0 20px 20px}
+.step.open .step-body{display:block}
+.step-body p{font-size:14px;color:var(--text2);margin-bottom:10px;line-height:1.7}
+.step-body .instruction{background:var(--card2);border-radius:var(--radius-sm);padding:14px 16px;margin:10px 0;font-size:13px;color:var(--text);line-height:1.8}
+.step-body .do{color:var(--primary);font-weight:600}
+.step-body .dont{color:var(--red);font-weight:600}
+.step-body .url-box{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:monospace;font-size:12px;color:var(--primary);word-break:break-all;margin:8px 0}
+
+/* Warning Box */
+.warning-box{background:var(--yellow-dim);border:1px solid rgba(240,185,11,.3);border-radius:var(--radius-sm);padding:14px 16px;margin:12px 0;display:flex;align-items:flex-start;gap:10px}
+.warning-box.danger{background:var(--red-dim);border-color:rgba(239,68,68,.3)}
+.warning-box i{font-size:20px;color:var(--yellow);flex-shrink:0;margin-top:1px}
+.warning-box.danger i{color:var(--red)}
+.warning-box p{font-size:13px;color:var(--text);line-height:1.6}
+.warning-box strong{color:var(--yellow)}
+.warning-box.danger strong{color:var(--red)}
+
+/* API Form */
+.api-form{background:linear-gradient(135deg,var(--card),var(--card2));border:2px solid var(--primary);border-radius:var(--radius);padding:32px 24px;text-align:center;position:relative;overflow:hidden}
+.api-form::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at center,rgba(0,212,170,.03) 0%,transparent 50%);pointer-events:none}
+.api-form h2{font-size:22px;font-weight:800;margin-bottom:6px}
+.api-form .subtitle{color:var(--text2);font-size:14px;margin-bottom:24px}
+.form-group{margin-bottom:16px;text-align:left}
+.form-group label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.form-group .input-wrap{position:relative}
+.form-group input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 48px 14px 16px;color:var(--text);font-family:monospace;font-size:14px;outline:none;transition:border-color .3s}
+.form-group input:focus{border-color:var(--primary)}
+.form-group input::placeholder{color:var(--text3);font-family:'Inter',sans-serif;font-size:13px}
+.toggle-vis{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px;padding:4px}
+.toggle-vis:hover{color:var(--text)}
+.btn-connect{width:100%;padding:16px;border:none;border-radius:var(--radius-sm);background:linear-gradient(135deg,var(--primary),#00a88a);color:#fff;font-size:16px;font-weight:700;cursor:pointer;transition:all .3s;margin-top:8px;font-family:'Inter',sans-serif}
+.btn-connect:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,212,170,.3)}
+.btn-connect:active{transform:translateY(0)}
+.btn-connect:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* Result */
+.result{margin-top:20px;padding:16px;border-radius:var(--radius-sm);display:none}
+.result.success{display:block;background:var(--primary-dim);border:1px solid rgba(0,212,170,.3)}
+.result.error{display:block;background:var(--red-dim);border:1px solid rgba(239,68,68,.3)}
+.result-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.result-header i{font-size:24px}
+.result-header .success i{color:var(--primary)}
+.result-header .error i{color:var(--red)}
+.result-header span{font-size:15px;font-weight:700}
+.result .detail{font-size:13px;color:var(--text2);line-height:1.6}
+
+/* Loading */
+.spinner{display:inline-block;width:20px;height:20px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Trust Footer */
+.trust-footer{text-align:center;padding:32px 0;border-top:1px solid var(--border);margin-top:20px}
+.trust-footer h3{font-size:15px;font-weight:700;margin-bottom:16px;color:var(--text2)}
+.trust-items{display:flex;flex-wrap:wrap;justify-content:center;gap:20px}
+.trust-item{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text3)}
+.trust-item i{color:var(--primary);font-size:16px}
+
+/* Responsive */
+@media(min-width:480px){
+  .features{grid-template-columns:1fr 1fr 1fr}
+  .container{padding:24px 24px 80px}
+  .hero h1{font-size:32px}
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Hero -->
+  <div class="hero">
+    <div class="icon-wrap"><i class="ph ph-link"></i></div>
+    <h1>连接您的币安账户</h1>
+    <p>安全 · 快速 · 3分钟完成</p>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-bar" id="progressBar">
+    <div class="progress-step">
+      <div class="progress-dot active" id="dot1">1</div>
+      <div class="progress-label active" id="label1">了解安全</div>
+    </div>
+    <div class="progress-line" id="line1"></div>
+    <div class="progress-step">
+      <div class="progress-dot" id="dot2">2</div>
+      <div class="progress-label" id="label2">创建API</div>
+    </div>
+    <div class="progress-line" id="line2"></div>
+    <div class="progress-step">
+      <div class="progress-dot" id="dot3">3</div>
+      <div class="progress-label" id="label3">配置权限</div>
+    </div>
+    <div class="progress-line" id="line3"></div>
+    <div class="progress-step">
+      <div class="progress-dot" id="dot4">4</div>
+      <div class="progress-label" id="label4">粘贴密钥</div>
+    </div>
+  </div>
+
+  <!-- Stage 1: Safety -->
+  <div class="section" id="stage1">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-icon green"><i class="ph ph-shield-check"></i></div>
+        <div><div class="card-title">安全说明</div><div class="card-desc">为什么需要您的 API Key？</div></div>
+      </div>
+      <p style="color:var(--text2);font-size:14px;margin-bottom:16px">
+        为了帮您自动交易，系统需要访问您的币安账户。<br>
+        但我们<strong style="color:var(--primary)">绝不会</strong>要求提币权限 — 您的资金始终在您账户中。
+      </p>
+    </div>
+
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-num">1</div>
+        <div>
+          <h3><i class="ph ph-lock" style="color:var(--primary);margin-right:4px"></i> 只交易，不提币</h3>
+          <p>API Key 只开放「现货交易」权限，<strong>无法提币、无法转账</strong>。即使密钥泄露，资金也安全。</p>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-num">2</div>
+        <div>
+          <h3><i class="ph ph-robot" style="color:var(--primary);margin-right:4px"></i> AI 自动交易</h3>
+          <p>7大策略融合分析，24/7不间断运行，毫秒级执行，不错过任何机会。</p>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-num">3</div>
+        <div>
+          <h3><i class="ph ph-chart-line-up" style="color:var(--primary);margin-right:4px"></i> 实时监控</h3>
+          <p>仪表盘随时查看持仓、盈亏、交易记录。<strong>一键解绑</strong>，立即停止。</p>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-connect" onclick="goStage2()" style="margin-top:8px">
+      我了解了，开始设置 <i class="ph ph-arrow-right" style="margin-left:6px"></i>
+    </button>
+  </div>
+
+  <!-- Stage 2 & 3: Steps -->
+  <div class="section" id="stage2" style="display:none">
+    <h2 style="font-size:18px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+      <i class="ph ph-list-numbers" style="color:var(--primary)"></i> 分步教程
+    </h2>
+
+    <!-- Step 1 -->
+    <div class="step open" data-step="1">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num green">1</div>
+        <div class="step-title">登录币安</div>
+        <i class="ph ph-caret-down step-chevron"></i>
+      </div>
+      <div class="step-body">
+        <div class="instruction">
+          📱 <strong>App端：</strong>打开币安App → 登录您的账户<br>
+          💻 <strong>网页端：</strong>访问 <span class="do">binance.com</span> → 登录
+        </div>
+        <p>如果还没有币安账户，需要先注册并完成身份认证。</p>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step" data-step="2">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num green">2</div>
+        <div class="step-title">进入 API 管理</div>
+        <i class="ph ph-caret-down step-chevron"></i>
+      </div>
+      <div class="step-body">
+        <div class="instruction">
+          💻 <strong>网页端（推荐）：</strong>点击右上角头像 → 选择「API管理」<br><br>
+          或直接访问以下链接：
+        </div>
+        <div class="url-box">https://www.binance.com/zh-TC/my/settings/api-management</div>
+        <p>⚠️ 请确保网址以 <strong>binance.com</strong> 开头，不要访问钓鱼网站。</p>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step" data-step="3">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num green">3</div>
+        <div class="step-title">创建 API 密钥</div>
+        <i class="ph ph-caret-down step-chevron"></i>
+      </div>
+      <div class="step-body">
+        <div class="instruction">
+          1. 点击 <span class="do">「创建API」</span> 按钮<br>
+          2. 选择 <span class="do">「系统生成密钥」</span><br>
+          3. 输入标签名，例如：<strong>量化机器人</strong><br>
+          4. 点击「创建」
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step" data-step="4">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num green">4</div>
+        <div class="step-title">完成安全验证</div>
+        <i class="ph ph-caret-down step-chevron"></i>
+      </div>
+      <div class="step-body">
+        <div class="instruction">
+          按提示完成以下验证（根据您的安全设置）：<br><br>
+          ✉️ 邮箱验证码<br>
+          📱 手机短信验证码<br>
+          🔐 Google Authenticator 验证码
+        </div>
+        <p>完成后，API密钥就创建好了。</p>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step" data-step="5">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num yellow">5</div>
+        <div class="step-title">复制 Secret Key</div>
+        <div class="step-badge important">重要</div>
+        <i class="ph ph-caret-down step-chevron"></i>
+      </div>
+      <div class="step-body">
+        <div class="warning-box">
+          <i class="ph ph-warning"></i>
+          <div>
+            <p><strong>Secret Key 只显示一次！</strong>关闭页面后将无法再次查看。请立即复制保存。</p>
+          </div>
+        </div>
+        <div class="instruction">
+          创建成功后会看到两个密钥：<br><br>
+          <strong>API Key：</strong>类似 <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:12px">xK7mN2...</code><br>
+          <strong>Secret Key：</strong>类似 <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:12px">pQ9wR4...</code><br><br>
+          📋 建议截图保存，或复制到记事本。
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6 ⚠️ CRITICAL -->
+    <div class="step critical" data-step="6">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num red">6</div>
+        <div class="step-title">设置 API 权限</div>
+        <div class="step-badge critical">⚠️ 最关键</div>
+        <i class="ph ph-caret-down step-chevron"></i>
+      </div>
+      <div class="step-body">
+        <div class="warning-box danger">
+          <i class="ph ph-shield-warning"></i>
+          <div>
+            <p><strong>这一步决定您的资金安全！</strong>请严格按照以下说明操作。</p>
+          </div>
+        </div>
+        <div class="instruction">
+          点击 API 列表右侧的 <span class="do">「编辑」</span> 按钮，然后：<br><br>
+          <span class="do">✅ 勾选：「现货和杠杆交易」</span><br>
+          <span class="dont">❌ 不要勾选：「提币」</span><br>
+          <span class="dont">❌ 不要勾选：「内部转账」</span><br>
+          <span class="dont">❌ 不要勾选：「合约交易」（如果有的话）</span><br><br>
+          设置完成后，点击 <span class="do">「保存」</span>
+        </div>
+        <p style="margin-top:12px;font-size:13px;color:var(--text3)">
+          <i class="ph ph-info" style="margin-right:4px"></i>
+          只勾选「现货交易」意味着：系统只能买卖现货，<strong>无法将您的币转出</strong>。
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 7 ⚠️ CRITICAL -->
+    <div class="step critical" data-step="7">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num red">7</div>
+        <div class="step-title">设置 IP 白名单</div>
+        <div class="step-badge critical">⚠️ 强烈推荐</div>
+        <i class="ph ph-caret-down step-chevron"></i>
+      </div>
+      <div class="step-body">
+        <div class="warning-box">
+          <i class="ph ph-info"></i>
+          <div>
+            <p>设置 IP 白名单后，即使密钥泄露，<strong>别人在其他IP也无法使用您的密钥</strong>。</p>
+          </div>
+        </div>
+        <div class="instruction">
+          1. 在 API 编辑页面，找到 <span class="do">「IP访问限制」</span><br>
+          2. 选择 <span class="do">「限制访问此API密钥的IP地址」</span><br>
+          3. 添加以下 IP 地址：<br>
+        </div>
+        <div class="url-box" id="serverIp" style="font-size:14px;font-weight:600;text-align:center;padding:16px">
+          正在获取服务器IP...
+        </div>
+        <div class="instruction" style="margin-top:8px">
+          4. 点击 <span class="do">「确认」</span> 保存
+        </div>
+        <p style="margin-top:8px;font-size:13px;color:var(--text3)">
+          <i class="ph ph-info" style="margin-right:4px"></i>
+          如果暂时不想设置IP白名单，也可以跳过。但我们<strong>强烈建议</strong>设置。
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 8 -->
+    <div class="step" data-step="8">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num green">8</div>
+        <div class="step-title">粘贴密钥，完成连接</div>
+        <i class="ph ph-caret-down step-chevron"></i>
+      </div>
+      <div class="step-body">
+        <p>将刚才复制的密钥粘贴到下方表单中，点击「验证并连接」即可开始自动交易！</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stage 4: API Form -->
+  <div class="section" id="stage3" style="display:none">
+    <div class="api-form">
+      <h2>🔗 粘贴您的密钥</h2>
+      <p class="subtitle">我们将立即验证密钥的有效性</p>
+
+      <div class="form-group">
+        <label>API Key</label>
+        <div class="input-wrap">
+          <input type="text" id="apiKey" placeholder="粘贴您的 API Key（64位字符）" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Secret Key</label>
+        <div class="input-wrap">
+          <input type="password" id="secretKey" placeholder="粘贴您的 Secret Key（64位字符）" spellcheck="false" autocomplete="off">
+          <button class="toggle-vis" onclick="toggleSecret()" type="button">
+            <i class="ph ph-eye" id="eyeIcon"></i>
+          </button>
+        </div>
+      </div>
+
+      <button class="btn-connect" id="btnVerify" onclick="verifyKeys()">
+        <span id="btnText"><i class="ph ph-plugs" style="margin-right:6px"></i> 验证并连接</span>
+      </button>
+
+      <div class="result" id="verifyResult"></div>
+    </div>
+  </div>
+
+  <!-- Trust Footer -->
+  <div class="trust-footer">
+    <h3><i class="ph ph-lock-key" style="margin-right:6px;color:var(--primary)"></i>安全承诺</h3>
+    <div class="trust-items">
+      <div class="trust-item"><i class="ph ph-shield-check"></i> 密钥加密存储</div>
+      <div class="trust-item"><i class="ph ph-prohibit"></i> 绝不用于提币</div>
+      <div class="trust-item"><i class="ph ph-x-circle"></i> 随时可解绑</div>
+      <div class="trust-item"><i class="ph ph-lock"></i> 全程SSL加密</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Stage navigation
+function goStage2(){
+  document.getElementById('stage1').style.display='none';
+  document.getElementById('stage2').style.display='block';
+  document.getElementById('stage3').style.display='block';
+  updateProgress(2);
+  document.getElementById('stage2').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// Toggle step
+function toggleStep(header){
+  const step=header.closest('.step');
+  const wasOpen=step.classList.contains('open');
+  // Close all steps
+  document.querySelectorAll('.step').forEach(s=>s.classList.remove('open'));
+  if(!wasOpen) step.classList.add('open');
+}
+
+// Progress
+function updateProgress(stage){
+  for(let i=1;i<=4;i++){
+    const dot=document.getElementById('dot'+i);
+    const label=document.getElementById('label'+i);
+    dot.classList.remove('active','done');
+    label.classList.remove('active');
+    if(i<stage){dot.classList.add('done');dot.innerHTML='<i class="ph ph-check" style="font-size:14px"></i>';}
+    else if(i===stage){dot.classList.add('active');label.classList.add('active');}
+  }
+  for(let i=1;i<=3;i++){
+    const line=document.getElementById('line'+i);
+    line.classList.toggle('done',i<stage);
+  }
+}
+
+// Toggle secret visibility
+function toggleSecret(){
+  const inp=document.getElementById('secretKey');
+  const icon=document.getElementById('eyeIcon');
+  if(inp.type==='password'){inp.type='text';icon.className='ph ph-eye-slash';}
+  else{inp.type='password';icon.className='ph ph-eye';}
+}
+
+// Verify API keys
+async function verifyKeys(){
+  const apiKey=document.getElementById('apiKey').value.trim();
+  const secretKey=document.getElementById('secretKey').value.trim();
+  const resultDiv=document.getElementById('verifyResult');
+  const btn=document.getElementById('btnVerify');
+  const btnText=document.getElementById('btnText');
+
+  // Basic validation
+  if(!apiKey||apiKey.length<10){
+    resultDiv.className='result error';
+    resultDiv.innerHTML='<div class="result-header error"><i class="ph ph-x-circle"></i><span>API Key 格式不正确</span></div><div class="detail">API Key 通常是64位字符，请检查是否完整复制。</div>';
+    return;
+  }
+  if(!secretKey||secretKey.length<10){
+    resultDiv.className='result error';
+    resultDiv.innerHTML='<div class="result-header error"><i class="ph ph-x-circle"></i><span>Secret Key 格式不正确</span></div><div class="detail">Secret Key 通常是64位字符，请检查是否完整复制。</div>';
+    return;
+  }
+
+  // Loading
+  btn.disabled=true;
+  btnText.innerHTML='<span class="spinner"></span> 验证中...';
+  resultDiv.className='result';
+  resultDiv.style.display='none';
+
+  try{
+    // Send to backend for verification
+    const resp=await fetch('/api/verify-api-key',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({apiKey,secretKey})
+    });
+    const data=await resp.json();
+
+    if(data.success){
+      resultDiv.className='result success';
+      resultDiv.innerHTML=`
+        <div class="result-header success"><i class="ph ph-check-circle"></i><span>连接成功！</span></div>
+        <div class="detail">
+          账户余额: <strong>${data.balance||'--'} USDT</strong><br>
+          现货交易权限: <strong style="color:var(--primary)">✅ 已开启</strong><br>
+          提币权限: <strong style="color:var(--primary)">❌ 未开启（安全）</strong><br><br>
+          🎉 您的账户已成功连接！AI量化机器人即将开始为您工作。
+        </div>`;
+      updateProgress(4);
+    }else{
+      resultDiv.className='result error';
+      resultDiv.innerHTML=`
+        <div class="result-header error"><i class="ph ph-x-circle"></i><span>验证失败</span></div>
+        <div class="detail">${data.error||'密钥无效或网络错误。请检查：\n1. API Key 和 Secret Key 是否正确\n2. 是否已开启现货交易权限\n3. 是否设置了IP白名单（如有，请先关闭再试）'}</div>`;
+    }
+  }catch(e){
+    resultDiv.className='result error';
+    resultDiv.innerHTML='<div class="result-header error"><i class="ph ph-x-circle"></i><span>网络错误</span></div><div class="detail">无法连接服务器，请稍后再试。</div>';
+  }
+
+  btn.disabled=false;
+  btnText.innerHTML='<i class="ph ph-plugs" style="margin-right:6px"></i> 验证并连接';
+}
+
+// Auto-fill from URL params
+const params=new URLSearchParams(window.location.search);
+if(params.get('api_key'))document.getElementById('apiKey').value=params.get('api_key');
+if(params.get('secret'))document.getElementById('secretKey').value=params.get('secret');
+if(params.get('api_key')&&params.get('secret')){
+  document.getElementById('stage1').style.display='none';
+  document.getElementById('stage2').style.display='block';
+  document.getElementById('stage3').style.display='block';
+  updateProgress(4);
+  document.getElementById('stage3').scrollIntoView({behavior:'smooth'});
+}
+
+// Fetch server IP
+(async()=>{
+  try{
+    const r=await fetch('/api/server-ip');
+    const d=await r.json();
+    if(d.ip) document.getElementById('serverIp').textContent=d.ip;
+    else document.getElementById('serverIp').textContent='请在仪表盘设置页面查看';
+  }catch(e){
+    document.getElementById('serverIp').textContent='请在仪表盘设置页面查看';
+  }
+})();
+
+// Scroll observer for progress
+let lastScrollY=0;
+window.addEventListener('scroll',()=>{
+  const st=window.scrollY;
+  const stage2Top=document.getElementById('stage2').offsetTop;
+  const stage3Top=document.getElementById('stage3').offsetTop;
+  if(st>=stage3Top-200) updateProgress(4);
+  else if(st>=stage2Top-200) updateProgress(2);
+  else updateProgress(1);
+  lastScrollY=st;
+});
+</script>
+</body>
+</html>

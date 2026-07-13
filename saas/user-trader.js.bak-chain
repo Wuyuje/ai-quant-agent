@@ -1,0 +1,1294 @@
+/**
+ * UserTrader — 为 SaaS 用户执行交易
+ *
+ * 核心职责：
+ *   1. 定时遍历 userDB 中 tradingEnabled=true 的用户
+ *   2. 读取每个用户 Vault 合约的 USDT 余额
+ *   3. 用 AI 引擎做交易决策
+ *   4. 通过 Vault 合约的 executeSwap 在 PancakeSwap 上执行
+ *   5. 记录交易日志
+ *
+ * 与主 Engine 的区别：
+ *   - Engine 用 Binance API Key 直接在 CEX 交易（管理员自己的）
+ *   - UserTrader 通过链上 Vault 合约在 DEX 交易（用户的资金）
+ */
+
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
+const http = require('http');
+
+const BSC_RPC_LIST = [
+  'https://bsc-dataseed.binance.org',
+  'https://bsc-dataseed1.binance.org',
+  'https://bsc-dataseed2.binance.org',
+  'https://bsc-dataseed3.binance.org',
+];
+let _rpcIndex = 0;
+function BSC_RPC() { return BSC_RPC_LIST[_rpcIndex % BSC_RPC_LIST.length]; }
+function rotateRpc() { _rpcIndex = (_rpcIndex + 1) % BSC_RPC_LIST.length; }
+const PANCAKE_ROUTER = '0x10ED43C718714eb63d5aA57B78B54704E256024E';
+const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955';
+const WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
+const ARK_TOKEN = '0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D';
+
+// [audit#26] ethers v6 url.clone bug workaround: 自定义 JsonRpcProvider
+const { ethers: _ethers, JsonRpcProvider: _BaseProvider } = require('ethers');
+class BscRpcProvider extends _BaseProvider {
+  constructor(url) { super(url); }
+  async _send(rpcReq) {
+    const url = this._getConnection().url;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rpcReq),
+    });
+    const json = await resp.json();
+    // v50: ethers v6 _send 期望返回数组格式
+    // 每个元素是完整的 JSON-RPC 响应 {jsonrpc, id, result}
+    if (Array.isArray(rpcReq)) {
+      // 批量请求
+      if (!Array.isArray(json)) return [json];
+      return json;
+    } else {
+      // 单个请求
+      if (Array.isArray(json)) return json;
+      return [json];
+    }
+  }
+}
+function getProvider() { return new BscRpcProvider(BSC_RPC()); }
+
+// ═══════════════════════════════════
+// PancakeSwap 费率 & Gas 常量
+// ═══════════════════════════════════
+const PANCAKE_FEE_BPS = 25;           // 0.25% 单边手续费
+const GAS_LIMIT_SWAP = 300000;        // swap 预估 gas
+const GAS_PRICE_GWEI = 5;             // BSC 平均 gas price
+// [audit#24] 动态获取 BNB 价格
+let _bnbPriceUsd = 650;
+const GAS_COST_USD = () => (GAS_LIMIT_SWAP * GAS_PRICE_GWEI * 1e-9) * _bnbPriceUsd; // [audit#24] 动态计算
+const SLIPPAGE_BPS = 50;              // 0.5% 滑点保护（v21: 收紧防夹）
+const MIN_PROFIT_BPS = 150;           // 1.5% 最低预期利润（覆盖手续费+滑点+gas后仍盈利）
+const MAX_POSITIONS_PER_USER = 3;     // v21: 单用户最多持仓3个
+const MIN_TRADE_USDT = 10;            // v50: 降低最小交易额（小账户友好）
+const MAX_SINGLE_TRADE_USDT = 10000;  // 单笔最大交易金额
+const _userLocks = new Map(); // per-user 交易锁，防止并发重复开仓
+const DUST_USDT = 5;                  // 残留阈值
+
+const TRADE_LOG_FILE = path.join(__dirname, '..', 'data', 'user-trades.json');
+const STATE_FILE = path.join(__dirname, '..', 'data', 'user-trader-state.json');
+
+// ═══════════════════════════════════
+// v50: 多策略引擎集成
+// ═══════════════════════════════════
+const { StrategyManager } = require('./strategies/strategy-manager');
+
+// Vault 合约 ABI（只用到的方法）
+const VAULT_ABI = [
+  'function executeSwap(address dex, address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut) external',
+  'function recordPnl(int256 pnlAmount) external',
+  'function usdtBalance() view returns (uint256)',
+  'function getTradeCount() view returns (uint256)',
+  'function totalPnl() view returns (int256)',
+  'function getTrader() view returns (address)',
+  'function isPaused() view returns (bool)',
+];
+
+// PancakeSwap Router ABI
+const ROUTER_ABI = [
+  'function getAmountsOut(uint256 amountIn, address[] calldata path) view returns (uint256[] memory amounts)',
+  'function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)',
+];
+
+// ERC20 ABI
+const ERC20_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+];
+
+// ═══════════════════════════════════
+// BSC RPC 工具
+// ═══════════════════════════════════
+function bscRpc(method, params = []) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ jsonrpc: '2.0', method, params, id: Date.now() });
+    const url = new URL(BSC_RPC());
+    const mod = url.protocol === 'https:' ? https : http;
+    let settled = false;
+    const timeout = setTimeout(() => { if (!settled) { settled = true; reject(new Error('RPC 8s超时 ' + url.hostname)); rotateRpc(); } }, 8000);
+    const req = mod.request({
+      hostname: url.hostname, port: 443, path: url.pathname,
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (settled) return;
+        clearTimeout(timeout);
+        settled = true;
+        try {
+          const json = JSON.parse(data);
+          if (json.error) reject(new Error(json.error.message));
+          else resolve(json.result);
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', (err) => { if (!settled) { settled = true; clearTimeout(timeout); rotateRpc(); reject(err); } });
+    req.setTimeout(10000, () => { if (!settled) { settled = true; clearTimeout(timeout); req.destroy(); rotateRpc(); reject(new Error('RPC timeout')); } });
+    req.write(body);
+    req.end();
+  });
+}
+
+async function erc20Balance(token, wallet) {
+  try {
+    const p = getProvider();
+    const c = new _ethers.Contract(token, ['function balanceOf(address) view returns (uint256)'], p);
+    const bal = await Promise.race([
+      c.balanceOf(wallet),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('erc20 5s超时')), 5000))
+    ]);
+    return BigInt(bal.toString());
+  } catch (e) {
+    return 0n;
+  }
+}
+
+// ═══════════════════════════════════
+// UserTrader 核心
+// ═══════════════════════════════════
+class UserTrader {
+  /**
+   * @param {Object} opts
+   * @param {Object} opts.userDB      — UserDB 实例 (saas/server.js 里的)
+   * @param {Object} opts.dataBus     — DataBus 实例（共享行情数据）
+   * @param {Object} opts.aiEngine    — AIDecisionEngine 实例（可选，共享 AI）
+   * @param {string} opts.traderKey   — 平台执行器私钥
+   * @param {number} opts.intervalMs  — 交易循环间隔（默认 60s）
+   */
+  constructor(opts = {}) {
+    this.userDB = opts.userDB;
+    this.dataBus = opts.dataBus;
+    this.traderKey = opts.traderKey || process.env.TRADER_PRIVATE_KEY || '';
+    if (!this.traderKey) {
+      this._log('⚠️ WARNING: TRADER_PRIVATE_KEY 未配置！交易执行将无法工作');
+    }
+    this.intervalMs = opts.intervalMs || 60000; // 60 秒一轮
+
+    this.running = false;
+    this._timer = null;
+    this._cycleCount = 0;
+    this._userStates = {}; // wallet → { lastCycle, positions, pnl, ... }
+
+    // v50: 初始化多策略管理器
+    this.strategyManager = new StrategyManager({
+      grid: { gridSize: 10, gridSpacing: 0.02, positionSize: 0.1 },
+      dca: { interval: 24 * 60 * 60 * 1000, amountPerInterval: 50, maxPositions: 5 },
+      kelly: { maxPositionPct: 0.25, minPositionPct: 0.05, maxRiskPerTrade: 0.02, kellyFraction: 0.5 },
+      volatility: { lookbackPeriod: 20 },
+    });
+    this._log(`🧠 StrategyManager 已初始化 (网格/DCA/多时间框架/凯利/波动率)`);
+
+    // v50: 用户交易统计（用于凯利公式）
+    this._userStats = {}; // wallet → { wins, losses, totalPnl, avgWin, avgLoss, winRate }
+
+    // 加载持久化状态
+    this._loadState();
+
+    this._log('UserTrader initialized (v50 多策略引擎)');
+  }
+
+  _log(msg) {
+    const { createLogger } = require('../utils/logger');
+    if (!this._winston) this._winston = createLogger('UserTrader');
+    this._winston.info(msg);
+  }
+
+  // ═══════════════════════════════════
+  // 启动 / 停止
+  // ═══════════════════════════════════
+  start() {
+    if (this.running) return;
+    this.running = true;
+    this._log('🚀 UserTrader 启动，间隔 ' + (this.intervalMs / 1000) + 's');
+    // 等待 DataBus 加载完成后再开始交易（避免 klines 为空）
+    this._waitForDataBus().then(() => this._loop());
+  }
+
+  async _waitForDataBus(maxWait = 30000) {
+    const start = Date.now();
+    while (Date.now() - start < maxWait) {
+      const klinesCount = Object.keys(this.dataBus?.klines || {}).length;
+      if (klinesCount >= 5) {
+        this._log(`✅ DataBus 就绪: ${klinesCount} 个交易对有K线`);
+        return;
+      }
+      this._log(`⏳ 等待 DataBus 加载... klines=${klinesCount}`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    this._log(`⚠️ DataBus 加载超时，继续执行`);
+  }
+
+  stop() {
+    this.running = false;
+    if (this._timer) clearTimeout(this._timer);
+    this._log('UserTrader 停止');
+  }
+
+  async _loop() {
+    if (!this.running) return;
+    try {
+      await this._cycle();
+    } catch (e) {
+      this._log(`❌ 循环异常: ${e.message}`);
+    }
+    this._timer = setTimeout(() => this._loop(), this.intervalMs);
+  }
+
+  // ═══════════════════════════════════
+  // 单次交易循环
+  // ═══════════════════════════════════
+  async _cycle() {
+    this._cycleCount++;
+    // [audit#24] 动态更新 BNB 价格
+    try {
+      const md = this.dataBus?.marketData?.['BNBUSDT'];
+      if (md?.price) _bnbPriceUsd = md.price;
+    } catch(e) {}
+    const users = this.userDB.users || {};
+    const activeUsers = Object.entries(users).filter(([_, u]) => u.tradingEnabled && u.vaultAddress);
+
+    if (activeUsers.length === 0) {
+      if (this._cycleCount % 10 === 0) {
+        this._log(`第 ${this._cycleCount} 轮: 无活跃用户`);
+      }
+      return;
+    }
+
+    this._log(`第 ${this._cycleCount} 轮: ${activeUsers.length} 个活跃用户`);
+
+    for (const [wallet, userData] of activeUsers) {
+      try {
+        const t0 = Date.now();
+        await this._tradeForUser(wallet, userData);
+        if (Date.now() - t0 > 5000) {
+          this._log(`⏱️ 用户 ${wallet.slice(0,10)} 交易耗时 ${((Date.now()-t0)/1000).toFixed(1)}s`);
+        }
+      } catch (e) {
+        this._log(`❌ 用户 ${wallet.slice(0, 10)} 交易失败: ${e.message}`);
+      } finally {
+        _userLocks.delete(wallet);
+      }
+    }
+
+    this._saveState();
+  }
+
+  // ═══════════════════════════════════
+  // 为单个用户交易
+  // ═══════════════════════════════════
+  async _tradeForUser(wallet, userData) {
+    const vault = userData.vaultAddress;
+    if (!vault) { this._log(`[trade] ${wallet.slice(0,10)} 无vault`); return; }
+    // 并发锁：上一轮未完成时跳过
+    if (_userLocks.get(wallet)) { this._log(`[trade] ${wallet.slice(0,10)} locked, 跳过`); return; }
+    _userLocks.set(wallet, true);
+
+    // v63修复: 持仓检查优先于余额检查！
+    //   之前余额<10直接return, 导致低余额用户的持仓永远无法止损/止盈
+    //   现在先检查持仓, 再判断余额是否够开新仓
+
+    // 1. 读取用户策略（提前, 因为持仓检查需要 strategyConfig）
+    const strategy = userData.strategy || 'balanced';
+    const strategyConfig = {
+      // v62: DEX高成本适配 — 止盈ATR×5(远超1.6%成本), 止损固定3%, 最低ATR 2.5%
+      // v63: 回测优化参数 — 网格搜索最优组合
+      // 回测1500根1h K线: ROI=+5.76%, 夏普12.98, 盈亏比2.46
+      conservative: { maxPositionPct: 0.15, leverage: 1, slPct: 0.05, tpPct: 0.08, minScore: 7, maxPositions: 2, cooldownMs: 14400000, timeoutHrs: 24, useGrid: false, useDCA: false },
+      balanced:     { maxPositionPct: 0.20, leverage: 1, slPct: 0.05, tpPct: 0.08, minScore: 7, maxPositions: 3, cooldownMs: 14400000, timeoutHrs: 20, useGrid: true, useDCA: false },
+      aggressive:   { maxPositionPct: 0.25, leverage: 1, slPct: 0.05, tpPct: 0.10, minScore: 6, maxPositions: 3, cooldownMs: 14400000, timeoutHrs: 24, useGrid: true, useDCA: true },
+      grid:         { maxPositionPct: 0.15, leverage: 1, slPct: 0.02, tpPct: 0.04, minScore: 3, maxPositions: 5, cooldownMs: 7200000, timeoutHrs: 12, useGrid: true, useDCA: false, gridOnly: true },
+      dca:          { maxPositionPct: 0.20, leverage: 1, slPct: 0.05, tpPct: 0.20, minScore: 2, maxPositions: 5, cooldownMs: 86400000, timeoutHrs: 168, useGrid: false, useDCA: true, dcaOnly: true },
+    }[strategy] || { maxPositionPct: 0.20, leverage: 1, slPct: 0.03, tpPct: 0.06, minScore: 6, maxPositions: 3, cooldownMs: 14400000, timeoutHrs: 20, useGrid: true, useDCA: false };
+
+    // 2. 先检查已有仓位是否需要平仓（v63: 移到余额检查之前！）
+    const state = this._getUserState(wallet);
+    const currentPositions = Object.keys(state.positions || {});
+    if (currentPositions.length > 0) {
+      for (const sym of currentPositions) {
+        const existingPos = state.positions?.[sym];
+        if (!existingPos) continue;
+        const md = this.dataBus?.marketData?.[sym];
+        const currentPrice = md?.price || md?.lastPrice;
+        if (!currentPrice) continue;
+        await this._checkClosePosition(wallet, vault, sym, existingPos, currentPrice, strategyConfig, state);
+      }
+    }
+
+    // 3. 余额检查（仅影响开新仓, 不影响持仓监控）
+    let usdtBalance = Number(userData.usdtBalance) || 0;
+    const userTradeAmount = Number(userData.tradeAmount) || 0;
+    if (userTradeAmount <= 0) { this._log(`[trade] ${wallet.slice(0,10)} tradeAmount=0 (持仓${currentPositions.length}个已检查)`); return; }
+    usdtBalance = Math.min(usdtBalance, userTradeAmount);
+    if (usdtBalance < MIN_TRADE_USDT) { this._log(`[trade] ${wallet.slice(0,10)} balance=${usdtBalance.toFixed(2)} < ${MIN_TRADE_USDT} (持仓${currentPositions.length}个已检查)`); return; }
+    if (this._cycleCount % 5 === 0) this._log(`[trade] ${wallet.slice(0,10)} balance=${usdtBalance.toFixed(2)} strategy=${userData.strategy}`);
+
+    // 4. 检查仓位是否已满
+    const afterClosePositions = Object.keys(state.positions || {});
+    const remainingSlots = strategyConfig.maxPositions - afterClosePositions.length;
+    if (remainingSlots <= 0) return; // 仓位已满
+
+    // 5. 多维度评分筛选
+    const topSymbols = await this._selectTopSymbols(15);
+    if (this._cycleCount % 3 === 0) {
+      this._log(`🔍 ${wallet.slice(0, 10)} 评分结果: ${topSymbols.length}个候选, marketData=${Object.keys(this.dataBus?.marketData||{}).length} klines=${Object.keys(this.dataBus?.klines||{}).length}, usdtBalance=${usdtBalance.toFixed(2)}`);
+      if (topSymbols.length > 0) {
+        this._log(`   Top候选: ${topSymbols.slice(0,3).map(s => `${s.symbol}=${s.score}(${s.side})`).join(', ')}`);
+      }
+    }
+
+    // 持仓检查已在上面余额检查之前完成（v63修复）
+    // 重新计算剩余仓位（可能有刚平的）
+    const remainingSlots2 = strategyConfig.maxPositions - afterClosePositions.length;
+    if (remainingSlots2 <= 0) return;
+
+    // v21: 冷却过滤 — 平仓后cooldownMs内不再开同币
+    const cooldowns = state.cooldowns || {};
+    const now = Date.now();
+
+    // 6. 新候选（过滤掉已有仓位+冷却中）
+    const candidates = topSymbols
+      .filter(s => s.score >= strategyConfig.minScore && !afterClosePositions.includes(s.symbol))
+      .filter(s => {
+        const lastClose = cooldowns[s.symbol] || 0;
+        return (now - lastClose) > strategyConfig.cooldownMs;
+      })
+      .slice(0, remainingSlots2);
+
+    if (candidates.length === 0) {
+      if (topSymbols.length > 0 && this._cycleCount % 5 === 0) {
+        this._log(`📊 ${wallet.slice(0, 10)} ${topSymbols.length}个候选但分数不足(min=${strategyConfig.minScore}): ${topSymbols.slice(0,3).map(s=>s.symbol+'='+s.score).join(',')}`);
+      }
+      return;
+    }
+
+    // 7. 逐个开仓
+    for (const cand of candidates) {
+      try {
+        await this._openPosition(wallet, vault, cand, usdtBalance, strategyConfig, state);
+        // 刷新余额（上一笔已花掉一部分）
+        try {
+          const raw = await erc20Balance(USDT_ADDRESS, vault);
+          usdtBalance = Number(raw) / 1e18;
+        } catch (e) {}
+      } catch (e) {
+        this._log(`❌ 开仓异常 ${cand.symbol}: ${e.message}`);
+        if (e.stack && this._cycleCount % 5 === 0) this._log(`   stack: ${e.stack.split('\n')[1]?.trim()}`);
+      }
+    }
+  }
+
+  // ═══════════════════════════════════
+  // v50: 精细开仓 — 凯利公式 + 波动率自适应 + 多策略信号
+  // ═══════════════════════════════════
+  async _openPosition(wallet, vault, cand, usdtBalance, config, state) {
+    const { symbol, score, side, currentPrice, atrPct, atr, confidence, volRegime } = cand;
+    this._log(`[v50-open] ${symbol} 进入开仓流程 score=${score} side=${side} price=${currentPrice} atrPct=${atrPct} atr=${atr}`);
+    const atrPctValue = atrPct || (atr && currentPrice ? atr / currentPrice : 0.02);
+
+    // --- 5a. 盈亏比检查 ---
+    const totalCostPct = (PANCAKE_FEE_BPS + SLIPPAGE_BPS) / 10000 * 2 + 0.001; // ~1.5%
+    // v50: 多策略确认后降低盈亏比要求（从2%降到0.5%）
+    // v62: 止盈目标提升到ATR×5，确保远超1.6% DEX成本
+    const minExpectedMove = totalCostPct + 0.01; // 1.6% + 1% = 2.6% 最低预期收益
+    const expectedMove = atrPctValue * 5; // v62: 2.5→5, 确保止盈远超成本
+    const pctB = cand.pctB || 0.5;
+    if (expectedMove < minExpectedMove && pctB > 0.15) {
+      if (this._cycleCount % 5 === 0) {
+        this._log(`[v50-open] ${symbol} 跳过: expectedMove=${(expectedMove*100).toFixed(2)}% < min=${(minExpectedMove*100).toFixed(2)}% pctB=${pctB.toFixed(3)}`);
+      }
+      return;
+    }
+
+    // --- 5b. v50: 凯利公式 + 波动率自适应仓位计算 ---
+    const userStats = this._getUserStats(wallet);
+    const winRate = userStats.winRate > 0 ? userStats.winRate : 0.5; // 默认50%胜率
+    const avgWin = userStats.avgWin > 0 ? userStats.avgWin : 0.03; // 默认3%
+    const avgLoss = userStats.avgLoss > 0 ? userStats.avgLoss : 0.01; // 默认1%
+
+    // 凯利公式计算最优仓位
+    const kellyResult = this.strategyManager.strategies.kelly.calculateKelly(winRate, avgWin, avgLoss);
+
+    // 波动率自适应调整
+    const volAdjusted = this.strategyManager.strategies.kelly.adjustForMarket(kellyResult.boundedKelly, {
+      volatility: atrPctValue,
+      trendStrength: Math.abs((cand.ma7 - cand.ma21) / cand.ma21 * 100),
+      rsi: cand.rsi || 50,
+      correlation: 0,
+    });
+
+    let kellyPct = volAdjusted.adjustedKelly;
+
+    // v50: 凯利仓位下限 — 小账户至少40%，大账户至少10%
+    const minKelly = usdtBalance < 100 ? 0.40 : usdtBalance < 500 ? 0.25 : 0.10;
+    kellyPct = Math.max(kellyPct, minKelly);
+
+    // 根据信号置信度调整（但不低于50%）
+    if (confidence) {
+      kellyPct *= Math.max(confidence, 0.5);
+    }
+
+    // 根据评分调整（高分加仓）
+    if (score >= 6) kellyPct *= 1.2;
+    else if (score >= 4) kellyPct *= 1.0;
+    else kellyPct *= 0.8;
+
+    // 波动率体制最终调整
+    if (volRegime === 'extreme') kellyPct *= 0.5;
+    else if (volRegime === 'high') kellyPct *= 0.7;
+
+    // 仓位金额
+    let positionUsdt = usdtBalance * kellyPct;
+    // v50: 小账户允许更高仓位比例
+    const effectiveMaxPct = usdtBalance < 100 ? Math.max(config.maxPositionPct, 0.50) : config.maxPositionPct;
+    positionUsdt = Math.min(positionUsdt, usdtBalance * effectiveMaxPct);
+    positionUsdt = Math.min(positionUsdt, MAX_SINGLE_TRADE_USDT);
+
+    // 回撤检查
+    const drawdownCheck = this.strategyManager.strategies.kelly.updateDrawdown(usdtBalance);
+    if (drawdownCheck.shouldReduce) {
+      positionUsdt *= drawdownCheck.reductionFactor;
+      this._log(`⚠️ ${wallet.slice(0,10)} 回撤${(drawdownCheck.drawdown*100).toFixed(1)}% > ${(this.strategyManager.strategies.kelly.maxDrawdown*100).toFixed(0)}%, 仓位减半`);
+    }
+
+    if (positionUsdt < MIN_TRADE_USDT) {
+      this._log(`[v50-open] ${symbol} 仓位太小: positionUsdt=$${positionUsdt.toFixed(2)} < MIN=$${MIN_TRADE_USDT} kellyPct=${(kellyPct*100).toFixed(2)}% confidence=${confidence}`);
+      return;
+    }
+
+    // 止损距离
+    const atrValue = atr || (currentPrice * 0.02);
+    // v63: 止损5%（回测最优），止损距离取max(5%, 3×ATR)
+    const stopDistPct = Math.max(config.slPct || 0.05, atrValue ? (3 * atrValue / currentPrice) : config.slPct);
+
+    // 预期利润检查
+    const estProfit = positionUsdt * (expectedMove - totalCostPct) - GAS_COST_USD();
+    if (estProfit < 1) {
+      if (this._cycleCount % 5 === 0) {
+        this._log(`[v50-open] ${symbol} 跳过: estProfit=$${estProfit.toFixed(2)} positionUsdt=$${positionUsdt.toFixed(2)} expectedMove=${(expectedMove*100).toFixed(2)}% costPct=${(totalCostPct*100).toFixed(2)}%`);
+      }
+      return;
+    }
+
+    // --- 5c. 滑点保护 ---
+    const slippageMultiplier = positionUsdt > 500 ? 1.5 : positionUsdt > 200 ? 1.2 : 1;
+    const effectiveSlippageBps = Math.floor(SLIPPAGE_BPS * slippageMultiplier);
+
+    // --- 5d. swap 路径 ---
+    const tokenIn = USDT_ADDRESS;
+    const tokenOut = this._getBscToken(symbol);
+    if (!tokenOut) return;
+
+    this._log(
+      `📈 ${wallet.slice(0, 8)} 开仓 ${symbol} ${side}`
+      + ` | 金额 $${positionUsdt.toFixed(2)}`
+      + ` | 凯利仓位 ${(kellyPct * 100).toFixed(1)}%`
+      + ` | 分数 ${score}`
+      + ` | 置信度 ${(confidence || 0).toFixed(2)}`
+      + ` | 波动率 ${volRegime || 'medium'}`
+      + ` | ATR ${(atrPctValue * 100).toFixed(2)}%`
+      + ` | 预期 ${(expectedMove * 100).toFixed(2)}%`
+      + ` | 成本 ${(totalCostPct * 100).toFixed(2)}%`
+    );
+
+    // --- 5e. 执行 swap ---
+    const receipt = await this._executeSwapInVault(
+      vault, tokenIn, tokenOut, positionUsdt, effectiveSlippageBps
+    );
+
+    // --- 5f. 记录仓位（含精细数据）---
+    if (!state.positions) state.positions = {};
+    state.positions[symbol] = {
+      side, entryPrice: currentPrice,
+        atrPct: atrPctValue || 2,
+      amount: positionUsdt, openTime: Date.now(),
+      sl: currentPrice * (1 - stopDistPct),
+      tp: currentPrice * (1 + expectedMove),
+      atr, atrPct, stopDistPct, score,
+      costPct: totalCostPct,
+      slippageBps: effectiveSlippageBps,
+    };
+
+    this._logTrade(wallet, vault, {
+      symbol, action: side, amount: positionUsdt,
+      price: currentPrice, timestamp: Date.now(),
+      score, atrPct, stopDistPct, expectedMove,
+    });
+  }
+
+  // ═══════════════════════════════════
+  // 精细平仓（移动止损/趋势评分/持仓时间/盈利保护）
+  // ═══════════════════════════════════
+  async _checkClosePosition(wallet, vault, symbol, pos, currentPrice, config, state) {
+    const entryPrice = pos.entryPrice;
+    if (!entryPrice || !currentPrice) return;
+
+    const holdTime = Date.now() - pos.openTime;
+    const holdMinutes = holdTime / 60000;
+    const holdHours = holdTime / 3600000;
+
+    // --- 实际 PnL ---
+    let rawPnlPct;
+    if (!currentPrice || !entryPrice || !isFinite(currentPrice) || !isFinite(entryPrice)) {
+      rawPnlPct = 0; // v67-fix: 防止 NaN
+    } else if (pos.side === 'LONG') {
+      rawPnlPct = (currentPrice - entryPrice) / entryPrice;
+    } else {
+      rawPnlPct = (entryPrice - currentPrice) / entryPrice;
+    }
+    // costPct 是双边费用（开+平），但当前还没平仓，只扣单边
+    const singleSideCost = (pos.costPct || ((PANCAKE_FEE_BPS + SLIPPAGE_BPS) / 10000 * 2 + 0.001)) / 2;
+    const netPnlPct = rawPnlPct - singleSideCost;
+    const leveragedPnl = netPnlPct * (pos.leverage || 2);
+
+    // 记录峰值（如果从旧策略迁移，重置不合理的峰值）
+    if (!pos._peakPnl) pos._peakPnl = 0;
+    if (pos._peakPnl > 0 && pos._peakPnl < 0.03) pos._peakPnl = 0; // 旧策略遗留清理
+    if (leveragedPnl > pos._peakPnl) pos._peakPnl = leveragedPnl;
+
+    let shouldClose = false;
+    let reason = '';
+
+    // ═══ v21: 基于费用的精确止盈止损 ═══
+    // 双边费用约 1.5%，所以：
+    //   止损 = -1%（净亏2.5%含费用）
+    //   止盈 = +3%（净赚1.5%含费用）
+    // ═══ v60: 动态ATR止损 + 15分钟保护期 ═══
+    // v60修复：之前硬止损-1%导致开仓0.0h就止损，策略没时间验证
+    // 新逻辑：
+    //   - 保护期15分钟内不检查止损（除非极端亏损-5%）
+    //   - 止损线 = ATR的2倍（动态适应波动率），限制2%-5%
+    //   - 极端亏损-5%保护期内也触发
+    // v63: 回测优化 — 止损5%（网格搜索最优）
+    const dynamicStopPct = config.slPct || 0.05;
+
+    // 1. 极端亏损保护（保护期内也触发）
+    if (netPnlPct <= -0.05) {
+      shouldClose = true;
+      reason = `极端止损 净亏 ${(netPnlPct * 100).toFixed(2)}%`;
+    }
+    // 2. 保护期15分钟内不检查其他止损
+    else if (holdMinutes < 15) { // v63: 30→15分钟，回测最优
+      return;
+    }
+    // 3. ATR动态止损
+    else if (netPnlPct <= -dynamicStopPct) {
+      shouldClose = true;
+      reason = `ATR止损 净亏 ${(netPnlPct * 100).toFixed(2)}% (线${(dynamicStopPct * 100).toFixed(1)}%)`;
+    }
+    // 4. 价格止损
+    else if (pos.sl && currentPrice <= pos.sl) {
+      shouldClose = true;
+      reason = `价格止损 ${currentPrice.toFixed(4)} <= ${pos.sl.toFixed(4)}`;
+    }
+    // 5. 止盈：净赚超过+3%
+    else if (netPnlPct >= 0.05) { // v62: 3%→5%，扣1.6%成本后净赚3.4%
+      shouldClose = true;
+      reason = `止盈 净赚 ${(netPnlPct * 100).toFixed(1)}%（含费用）`;
+    }
+    // 6. 移动止盈：峰值回撤30%
+    else if (pos._peakPnl >= 0.04 && netPnlPct <= pos._peakPnl * 0.6) { // v63: 峰值门槛3%→4%, 回撤40%
+      shouldClose = true;
+      reason = `移动止盈 峰值${(pos._peakPnl*100).toFixed(1)}% → ${(netPnlPct*100).toFixed(1)}%`;
+    }
+    // 7. 超时：24小时无盈利
+    else if (holdHours >= 24 && netPnlPct < 0.005) {
+      shouldClose = true;
+      reason = `超时${holdHours.toFixed(0)}h 净亏 ${(netPnlPct * 100).toFixed(1)}%不足`;
+    }
+    // v60: 保护期已在上面的15分钟检查中处理
+    // ═══ 7. v50: 多维度趋势反转平仓 ═══
+    if (!shouldClose && holdMinutes >= 15) {
+      const ind = this.dataBus?.calculateIndicators(symbol);
+      const ma7 = ind?.ma7;
+      const ma21v = ind?.ma25;
+      const ma55v = ind?.ma99;
+      const curRSI = ind?.rsi || 50;
+      const curAtr = ind?.atr || 0;
+      const curAtrPct = ind?.atrPercent || 0.02;
+
+      // v50: 多策略引擎分析
+      const klines = this.dataBus?.klines?.[symbol];
+      if (klines && klines.length >= 50) {
+        const marketData = { klines, currentPrice, symbol };
+        const strategyResult = await this.strategyManager.analyze(marketData);
+        const finalSignal = strategyResult.finalSignal;
+        const volRegime = strategyResult.analysis.volatility?.regime || 'medium';
+        const anomaly = strategyResult.analysis.anomalyCheck || {};
+
+        // 做多反转：多策略信号转为 SELL 或 波动率异常
+        if (pos.side === 'LONG') {
+          if (finalSignal.action === 'SELL' && finalSignal.confidence > 0.5) {
+            shouldClose = true;
+            reason = `v50多策略反转平多 信号=${finalSignal.action} 置信度=${finalSignal.confidence.toFixed(2)}`;
+          } else if ((ma7 < ma21v * 0.98) || curRSI < 25) { // v63: 4%→2%缓冲带
+            shouldClose = true;
+            reason = `v63反转平多 MA7<MA21-2% RSI=${curRSI.toFixed(0)}`;
+          }
+          // v50: 极端波动率异常时平仓保护
+          if (!shouldClose && anomaly.isAnomaly && netPnlPct < 0) {
+            shouldClose = true;
+            reason = `波动率异常平多 z=${anomaly.zScore?.toFixed(2)} PnL=${(netPnlPct*100).toFixed(1)}%`;
+          }
+        }
+
+        // 做空反转
+        if (pos.side === 'SHORT') {
+          if (finalSignal.action === 'BUY' && finalSignal.confidence > 0.5) {
+            shouldClose = true;
+            reason = `v50多策略反转平空 信号=${finalSignal.action} 置信度=${finalSignal.confidence.toFixed(2)}`;
+          } else if ((ma7 > ma21v * 1.02) || curRSI > 75) { // v63: 4%→2%缓冲带
+            shouldClose = true;
+            reason = `v63反转平空 MA7>MA21+2% RSI=${curRSI.toFixed(0)}`;
+          }
+          // v50: 极端波动率异常时平仓保护
+          if (!shouldClose && anomaly.isAnomaly && netPnlPct < 0) {
+            shouldClose = true;
+            reason = `波动率异常平空 z=${anomaly.zScore?.toFixed(2)} PnL=${(netPnlPct*100).toFixed(1)}%`;
+          }
+        }
+      }
+
+      // v50: ATR移动止损（追踪止损）
+      if (!shouldClose && curAtr > 0) {
+        const atrStopDistance = curAtr * 2.5; // 2.5倍ATR
+        if (pos.side === 'LONG') {
+          const trailingStop = currentPrice - atrStopDistance;
+          if (pos._peakPrice && pos._peakPrice > 0) {
+            const trailingFromPeak = pos._peakPrice - atrStopDistance;
+            if (currentPrice <= trailingFromPeak && netPnlPct > 0) {
+              shouldClose = true;
+              reason = `ATR追踪止损 峰值=${pos._peakPrice.toFixed(4)} 止损=${trailingFromPeak.toFixed(4)}`;
+            }
+          }
+          // 更新峰值
+          if (!pos._peakPrice || currentPrice > pos._peakPrice) pos._peakPrice = currentPrice;
+        } else if (pos.side === 'SHORT') {
+          const trailingStop = currentPrice + atrStopDistance;
+          if (pos._peakPrice && pos._peakPrice > 0) {
+            const trailingFromPeak = pos._peakPrice + atrStopDistance;
+            if (currentPrice >= trailingFromPeak && netPnlPct > 0) {
+              shouldClose = true;
+              reason = `ATR追踪止损(空) 峰值=${pos._peakPrice.toFixed(4)} 止损=${trailingFromPeak.toFixed(4)}`;
+            }
+          }
+          // 更新峰值（做空价格越低越好）
+          if (!pos._peakPrice || currentPrice < pos._peakPrice) pos._peakPrice = currentPrice;
+        }
+      }
+    }
+
+    if (!shouldClose) return;
+
+    this._log(
+      `📉 ${wallet.slice(0, 8)} 平仓 ${symbol}`
+      + ` | ${reason}`
+      + ` | 净PnL ${(netPnlPct * 100).toFixed(2)}%`
+      + ` | 持仓 ${holdHours.toFixed(1)}h`
+    );
+
+    try {
+      // 实际平仓 swap：查 Vault 持有的代币余额，卖回 USDT
+      const heldToken = this._getBscToken(symbol);
+      if (heldToken) {
+        try {
+          const rawBalance = await erc20Balance(heldToken, vault);
+          if (rawBalance > 0n) {
+            await this._executeSwapInVault(vault, heldToken, USDT_ADDRESS, 0, SLIPPAGE_BPS, rawBalance);
+          }
+        } catch (e) {
+          this._log(`⚠️ 平仓swap失败 ${symbol}: ${e.message}`);
+        }
+      }
+
+      this._logTrade(wallet, vault, {
+        symbol, action: 'CLOSE', amount: pos.amount,
+        price: currentPrice, pnl: netPnlPct * pos.amount,
+        timestamp: Date.now(), reason,
+        holdHours: holdHours.toFixed(1),
+      });
+
+      // v17: 调用链上 recordPnl 扣除 20% 平台服务费
+      try {
+        const pnlUsdt = Math.round(netPnlPct * pos.amount * 1e18); // USDT 18位小数(BSC)
+        if (pnlUsdt !== 0) {
+          const { ethers } = require('ethers');
+          const pWallet = new ethers.Wallet(this.traderKey, getProvider());
+          const vCoder = new ethers.Interface(VAULT_ABI);
+          const pnlData = vCoder.encodeFunctionData('recordPnl', [pnlUsdt]);
+          const pnlTx = await pWallet.sendTransaction({ to: vault, data: pnlData, gasLimit: 200000 });
+          // [audit#7] 轮询等待确认，避免 ethers v6 url.clone bug
+          const pnlReceipt = await this._waitForReceipt(pWallet.provider, pnlTx.hash);
+          if (!pnlReceipt || pnlReceipt.status === 0) throw new Error('recordPnl tx failed');
+          this._log(`💰 ${symbol} recordPnl 链上确认: pnl=${pnlUsdt > 0 ? '+' : ''}${(pnlUsdt/1e18).toFixed(2)} USDT`);
+        }
+      } catch (e) {
+        this._log(`⚠️ recordPnl 失败 ${symbol}: ${e.message}`);
+      }
+
+      // V2: 动态权重统计 + 自学习反馈
+      if (!this._pairStats) this._pairStats = {};
+      if (!this._pairStats[symbol]) this._pairStats[symbol] = { wins: 0, losses: 0, totalPnl: 0 };
+      if (netPnlPct > 0) this._pairStats[symbol].wins++;
+      else this._pairStats[symbol].losses++;
+      this._pairStats[symbol].totalPnl += netPnlPct * pos.amount;
+
+      // v50: 更新用户统计（用于凯利公式）
+      this._updateUserStats(wallet, netPnlPct, netPnlPct * pos.amount);
+      const userStats = this._getUserStats(wallet);
+      this._log(`📊 ${wallet.slice(0,8)} 统计: 胜率=${(userStats.winRate*100).toFixed(0)}% (${userStats.wins}W/${userStats.losses}L) avgWin=${(userStats.avgWin*100).toFixed(1)}% avgLoss=${(userStats.avgLoss*100).toFixed(1)}%`);
+
+      delete state.positions[symbol];
+      // v21: 记录冷却时间
+      if (!state.cooldowns) state.cooldowns = {};
+      state.cooldowns[symbol] = Date.now();
+    } catch (e) {
+      this._log(`❌ 平仓异常 ${symbol}: ${e.message}`);
+    }
+  }
+
+  // ═══════════════════════════════════
+  // 执行 Vault Swap（支持滑点参数 + 代币余额）
+  // ═══════════════════════════════════
+  async _executeSwapInVault(vaultAddress, tokenIn, tokenOut, amountInUsdt, slippageBps = SLIPPAGE_BPS, tokenAmount = null) {
+    if (!this.traderKey) throw new Error('TRADER_PRIVATE_KEY 未配置');
+
+    const { ethers } = require('ethers');
+    const provider = getProvider();
+    const wallet = new ethers.Wallet(this.traderKey, provider);
+
+    let amountIn;
+    if (tokenAmount !== null) {
+      amountIn = tokenAmount;
+    } else {
+      amountIn = ethers.parseUnits(amountInUsdt.toFixed(18), 18);
+    }
+
+    function fixAddr(a) { try { return require('ethers').getAddress(a.toLowerCase()); } catch { return a; } }
+    const coder = new ethers.Interface(ROUTER_ABI);
+
+    // v60: 流动性预检查 — 用小额测试，失败则直接跳过不浪费时间
+    const testData = coder.encodeFunctionData('getAmountsOut', [
+      ethers.parseUnits('0.01', 18), [fixAddr(tokenIn), fixAddr(tokenOut)]
+    ]);
+    try {
+      const testRaw = await bscRpc('eth_call', [{ to: PANCAKE_ROUTER, data: testData }, 'latest']);
+      if (!testRaw || testRaw === '0x') throw new Error('no liquidity');
+    } catch(e) {
+      throw new Error('QUOTE_RPC_FAILED: 流动性不足 ' + e.message?.slice(0, 80));
+    }
+
+    // 获取报价
+    const quoteData = coder.encodeFunctionData('getAmountsOut', [
+      amountIn, [fixAddr(tokenIn), fixAddr(tokenOut)]
+    ]);
+    let quoteRaw;
+    try {
+      quoteRaw = await bscRpc('eth_call', [{ to: PANCAKE_ROUTER, data: quoteData }, 'latest']);
+    } catch(e) {
+      throw new Error('QUOTE_RPC_FAILED: ' + e.message?.slice(0, 100));
+    }
+    if (!quoteRaw || quoteRaw === '0x' || typeof quoteRaw !== 'string') {
+      throw new Error('QUOTE_EMPTY: ' + String(quoteRaw).slice(0, 50));
+    }
+    let quoteResult;
+    try {
+      quoteResult = coder.decodeFunctionResult('getAmountsOut', quoteRaw);
+    } catch(e) {
+      throw new Error('QUOTE_DECODE_FAILED: ' + e.message?.slice(0, 100));
+    }
+    if (!quoteResult || !quoteResult[0] || typeof quoteResult[0][1] === 'undefined') {
+      throw new Error('QUOTE_INVALID: no amounts array');
+    }
+    const minOut = quoteResult[0][1] * BigInt(10000 - slippageBps) / 10000n;
+
+    // V5: 直接调 Vault.executeSwap(dex, tokenIn, tokenOut, amountIn, minOut)
+    const vaultIface = new ethers.Interface([
+      'function executeSwap(address dex, address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut) external returns (uint256)'
+    ]);
+    const vaultCallData = vaultIface.encodeFunctionData('executeSwap', [
+      fixAddr(PANCAKE_ROUTER), fixAddr(tokenIn), fixAddr(tokenOut), amountIn, minOut
+    ]);
+
+    this._log(`[v50-swap] ${vaultAddress.slice(0,10)} tokenIn=${tokenIn.slice(0,8)} tokenOut=${tokenOut.slice(0,8)} amountIn=${amountIn} minOut=${minOut}`);
+
+    let gasLimit;
+    try {
+      const estimated = await wallet.estimateGas({ to: vaultAddress, data: vaultCallData });
+      gasLimit = BigInt(Math.ceil(Number(estimated) * 1.3));
+      this._log(`[v50-swap] estimateGas OK: ${gasLimit}`);
+    } catch (e) {
+      throw new Error('VAULT_CALL_FAILED: ' + (e.reason || e.message?.slice(0, 150)));
+    }
+
+    const tx = await wallet.sendTransaction({ to: vaultAddress, data: vaultCallData, gasLimit });
+    // P1-6 fix: 传入发送交易时的 provider 实例，避免 RPC 切换后确认不到
+    const receipt = await this._waitForReceipt(wallet.provider, tx.hash);
+    this._log(`✅ Swap tx: ${receipt.hash?.slice(0, 18)}...`);
+    return receipt;
+  }
+
+  // ═══════════════════════════════════
+  // BSC 代币地址映射（交易对 → 链上合约）
+  // ═══════════════════════════════════
+  _getBscToken(symbol) {
+    const base = symbol.replace('USDT', '');
+    // v19: 扩展支持更多 BSC 代币
+    const TOKENS = {
+      'BTC':  '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c',
+      'ETH':  '0x2170Ed0880ac9A755fd29B2688956BD959F933F8',
+      'BNB':  WBNB_ADDRESS,
+      'CAKE': '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82',
+      'SOL':  '0x570a5d26f7765ecb712c0924e4de545b89fd43df',
+      'DOGE': '0xbA2aE424d960c24699abC0cDB92F7fA7AFC5d3A1',
+      'XRP':  '0x1D2F0da169ceB9fC7B3144628dB156f3F6c60dBE',
+      'ADA':  '0x3EE2200E23Fc49022d145c0Df926332eBFD44552',
+      'DOT':  '0x7083609fCE4d1D8Dc0C979AAbb8cF8a80BE65133',
+      'AVAX': '0x1CE0c2827e2eF14D5c4f29aB0De256504821A675',
+      'LINK': '0xF8A0BF9cF54Bb9E567B6EE941A2e89D99BcE5eC4',
+      'UNI':  '0xBf5140A22578168FD562DCcF235E5D039eBD332C',
+      'MATIC':'0xcc427242615ED0e56311ab0351A9FCbeA53cB968',
+      'FIL':  '0x0D8Ce28925a17af7832c9c5CD648E3bE827B2e61',
+      'LTC':  '0x4338669C7CE9E7DB0072AAD3b5EBAa0Cf6C6F228',
+      'NEAR': '0x1Fa4c7C618Be4f58b2E6D218e4837eDeA0AB86f1',
+      'ATOM': '0x0Eb3a7a5701997a04387D3E99cF1C8c2f208b6d7',
+      'APT':  '0x25d887Ce7a2a73433E648c4b113a8B8C8c54cC18',
+      'ARB':  '0x912CE59144191C1204E64559FE8253a0e49E6548',
+      'OP':   '0xB45Ae46eFcF3fE9a4510a65F9bC15C9f667d0b5d',
+      'SUI':  '0x11eBF116d2AA60e541BbB12e4b3Ed6e7f7D3E6C3',
+      // [audit#15] 补全缺失的活跃交易对
+      'SPCX': '0x00B0d8EFb9e5c8C9E4C378e40C6d4DfA8D59227C',
+      'WIF':   '0x6dE6d8FCd51e7fC0836C61d706b13eC09cde56C6',
+      'TRUMP': '0x1B84d25E2877082462243B18130C4101aA21e0A5',
+      'FARTCOIN':'0xBc7d6D0E89d4bE6Ae07B25657bE7C7853d608c63',
+      'SEI':   '0x0C6d871846eE8AD2150487C83f5d193B9C4f4c03',
+      'PEPE':  '0xbD97531F2f03E18B8A47B8325bE2Ae74d6Cb3A7C',
+      // ARK 代币（BSC）
+      'ARK':   ARK_TOKEN,
+    };
+    return TOKENS[base] || null;
+  }
+
+  // ═══════════════════════════════════
+  // 辅助方法
+  // ═══════════════════════════════════
+  _sma(data, period) {
+    if (data.length < period) return null;
+    const slice = data.slice(-period);
+    return slice.reduce((a, b) => a + b, 0) / period;
+  }
+
+  _ema(data, period) {
+    if (data.length < period) return null;
+    const k = 2 / (period + 1);
+    let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < data.length; i++) {
+      ema = data[i] * k + ema * (1 - k);
+    }
+    return ema;
+  }
+
+  _rsi(closes, period = 14) {
+    if (closes.length < period + 1) return 50;
+    let gains = 0, losses = 0;
+    for (let i = closes.length - period; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff > 0) gains += diff; else losses -= diff;
+    }
+    if (losses === 0) return 100;
+    const rs = gains / losses;
+    return 100 - (100 / (1 + rs));
+  }
+
+  _atr(klines, period = 14) {
+    if (klines.length < period + 1) return null;
+    const trs = [];
+    for (let i = klines.length - period; i < klines.length; i++) {
+      const h = klines[i].high ?? klines[i][2] ?? 0;
+      const l = klines[i].low ?? klines[i][3] ?? 0;
+      const prevC = klines[i - 1].close ?? klines[i - 1][4] ?? 0;
+      const tr = Math.max(h - l, Math.abs(h - prevC), Math.abs(l - prevC));
+      trs.push(tr);
+    }
+    return trs.reduce((a, b) => a + b, 0) / trs.length;
+  }
+
+  _volume24h(klines) {
+    if (!klines || klines.length < 24) return 0;
+    return klines.slice(-24).reduce((sum, k) => sum + (k.volume ?? k[5] ?? 0), 0);
+  }
+
+  // ═══════════════════════════════════
+  // V2 均值回归评分（v18: 更严格）
+  // 核心逻辑：价格触及 BB 下轨 + RSI 超卖 + 大趋势向上 → 做多
+  // v18: 大市值币做空需更严格，门槛从4提高到5
+  // ═══════════════════════════════════════
+  // v50: 多策略评分 — 整合趋势+网格+DCA+多时间框架+波动率
+  async _scoreSymbol(symbol) {
+    const md = this.dataBus?.marketData?.[symbol];
+    if (!md) return { score: 0, side: null };
+    const ind = this.dataBus.calculateIndicators(symbol);
+    if (!ind) return { score: 0, side: null };
+    const { price: currentPrice, rsi, atrPercent: atrPct, bb, ma7, ma25: ma21, ma99: ma55, volume: volInfo, atr } = ind;
+    if (!currentPrice || !bb || !ma21) return { score: 0, side: null };
+    const pctB = bb.pctB || 0.5;
+    const klines = this.dataBus?.klines?.[symbol];
+    if (!klines || klines.length < 50) return { score: 0, side: null };
+    const lastKline = klines[klines.length - 1];
+    const klineOpen = lastKline?.open || currentPrice;
+    const klineClose = lastKline?.close || currentPrice;
+    const isGreen = klineClose > klineOpen;
+    const isRed = klineClose < klineOpen;
+
+    // ═══ v50: 多策略引擎分析 ═══
+    const marketData = { klines, currentPrice, symbol };
+    const strategyResult = await this.strategyManager.analyze(marketData);
+    const finalSignal = strategyResult.finalSignal;
+    const compositeScore = strategyResult.compositeScore;
+
+    // 波动率体制
+    const volRegime = strategyResult.analysis.volatility?.regime || 'medium';
+    const volAdvice = strategyResult.analysis.volatilityAdvice || {};
+
+    // 多时间框架一致性
+    const consistency = strategyResult.analysis.consistency || {};
+
+    // 异常检测
+    const anomaly = strategyResult.analysis.anomalyCheck || {};
+
+    // ═══ v50: 综合评分 ═══
+    let score = 0;
+    let side = null;
+
+    // 1. 多时间框架信号（权重 35%）
+    if (finalSignal.action === 'BUY') {
+      side = 'LONG';
+      score += finalSignal.confidence * 3.5; // 0-2.8分
+    } else if (finalSignal.action === 'SELL') {
+      side = 'SHORT';
+      score += finalSignal.confidence * 3.5;
+    }
+
+    // 2. 趋势确认（权重 25%）
+    const longTrend = ma7 > ma21 && ma21 > ma55;
+    const shortTrend = ma7 < ma21 && ma21 < ma55;
+    if (side === 'LONG' && longTrend) score += 2.5;
+    if (side === 'SHORT' && shortTrend) score += 2.5;
+
+    // 3. BB+RSI 确认（权重 15%）
+    if (side === 'LONG') {
+      score += (pctB < 0.15 ? 1.5 : pctB < 0.30 ? 1.0 : 0);
+      score += (rsi < 30 ? 1.5 : rsi < 40 ? 1.0 : 0);
+      if (isGreen) score += 0.5;
+    } else if (side === 'SHORT') {
+      score += (pctB > 0.85 ? 1.5 : pctB > 0.70 ? 1.0 : 0);
+      score += (rsi > 70 ? 1.5 : rsi > 60 ? 1.0 : 0);
+      if (isRed) score += 0.5;
+    }
+
+    // 4. 网格策略加分（权重 10%）
+    const gridSignal = strategyResult.signals.grid;
+    if (gridSignal.action !== 'HOLD') {
+      score += 1.0;
+    }
+
+    // 5. DCA 策略加分（权重 5%）
+    const dcaSignal = strategyResult.signals.dca;
+    if (dcaSignal.action === 'BUY' && side === 'LONG') {
+      score += 0.5;
+    }
+
+    // 6. 波动率调整（权重 10%）
+    if (volRegime === 'extreme') {
+      score *= 0.5; // 极端波动率减半
+    } else if (volRegime === 'high') {
+      score *= 0.8;
+    } else if (volRegime === 'low') {
+      score *= 1.1; // 低波动率加分
+    }
+
+    // 7. 一致性奖励
+    if (consistency.consistent) {
+      score *= 1.15; // 时间框架一致加15%
+    }
+
+    // 8. 异常惩罚
+    if (anomaly.isAnomaly) {
+      score *= 0.7; // 波动率异常减30%
+    }
+
+    // 9. 大市值币做空需要更高分数
+    const bigCapShortBlock = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
+    if (side === 'SHORT' && bigCapShortBlock.includes(symbol) && score < 5) {
+      return { score: 0, side: null };
+    }
+
+    // 最低分数门槛
+    if (score < 3) {
+      if (this._cycleCount % 3 === 0) {
+        this._log(`[v50-score] ${symbol}: score=${score.toFixed(1)} side=${side} volRegime=${volRegime} consistent=${consistency.consistent} — 分数不足门槛3`);
+      }
+      return { score: 0, side: null };
+    }
+
+    // 日志输出（每3轮）
+    if (this._cycleCount % 3 === 0) {
+      this._log(`[v50-score] ${symbol}: score=${score.toFixed(1)} side=${side} volRegime=${volRegime} consistent=${consistency.consistent} anomaly=${anomaly.isAnomaly} signal=${finalSignal.action}(${finalSignal.confidence.toFixed(2)})`);
+    }
+
+    return {
+      score: Math.round(score * 10) / 10,
+      side, currentPrice,
+      ma7, ma21, ma55, rsi, atrPct, atr, pctB,
+      volRatio: volInfo?.ratio || 1,
+      volRegime,
+      consistency: consistency.consistent,
+      confidence: finalSignal.confidence,
+      compositeScore: compositeScore.normalized,
+    };
+  }
+
+  // ═══════════════════════════════════
+  // 交易对自动筛选（从 DataBus 所有行情中选 Top N）
+  // ═══════════════════════════════════
+  async _selectTopSymbols(maxCount = 10) {
+    const marketData = this.dataBus?.marketData || {};
+    const allKlines = this.dataBus?.klines || {};
+    const scored = [];
+
+    // 1. 先评 DataBus 已有的交易对（使用正确的 klines 引用）
+    for (const [sym, md] of Object.entries(marketData)) {
+      if (!sym.endsWith('USDT')) continue;
+      const klines = allKlines[sym];
+      if (!klines || klines.length < 50) {
+        if (this._cycleCount % 10 === 0) this._log(`[selectTop] ${sym} SKIP: klines=${klines?.length||0}`);
+        continue;
+      }
+      const result = await this._scoreSymbol(sym);
+      if (result.score >= 3) {
+        scored.push({ symbol: sym, ...result });
+      } else if (this._cycleCount % 3 === 0) {
+        this._log(`[selectTop] ${sym} score=${result.score} side=${result.side} klines=${klines.length}`);
+      }
+    }
+
+    // 不再动态拉取新交易对（HTTP请求太慢会卡住cycle，且WS不稳定导致数据不完整）
+    // 只用dataBus已有的12个交易对评分，市场极端时自然能捕捉到机会
+    // 更多交易对的评分等WS稳定后由管理员引擎的Scanner负责补充
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, maxCount);
+  }
+
+  // 从 Binance 拉 24h ticker 数据，快速过滤有趋势的交易对
+  async _fetchTopBinanceTickers(scored, maxExtra = 30) {
+    try {
+      const https2 = require('https');
+      const url = 'https://fapi.binance.com/fapi/v1/ticker/24hr';
+      const tickers = await new Promise((resolve, reject) => {
+        https2.get(url, (res) => {
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => {
+            try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+          });
+        }).on('error', reject).setTimeout(8000, () => reject(new Error('timeout')));
+      });
+
+      const existing = new Set(scored.map(s => s.symbol));
+      // 过滤：USDT 交易对、24h 成交量 > $50M、价格变化绝对值 > 1%
+      const candidates = tickers
+        .filter(t => t.symbol?.endsWith('USDT') && !existing.has(t.symbol)
+          && Math.abs(parseFloat(t.priceChangePercent || 0)) > 1
+          && parseFloat(t.quoteVolume || 0) > 50000000)
+        .sort((a, b) => Math.abs(parseFloat(b.priceChangePercent)) - Math.abs(parseFloat(a.priceChangePercent)))
+        .slice(0, maxExtra);
+
+      // 只对有 klines 数据的币做评分，不再逐个拉K线（太慢会卡住 cycle）
+      // 新币等 klines 数据自然积累（WS 重连后自动补充）
+      for (const t of candidates) {
+        try {
+          // 如果没有 klines 数据，尝试快速拉取（最多5个，每个限时5秒）
+          if (!this.dataBus.klines?.[t.symbol] && scored.length < 5) {
+            const fetchPromise = (async () => {
+              await this.dataBus.fetchKlines(t.symbol, '1h', 100);
+              await this.dataBus.fetchTicker(t.symbol);
+            })();
+            const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('kline timeout')), 5000));
+            await Promise.race([fetchPromise, timeout]).catch(() => {});
+          }
+          if (!this.dataBus.klines?.[t.symbol] || this.dataBus.klines[t.symbol].length < 50) continue;
+          const result = await this._scoreSymbol(t.symbol);
+          if (result.score >= 4) { // V2 均值回归: 动态币种要求稍高分
+            scored.push({ symbol: t.symbol, ...result });
+          }
+        } catch (e) { /* 跳过 */ }
+      }
+    } catch (e) {
+      this._log(`⚠️ 动态拉取失败: ${e.message}`);
+    }
+  }
+
+  // [audit#6] 轮询等待交易确认（避免 ethers v6 url.clone bug）
+  async _waitForReceipt(provider, txHash, maxWaitMs = 120000) {
+    const start = Date.now();
+    let errorCount = 0;
+    while (Date.now() - start < maxWaitMs) {
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        const receipt = await provider.getTransactionReceipt(txHash);
+        if (receipt) {
+          this._log(`✅ tx confirmed: ${txHash?.slice(0,18)}... status=${receipt.status} gas=${receipt.gasUsed}`);
+          return receipt;
+        }
+        errorCount = 0; // 重置错误计数
+      } catch (e) {
+        errorCount++;
+        if (errorCount % 10 === 0) this._log(`⏳ tx确认重试 ${errorCount}次: ${e.message?.slice(0,60)}`);
+        // 连续20次错误则放弃
+        if (errorCount >= 20) throw new Error(`tx确认失败(20次重试): ${e.message?.slice(0,80)}`);
+      }
+    }
+    throw new Error(`Transaction timeout: ${txHash?.slice(0,18)} not confirmed within ${maxWaitMs/1000}s`);
+  }
+
+  _getSymbols() {
+    try {
+      const PAIRS = require('../config/trading-pairs');
+      return Object.keys(PAIRS);
+    } catch (e) {
+      return ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'DOGEUSDT'];
+    }
+  }
+
+  _getUserState(wallet) {
+    if (!this._userStates[wallet]) {
+      this._userStates[wallet] = { positions: {}, lastCycle: 0 };
+    }
+    return this._userStates[wallet];
+  }
+
+  // v50: 获取用户交易统计（用于凯利公式）
+  _getUserStats(wallet) {
+    if (!this._userStats[wallet]) {
+      this._userStats[wallet] = { wins: 0, losses: 0, totalPnl: 0, avgWin: 0, avgLoss: 0, winRate: 0 };
+    }
+    return this._userStats[wallet];
+  }
+
+  // v50: 更新用户统计（平仓时调用）
+  _updateUserStats(wallet, pnlPct, pnlUsdt) {
+    // v67-fix: 防止 NaN 污染统计
+    if (typeof pnlPct !== 'number' || !isFinite(pnlPct)) pnlPct = 0;
+    if (typeof pnlUsdt !== 'number' || !isFinite(pnlUsdt)) pnlUsdt = 0;
+
+    const stats = this._getUserStats(wallet);
+    stats.totalPnl += pnlUsdt;
+    if (pnlPct > 0) {
+      stats.wins++;
+      stats.avgWin = (stats.avgWin * (stats.wins - 1) + pnlPct) / stats.wins;
+    } else if (pnlPct < 0) {
+      stats.losses++;
+      stats.avgLoss = (stats.avgLoss * (stats.losses - 1) + Math.abs(pnlPct)) / stats.losses;
+    }
+    // pnlPct === 0: 不计入胜负，避免 avgLoss 被稀释到 0
+    const total = stats.wins + stats.losses;
+    stats.winRate = total > 0 ? stats.wins / total : 0;
+  }
+
+  _logTrade(wallet, vault, trade) {
+    const entry = { wallet, vault, ...trade };
+    try {
+      let trades = [];
+      if (fs.existsSync(TRADE_LOG_FILE)) {
+        trades = JSON.parse(fs.readFileSync(TRADE_LOG_FILE, 'utf8'));
+      }
+      trades.push(entry);
+      if (trades.length > 1000) trades = trades.slice(-700);
+      fs.writeFileSync(TRADE_LOG_FILE, JSON.stringify(trades, null, 2));
+    } catch (e) { this._log(`交易日志写入失败: ${e.message}`); }
+  }
+
+  _loadState() {
+    try {
+      if (fs.existsSync(STATE_FILE)) {
+        const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+        this._userStates = data.userStates || {};
+        this._cycleCount = data.cycleCount || 0;
+        // v50-fix: 加载用户统计（凯利公式用）
+        this._userStats = data.userStats || {};
+      }
+    } catch (e) { this._log(`状态加载失败: ${e.message}`); }
+  }
+
+  _saveState() {
+    try {
+      const dir = path.dirname(STATE_FILE);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(STATE_FILE, JSON.stringify({
+        userStates: this._userStates,
+        cycleCount: this._cycleCount,
+        userStats: this._userStats, // v50-fix: 持久化用户统计
+        lastSave: Date.now(),
+      }, null, 2));
+    } catch (e) { this._log(`状态保存失败: ${e.message}`); }
+  }
+
+  // ═══════════════════════════════════
+  // 公开查询方法（给仪表盘用）
+  // ═══════════════════════════════════
+  getUserState(wallet) {
+    return this._userStates[wallet] || { positions: {} };
+  }
+
+  // [audit#22] 交易日志内存缓存，避免每次读文件
+  getUserTrades(wallet, limit = 20) {
+    try {
+      if (!this._tradesCache) {
+        this._tradesCache = null;
+        this._tradesCacheTime = 0;
+      }
+      const now = Date.now();
+      if (!this._tradesCache || now - this._tradesCacheTime > 5000) {
+        if (fs.existsSync(TRADE_LOG_FILE)) {
+          this._tradesCache = JSON.parse(fs.readFileSync(TRADE_LOG_FILE, 'utf8'));
+        } else {
+          this._tradesCache = [];
+        }
+        this._tradesCacheTime = now;
+      }
+      return this._tradesCache.filter(t => t.wallet === wallet).slice(-limit);
+    } catch (e) { return []; }
+  }
+
+  getAllUserTrades(limit = 50) {
+    try {
+      if (!fs.existsSync(TRADE_LOG_FILE)) return [];
+      const trades = JSON.parse(fs.readFileSync(TRADE_LOG_FILE, 'utf8'));
+      return trades.slice(-limit);
+    } catch (e) { return []; }
+  }
+
+  getStatus() {
+    return {
+      running: this.running,
+      cycleCount: this._cycleCount,
+      activeUsers: Object.entries(this.userDB?.users || {}).filter(([_, u]) => u.tradingEnabled && u.vaultAddress).length,
+      totalUsers: Object.keys(this.userDB?.users || {}).length,
+    };
+  }
+}
+
+module.exports = UserTrader;

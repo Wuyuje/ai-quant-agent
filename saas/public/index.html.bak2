@@ -1,0 +1,2088 @@
+<!DOCTYPE html>
+<html lang="zh-CN" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARK Quant Agent</title>
+<link rel="stylesheet" href="lang-switcher.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0e17;--card:#161b22;--border:#21262d;--text:#e0e0e0;--muted:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922;--purple:#bc8cff}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0d1117}::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:48px 40px;max-width:460px;width:100%;text-align:center}
+.login-card .logo{font-size:3em;margin-bottom:12px}
+.login-card h1{font-size:1.6em;color:var(--accent);margin-bottom:8px}
+.login-card .subtitle{color:var(--green);font-size:.9em;margin-bottom:6px}
+.login-card p{color:var(--muted);font-size:.88em;margin-bottom:24px;line-height:1.5}
+.login-card .steps{text-align:left;background:#0d1117;border-radius:12px;padding:18px;margin-bottom:24px}
+.login-card .steps li{color:var(--muted);font-size:.85em;margin-bottom:8px;padding-left:6px;line-height:1.5}
+.login-card .steps li span{color:var(--green);font-weight:600}
+.btn{padding:14px 32px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:1em;transition:all .2s;font-family:inherit;width:100%}
+.btn:hover{transform:translateY(-2px);filter:brightness(1.1)}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:linear-gradient(135deg,#238636,#1a7f37);color:#fff}
+.btn-danger{background:linear-gradient(135deg,#da3633,#b62324);color:#fff}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-sm{padding:8px 18px;font-size:.85em;border-radius:8px}
+.disabled{opacity:.5;cursor:not-allowed;pointer-events:none}
+.msg{margin-top:16px;padding:12px;border-radius:8px;font-size:.85em;display:none}
+.msg.ok{display:block;background:#0d4429;color:var(--green);border:1px solid #238636}
+.msg.err{display:block;background:#490b0b;color:var(--red);border:1px solid #da3633}
+.msg.info{display:block;background:#0d2d4a;color:var(--accent);border:1px solid #1f6feb}
+.login-footer{margin-top:16px;font-size:.75em;color:#484f58;line-height:1.5}
+.ark-badge{background:var(--accent);color:#fff;font-size:.8em;font-weight:600;padding:8px 16px;border-radius:20px;text-align:center;margin-bottom:4px}
+.login-tabs{display:flex;gap:0;margin-bottom:20px;border-radius:12px;overflow:hidden;border:1px solid var(--border)}
+.login-tab{flex:1;padding:10px 0;font-size:.9em;font-weight:600;background:transparent;color:var(--muted);border:none;cursor:pointer;transition:all .2s}
+.login-tab.active{background:var(--accent);color:#fff}
+.login-tab:not(.active):hover{background:rgba(255,255,255,.05)}
+.login-form{display:flex;flex-direction:column;gap:12px}
+.form-group{width:100%}
+.form-input{width:100%;padding:12px 16px;border-radius:10px;border:1px solid var(--border);background:#0d1117;color:var(--fg);font-size:.95em;outline:none;transition:border-color .2s;box-sizing:border-box}
+.form-input:focus{border-color:var(--accent)}
+.form-input::placeholder{color:#484f58}
+.btn-full{width:100%;padding:13px;font-size:1em}
+.form-divider{display:flex;align-items:center;gap:10px;color:#484f58;font-size:.8em}
+.form-divider::before,.form-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+.app{display:none}
+.hdr{background:linear-gradient(135deg,#1a1f35,#0d1117);padding:16px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.hdr h1{font-size:1.2em;color:var(--accent)}.hdr .ver{color:var(--muted);font-size:.75em;margin-left:8px}
+.wallet-badge{display:flex;align-items:center;gap:8px;background:#0d1117;padding:8px 14px;border-radius:20px;font-size:.82em;border:1px solid var(--border)}
+.wallet-badge .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.wallet-badge .addr{color:var(--muted);font-family:monospace}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;padding:18px 24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px}
+.card h3{color:var(--muted);font-size:.75em;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
+.card .val{font-size:1.8em;font-weight:700}.card .sub{color:var(--muted);font-size:.82em;margin-top:6px;line-height:1.6}
+.green{color:var(--green)}.red{color:var(--red)}.yellow{color:var(--yellow)}.blue{color:var(--accent)}.purple{color:var(--purple)}
+
+.deploy-guide{margin:0 24px 18px;background:linear-gradient(135deg,#0d2d4a,#161b22);border:1px solid #1f6feb;border-radius:14px;padding:24px}
+.deploy-guide h2{color:var(--accent);font-size:1.15em;margin-bottom:6px}
+.deploy-guide .guide-desc{color:var(--muted);font-size:.85em;margin-bottom:16px;line-height:1.5}
+.deploy-steps{display:flex;gap:16px;flex-wrap:wrap}
+.deploy-step{flex:1;min-width:140px;background:#0d1117;border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center;position:relative}
+.deploy-step .num{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#000;width:22px;height:22px;border-radius:50%;font-size:.75em;font-weight:700;display:flex;align-items:center;justify-content:center}
+.deploy-step .step-title{font-size:.85em;font-weight:600;margin-top:8px;margin-bottom:4px}
+.deploy-step .step-desc{font-size:.75em;color:var(--muted);line-height:1.3}
+.deploy-step.done{border-color:var(--green)}.deploy-step.done .num{background:var(--green)}
+.deploy-step.active{border-color:var(--accent);box-shadow:0 0 12px #1f6feb44}
+
+.pos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.pos-card{background:#0d1117;border:1px solid var(--border);border-radius:10px;padding:14px}
+.pos-card.long{border-left:3px solid var(--green)}.pos-card.short{border-left:3px solid var(--red)}
+.pos-sym{font-size:1em;font-weight:700;margin-bottom:4px}
+.pos-side{padding:2px 8px;border-radius:12px;font-size:.72em;font-weight:600}
+.pos-side.long{background:#0d4429;color:var(--green)}.pos-side.short{background:#490b0b;color:var(--red)}
+.pos-det{font-size:.8em;color:var(--muted);line-height:1.6;margin-top:6px}
+.pos-pnl{font-size:1.15em;font-weight:700;margin-top:6px}
+
+.controls{display:flex;gap:10px;padding:14px 24px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border);background:#0d1117}
+.controls .sep{width:1px;height:24px;background:var(--border)}
+
+.settings{margin:0 24px 18px;padding:18px;background:var(--card);border:1px solid var(--border);border-radius:14px;display:none}
+.settings.open{display:block}
+.settings h3{color:var(--muted);font-size:.75em;text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.s-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.s-item{background:#0d1117;padding:12px;border-radius:8px;border:1px solid var(--border)}
+.s-item label{color:var(--muted);font-size:.72em;display:block;margin-bottom:6px}
+.s-item input,.s-item select{width:100%;background:var(--card);border:1px solid #30363d;color:var(--text);padding:6px 10px;border-radius:6px;font-family:inherit;font-size:.9em}
+.s-item input:focus,.s-item select:focus{outline:none;border-color:var(--accent)}
+
+.tlist{max-height:300px;overflow-y:auto}
+.titem{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:.8em}
+
+.status-bar{display:flex;gap:16px;padding:12px 24px;background:#0d1117;border-bottom:1px solid var(--border);font-size:.8em;color:var(--muted);flex-wrap:wrap}
+.status-bar .s-item{display:flex;align-items:center;gap:6px}
+.status-bar .s-dot{width:6px;height:6px;border-radius:50%}
+.status-bar .s-dot.on{background:var(--green)}.status-bar .s-dot.off{background:var(--red)}
+
+.empty{text-align:center;padding:24px;color:#484f58;font-size:.85em}
+.foot{text-align:center;padding:10px;color:#484f58;font-size:.7em}
+
+.toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:10px;font-size:.85em;font-weight:600;z-index:999;opacity:0;transition:all .3s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.ok{background:#0d4429;color:var(--green);border:1px solid #238636}
+.toast.err{background:#490b0b;color:var(--red);border:1px solid #da3633}
+.toast.info{background:#0d2d4a;color:var(--accent);border:1px solid #1f6feb}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}.loading{animation:pulse 1.5s infinite}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite}
+
+/* ═══ Language Dropdown (Custom — TP Wallet compatible) ═══ */
+.lang-select{position:fixed;top:12px;right:12px;z-index:1000}
+.lang-dropdown{position:relative;width:auto}
+.lang-dropdown-trigger{background:rgba(22,27,34,0.95);border:1px solid #21262d;color:#e0e0e0;padding:8px 30px 8px 12px;border-radius:10px;font-size:.82em;font-weight:600;font-family:inherit;cursor:pointer;backdrop-filter:blur(8px);user-select:none;-webkit-user-select:none;white-space:nowrap;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+.lang-dropdown-trigger:hover{border-color:#58a6ff}
+.lang-dropdown-trigger::after{content:'';position:absolute;top:0;left:0;right:0;bottom:0;border-radius:10px}
+.lang-dropdown-menu{display:none;position:absolute;top:calc(100% + 4px);right:0;background:#161b22;border:1px solid #30363d;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;min-width:150px;z-index:1001}
+.lang-dropdown-menu.show{display:block}
+.lang-dropdown-item{padding:10px 14px;color:#e0e0e0;font-size:.82em;font-weight:600;cursor:pointer;transition:background .15s;white-space:nowrap}
+.lang-dropdown-item:hover,.lang-dropdown-item.active{background:#21262d;color:#58a6ff}
+.lang-dropdown-item.active{pointer-events:none}
+.header-lang-select{display:inline-block}
+.header-lang-select .lang-dropdown{position:relative}
+.header-lang-select .lang-dropdown-trigger{background:transparent;border:1px solid #21262d;color:#8b949e;padding:5px 24px 5px 8px;border-radius:6px;font-size:.78em;font-weight:600}
+.header-lang-select .lang-dropdown-trigger:hover{border-color:#58a6ff;color:#e0e0e0}
+.header-lang-select .lang-dropdown-menu{min-width:130px}
+.header-lang-select .lang-dropdown-item{padding:8px 12px;font-size:.78em}
+
+/* ═══ Wallet Balance Card ═══ */
+.wallet-detail{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.wallet-item{background:#0d1117;border-radius:8px;padding:10px 12px;border:1px solid #21262d}
+.wallet-item .wl{color:#8b949e;font-size:.7em;text-transform:uppercase;letter-spacing:.5px}
+.wallet-item .wv{color:#e0e0e0;font-size:1.05em;font-weight:700;margin-top:2px}
+
+/* ═══ Invest Card ═══ */
+.invest-card{border:1px solid #58a6ff !important}
+.invest-input{display:flex;align-items:center;gap:6px;margin-top:8px}
+.invest-input input{flex:1;background:#0d1117;border:1px solid #30363d;color:#e0e0e0;padding:10px 12px;border-radius:8px;font-size:1.1em;font-weight:700;font-family:inherit}
+.invest-input input:focus{outline:none;border-color:#58a6ff}
+.invest-input .unit{color:#8b949e;font-size:.82em;font-weight:600}
+.invest-btns{display:flex;gap:6px;margin-top:8px}
+.invest-btns .btn{flex:1}
+.quick-amt{display:flex;gap:6px;margin-top:8px}
+.quick-amt button{background:#0d1117;border:1px solid #21262d;color:#8b949e;padding:5px 10px;border-radius:6px;font-size:.75em;cursor:pointer;font-family:inherit;transition:all .2s}
+.quick-amt button:hover{border-color:#58a6ff;color:#58a6ff}
+.invest-msg{font-size:.8em;margin-top:4px;min-height:20px}
+
+/* ═══ CEX API Key Section ═══ */
+.cex-banner{margin:0 24px 14px;background:linear-gradient(135deg,#0d2d1a,#161b22);border:1px solid #238636;border-radius:14px;padding:20px 24px;position:relative;overflow:hidden}
+.cex-banner::before{content:'';position:absolute;top:0;right:0;width:120px;height:120px;background:radial-gradient(circle,rgba(63,185,80,.15),transparent);pointer-events:none}
+.cex-banner h2{color:#3fb950;font-size:1.1em;margin-bottom:4px}
+.cex-banner .cex-desc{color:#8b949e;font-size:.85em;line-height:1.5;margin-bottom:14px}
+.cex-banner .cex-compare{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.cex-banner .cex-compare .cex-tag{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px 14px;flex:1;min-width:140px}
+.cex-banner .cex-compare .cex-tag .cex-label{color:#8b949e;font-size:.72em;text-transform:uppercase;letter-spacing:.5px}
+.cex-banner .cex-compare .cex-tag .cex-val{color:#e0e0e0;font-size:1.05em;font-weight:700;margin-top:2px}
+.cex-banner .cex-compare .cex-tag.good .cex-val{color:#3fb950}
+.cex-banner .cex-compare .cex-tag.bad .cex-val{color:#f85149;text-decoration:line-through;opacity:.6}
+.cex-form{background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:18px;margin-top:12px}
+.cex-form .cex-form-title{color:#e0e0e0;font-size:.9em;font-weight:600;margin-bottom:12px}
+.cex-form .cex-input-group{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.cex-form .cex-input{flex:1;min-width:200px;background:#161b22;border:1px solid #30363d;color:#e0e0e0;padding:10px 14px;border-radius:8px;font-size:.85em;font-family:monospace;outline:none}
+.cex-form .cex-input:focus{border-color:#3fb950}
+.cex-form .cex-input::placeholder{color:#484f58;font-family:inherit}
+.cex-form .cex-actions{display:flex;gap:8px;margin-top:4px}
+.cex-status{margin-top:10px;padding:10px 14px;border-radius:8px;font-size:.85em;display:none}
+.cex-status.ok{display:block;background:#0d4429;color:#3fb950;border:1px solid #238636}
+.cex-status.err{display:block;background:#490b0b;color:#f85149;border:1px solid #da3633}
+.cex-status.info{display:block;background:#0d2d4a;color:#58a6ff;border:1px solid #1f6feb}
+.cex-connected{display:flex;align-items:center;gap:10px;padding:14px 18px;background:#0d4429;border:1px solid #238636;border-radius:10px;margin-top:12px}
+.cex-connected .cex-dot{width:10px;height:10px;border-radius:50%;background:#3fb950;flex-shrink:0}
+.cex-connected .cex-info{flex:1;font-size:.85em;color:#3fb950}
+.cex-connected .cex-info span{color:#8b949e;font-size:.9em}
+</style>
+
+
+
+</head>
+<body>
+
+<!-- ═══ 语言切换器（自定义下拉，兼容 TP 钱包）═══ -->
+<div class="lang-select" id="langSelect">
+  <div class="lang-dropdown" id="langDropdownCustom">
+    <div class="lang-dropdown-trigger" id="langTrigger" onclick="toggleLangMenu(event)"></div>
+    <div class="lang-dropdown-menu" id="langMenu"></div>
+  </div>
+</div>
+
+<!-- ═══ 登录页 ═══ -->
+<div id="loginPage" class="login-wrap">
+  <div class="login-card">
+    <div class="logo">&#x26D3;&#xFE0F;</div>
+    <h1 data-i18n="login.title">ARK Quant Agent</h1>
+    <div class="subtitle" data-i18n="login.subtitle">智能合约钱包 · 纯自动交易</div>
+    <p data-i18n="login.desc">你的资金在链上合约里,安全可控</p>
+
+    <!-- 密码登录表单 -->
+    <div id="passwordForm" class="login-form">
+      <div class="form-group">
+        <input type="text" id="loginWalletAddr" placeholder="钱包地址(0x...)" autocomplete="off" class="form-input" style="font-size:.85em" />
+      </div>
+      <div class="form-group">
+        <input type="password" id="loginPassword" placeholder="密码" autocomplete="current-password" class="form-input" />
+      </div>
+      <button id="loginBtn" class="btn btn-primary btn-full" type="button">登录</button>
+      <div class="form-divider"><span>首次使用？</span></div>
+      <button id="registerBtn" class="btn btn-outline btn-full" type="button" onclick="doRegister()">注册新账号</button>
+    </div>
+
+    <div id="loginMsg" class="msg"></div>
+    <div class="login-footer">输入你的 BSC 钱包地址和密码<br>平台服务费 20%（仅盈利时收取）</div>
+  </div>
+</div>
+
+<!-- ═══ 主界面 ═══ -->
+<div id="appPage" class="app">
+  <div class="hdr">
+    <div>
+      <h1>🧠 ARK Quant Agent <span class="ver" data-i18n="header.version">v3.1</span></h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div id="headerLangBar" class="header-lang-select"></div>
+      <div class="wallet-badge">
+        <span class="dot"></span>
+        <span class="addr" id="walletAddr">--</span>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="logout()" data-i18n="header.logout">退出</button>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="s-item"><span class="s-dot" id="cexDot"></span> <span data-i18n="status.trading">交易</span>: <span id="tradingStatus" data-i18n="status.off">未启用</span></div>
+    <div class="s-item"><span data-i18n="status.strategy">策略</span>: <span id="strategyLabel">--</span></div>
+    <div class="s-item"><span data-i18n="status.fee">服务费</span>: 20%</div>
+    <div class="s-item"><span data-i18n="status.users">用户</span>: <span id="userCount">--</span></div>
+  </div>
+
+  <!-- ═══ CEX API Key 绑定区（简化版）═══ -->
+  <div id="cexBanner" class="cex-banner" style="display:none">
+    <h2>⚡ 连接你的 Binance 账户</h2>
+    <div class="cex-desc">绑定 Binance API Key 后，AI 自动帮你在币安交易。资金始终在你自己的币安账户，平台无法提币。<b style="color:#3fb950">点击下方按钮直接跳转币安 APP 创建 API Key</b></div>
+
+    <!-- 快速跳转币安 -->
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <a href="https://www.binance.com/zh-CN/my/settings/api-management" target="_blank" class="btn btn-primary" style="text-decoration:none;text-align:center;width:auto;padding:12px 28px;font-size:.92em;flex:1;min-width:160px">
+        📱 打开币安创建 API Key
+      </a>
+      <button class="btn btn-outline btn-sm" onclick="showCexForm()" style="width:auto;padding:12px 20px">已有 Key，直接粘贴 →</button>
+    </div>
+
+    <!-- 简短安全说明 -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+      <div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px;text-align:center">
+        <div style="color:#3fb950;font-size:1.2em;margin-bottom:4px">🔒</div>
+        <div style="color:#e0e0e0;font-size:.8em;font-weight:600">只交易 不提币</div>
+        <div style="color:#8b949e;font-size:.72em;margin-top:2px">资金安全</div>
+      </div>
+      <div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px;text-align:center">
+        <div style="color:#3fb950;font-size:1.2em;margin-bottom:4px">🤖</div>
+        <div style="color:#e0e0e0;font-size:.8em;font-weight:600">AI 7×24 交易</div>
+        <div style="color:#8b949e;font-size:.72em;margin-top:2px">自动买卖</div>
+      </div>
+      <div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px;text-align:center">
+        <div style="color:#3fb950;font-size:1.2em;margin-bottom:4px">✖️</div>
+        <div style="color:#e0e0e0;font-size:.8em;font-weight:600">随时解绑</div>
+        <div style="color:#8b949e;font-size:.72em;margin-top:2px">一键停止</div>
+      </div>
+    </div>
+
+    <!-- API Key 输入表单 -->
+    <div id="cexForm" class="cex-form" style="display:none">
+      <div class="cex-form-title">🔗 粘贴你的 Binance API Key</div>
+      <div style="color:#8b949e;font-size:.8em;margin-bottom:10px;line-height:1.5">在币安 APP → 用户中心 → API 管理 → 创建 API → 复制 API Key 和 Secret Key</div>
+      <div class="cex-input-group">
+        <input type="text" id="cexApiKey" class="cex-input" placeholder="API Key（从 Binance 复制）" />
+        <input type="password" id="cexSecretKey" class="cex-input" placeholder="Secret Key（从 Binance 复制）" />
+      </div>
+      <div class="cex-actions">
+        <button class="btn btn-primary btn-sm" onclick="verifyCexKeys()" id="cexVerifyBtn">✅ 验证并绑定</button>
+        <button class="btn btn-outline btn-sm" onclick="hideCexForm()">取消</button>
+      </div>
+      <div id="cexResult" class="cex-status"></div>
+    </div>
+
+    <!-- 已绑定状态 -->
+    <div id="cexConnected" class="cex-connected" style="display:none">
+      <div class="cex-dot"></div>
+      <div class="cex-info">已绑定 Binance API · CEX 模式已开启 · 手续费 0.08%<br><span>资金在你的 Binance 账户 · 平台无法提币 · <span style="color:#f85149;cursor:pointer" onclick="unbindCex()">解绑</span></span></div>
+    </div>
+  </div>
+
+  <!-- v72: 移除旧 Vault 部署引导（已切换到 CEX 模式）-->
+
+  <!-- v72: 控制栏简化 -->
+  <div class="controls" id="controlBar" style="display:none">
+    <button id="startBtn" class="btn btn-primary btn-sm" onclick="toggleTrading(true)" data-i18n="ctrl.start">开启交易</button>
+    <button id="stopBtn" class="btn btn-danger btn-sm" onclick="toggleTrading(false)" data-i18n="ctrl.stop">停止交易</button>
+    <div class="sep"></div>
+    <button class="btn btn-outline btn-sm" onclick="toggleSettings()" data-i18n="ctrl.settings">设置</button>
+    <button class="btn btn-outline btn-sm" onclick="refreshDashboard()" data-i18n="ctrl.refresh">刷新</button>
+  </div>
+
+  <div id="settingsPanel" class="settings">
+    <h3 data-i18n="settings.title">交易设置</h3>
+    <div class="s-grid">
+      <div class="s-item">
+        <label>🤖 让 AI 用多少钱交易 (USDT)</label>
+        <input id="setTradeAmount" type="number" value="0" min="0" step="100" placeholder="输入金额,0=不交易">
+      </div>
+      <div class="s-item">
+        <label data-i18n="settings.strategy">交易策略</label>
+        <select id="setStrategy">
+          <option value="conservative" data-i18n="settings.conservative">保守 (低风险)</option>
+          <option value="balanced" data-i18n="settings.balanced">平衡 (推荐)</option>
+          <option value="aggressive" data-i18n="settings.aggressive">激进 (高收益)</option>
+        </select>
+      </div>
+      <div class="s-item">
+        <label data-i18n="settings.maxSingle">单笔最大交易 (USDT)</label>
+        <input id="setMaxSingle" type="number" value="50000" min="100" step="100">
+      </div>
+      <div class="s-item">
+        <label data-i18n="settings.dailyLimit">每日交易限额 (USDT)</label>
+        <input id="setDailyLimit" type="number" value="200000" min="1000" step="1000">
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" onclick="saveSettings()" data-i18n="settings.save">💾 保存</button>
+      <button class="btn btn-outline btn-sm" onclick="toggleSettings()" data-i18n="settings.cancel">取消</button>
+    </div>
+  </div>
+
+  <div class="grid" id="dashboardGrid" style="display:none">
+    <!-- 当前持仓 -->
+    <div class="card">
+      <h3 data-i18n="dash.positions">当前持仓</h3>
+      <div id="posCount" class="val blue">0</div>
+      <div id="posDetail" class="sub" data-i18n="dash.empty">空仓</div>
+    </div>
+    <!-- 累计盈亏 -->
+    <div class="card">
+      <h3 data-i18n="dash.totalPnl">累计盈亏</h3>
+      <div id="totalPnl" class="val">--</div>
+      <div id="pnlDetail" class="sub">--</div>
+    </div>
+  </div>
+
+  <div style="padding:0 24px 18px">
+    <div class="card">
+      <h3 data-i18n="dash.posDetail">持仓详情</h3>
+      <div id="posBox" class="pos-grid"><div class="empty" data-i18n="dash.empty">空仓</div></div>
+    </div>
+  </div>
+
+  <div style="padding:0 24px 18px">
+    <div class="card">
+      <h3 data-i18n="dash.recentTrades">最近交易</h3>
+      <div id="tList" class="tlist"><div class="empty" data-i18n="dash.noTrades">暂无交易</div></div>
+    </div>
+  </div>
+
+  <!-- 回测 + 反馈 -->
+  <div style="padding:0 24px 18px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+    <div class="card">
+      <h3>📊 AI 策略回测</h3>
+      <div id="backtestResult" class="empty" style="font-size:.85em;color:var(--muted)">点击运行回测</div>
+      <button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="runBacktest()">运行回测</button>
+    </div>
+    <div class="card">
+      <h3>📝 评价 AI 交易</h3>
+      <div class="form-group" style="margin-bottom:8px">
+        <select id="fbSymbol" class="form-input" style="padding:8px;font-size:.85em">
+          <option value="BTCUSDT">BTCUSDT</option>
+          <option value="ETHUSDT">ETHUSDT</option>
+          <option value="BNBUSDT">BNBUSDT</option>
+          <option value="SOLUSDT">SOLUSDT</option>
+          <option value="DOGEUSDT">DOGEUSDT</option>
+          <option value="XRPUSDT">XRPUSDT</option>
+          <option value="ARKUSDT">ARKUSDT</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px" id="fbStars">
+        <span onclick="setFbRating(1)" style="cursor:pointer;font-size:1.4em">⭐</span>
+        <span onclick="setFbRating(2)" style="cursor:pointer;font-size:1.4em">⭐</span>
+        <span onclick="setFbRating(3)" style="cursor:pointer;font-size:1.4em">⭐</span>
+        <span onclick="setFbRating(4)" style="cursor:pointer;font-size:1.4em">⭐</span>
+        <span onclick="setFbRating(5)" style="cursor:pointer;font-size:1.4em">⭐</span>
+      </div>
+      <input id="fbComment" class="form-input" placeholder="建议/反馈（可选）" style="padding:8px;font-size:.85em;margin-bottom:8px"/>
+      <button class="btn btn-primary btn-sm" onclick="submitFeedback()">提交反馈</button>
+    </div>
+  </div>
+
+  <div class="foot" data-i18n="footer">ARK Quant Agent v3.0 · CEX 模式 · 资金安全在你的 Binance 账户</div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- i18n inlined -->
+
+<script>
+/* ═══ ARK Quant Agent — Internationalization ═══ */
+const I18N = {
+  zh: {
+    lang: '中文', dir: 'ltr',
+    login: {
+      title: 'ARK Quant Agent',
+      subtitle: '智能合约钱包 · 纯自动交易',
+      desc: '你的资金在链上合约里，安全可控',
+      step1: 'TP 钱包签名登录（无需私钥）',
+      step2: '一键部署你的专属合约钱包',
+      step3: '转入 USDT 到合约钱包',
+      step4: '开启交易 全自动帮你赚钱',
+      connect: '连接 TP 钱包',
+      connecting: '连接中...',
+      signing: '请在 TP 钱包中确认签名...',
+      verifying: '验证签名...',
+      success: '登录成功',
+      placeholder1: '钱包地址(0x...)',
+      placeholder2: '密码',
+      loginBtn: '登录',
+      divider: '首次使用？',
+      registerBtn: '注册新账号',
+      registering: '注册中...',
+      registerOk: '注册成功，已自动登录',
+      loginFooter: '输入你的 BSC 钱包地址和密码',
+      fee: '平台服务费 20%（仅盈利时收取）',
+      noWallet: '请在 TokenPocket 浏览器中打开，或安装 TP 钱包'
+    },
+    header: { version: 'v3.0 智能合约模式', logout: '退出' },
+    status: {
+      vault: 'Vault', deployed: '已部署', undeployed: '未部署',
+      trading: '交易', running: '运行中', off: '未启用',
+      strategy: '策略', fee: '服务费', users: '用户'
+    },
+    deploy: {
+      title: '部署你的智能合约钱包',
+      desc: '每个用户拥有独立的合约钱包，资金完全隔离，平台只有交易执行权限',
+      s1t: '登录注册', s1d: '钱包地址 + 密码',
+      s2t: '部署合约', s2d: '一键部署 Vault',
+      s3t: '转入资金', s3d: 'USDT / BNB',
+      s4t: '开启交易', s4d: '全自动运行',
+      btn: '部署我的合约钱包',
+      deploying: '部署中（需要 TP 确认）...',
+      confirm: '正在部署 Vault，请在 TP 钱包中确认交易...',
+      success: 'Vault 部署成功！', failed: '部署失败'
+    },
+    ctrl: {
+      start: '开启交易', stop: '停止交易', revoke: '紧急撤销权限',
+      settings: '设置', refresh: '刷新',
+      revokeConfirm: '⚠️ 确认紧急撤销交易权限？\n\n这将：\n1. 立即停止机器人操作你的资金\n2. 平台无法再执行任何交易\n3. 你的资金仍然在合约里，可以随时提取\n\n确认？',
+      revoking: '正在撤销权限...', revoked: '已撤销，平台无法再操作你的资金'
+    },
+    settings: {
+      title: '交易设置', strategy: '交易策略',
+      conservative: '保守 (低风险)', balanced: '平衡 (推荐)', aggressive: '激进 (高收益)',
+      maxSingle: '单笔最大交易 (USDT)', dailyLimit: '每日交易限额 (USDT)',
+      save: '保存', cancel: '取消', saved: '设置已保存'
+    },
+    dash: {
+      balance: 'Vault 余额', loading: '加载中...',
+      positions: '当前持仓', empty: '空仓',
+      running: '运行中', paused: '已暂停', engineOff: '引擎未启动',
+      totalPnl: '累计盈亏', pnlDetail: '累计盈亏 | 交易: {0} 次',
+      risk: '风控状态', riskNormal: '正常', riskDetail: '单笔限额: $50,000 | 日限额: $200,000',
+      posDetail: '持仓详情', recentTrades: '最近交易', noTrades: '暂无交易'
+    },
+    withdraw: {
+      title: '提现', usdt: '提取全部 USDT', bnb: '提取全部 BNB',
+      desc: '提取后资金直接回到你的 TP 钱包',
+      usdtConfirm: '确认提取所有 USDT 到 TP 钱包？',
+      bnbConfirm: '确认提取所有 BNB 到 TP 钱包？',
+      processing: '提现中...', usdtOk: 'USDT 已提取到 TP 钱包', bnbOk: 'BNB 已提取到 TP 钱包'
+    },
+    footer: 'ARK Quant Agent v3.0 · 智能合约钱包模式 · 资金安全上链'
+  },
+
+  en: {
+    lang: 'EN', dir: 'ltr',
+    login: {
+      title: 'ARK Quant Agent',
+      subtitle: 'Smart Contract Wallet · Fully Automated Trading',
+      desc: 'Your funds are in on-chain contracts, safe and controllable',
+      step1: 'Sign in with TP Wallet (no private key needed)',
+      step2: 'Deploy your personal contract wallet',
+      step3: 'Transfer USDT to the contract wallet',
+      step4: 'Start trading — fully automated',
+      connect: 'Connect TP Wallet',
+      connecting: 'Connecting...',
+      signing: 'Please confirm signature in TP Wallet...',
+      verifying: 'Verifying signature...',
+      success: 'Login successful',
+      placeholder1: 'Wallet address (0x...)',
+      placeholder2: 'Password',
+      loginBtn: 'Login',
+      divider: 'New user?',
+      registerBtn: 'Register',
+      registering: 'Registering...',
+      registerOk: 'Registered & logged in',
+      loginFooter: 'Enter your BSC wallet address and password',
+      fee: 'Platform fee 20% (only on profits)',
+      noWallet: 'Please open in TokenPocket browser or install TP Wallet'
+    },
+    header: { version: 'v3.0 Smart Contract Mode', logout: 'Logout' },
+    status: {
+      vault: 'Vault', deployed: 'Deployed', undeployed: 'Not Deployed',
+      trading: 'Trading', running: 'Running', off: 'Off',
+      strategy: 'Strategy', fee: 'Fee', users: 'Users'
+    },
+    deploy: {
+      title: 'Deploy Your Smart Contract Wallet',
+      desc: 'Each user has an isolated contract wallet. Funds are fully segregated — the platform only has trade execution permission.',
+      s1t: 'Sign In', s1d: 'Wallet address + password',
+      s2t: 'Deploy', s2d: 'One-click Vault deploy',
+      s3t: 'Fund Wallet', s3d: 'USDT / BNB',
+      s4t: 'Start Trading', s4d: 'Fully automated',
+      btn: 'Deploy My Contract Wallet',
+      deploying: 'Deploying (TP confirmation needed)...',
+      confirm: 'Deploying Vault — please confirm in TP Wallet...',
+      success: 'Vault deployed!', failed: 'Deployment failed'
+    },
+    ctrl: {
+      start: 'Start Trading', stop: 'Stop Trading', revoke: 'Emergency Revoke',
+      settings: 'Settings', refresh: 'Refresh',
+      revokeConfirm: '⚠️ Confirm emergency revoke?\n\nThis will:\n1. Immediately stop the bot from operating your funds\n2. Platform can no longer execute any trades\n3. Your funds remain in the contract and can be withdrawn anytime\n\nConfirm?',
+      revoking: 'Revoking access...', revoked: 'Access revoked — platform can no longer operate your funds'
+    },
+    settings: {
+      title: 'Trading Settings', strategy: 'Strategy',
+      conservative: 'Conservative (Low Risk)', balanced: 'Balanced (Recommended)', aggressive: 'Aggressive (High Return)',
+      maxSingle: 'Max Single Trade (USDT)', dailyLimit: 'Daily Limit (USDT)',
+      save: 'Save', cancel: 'Cancel', saved: 'Settings saved'
+    },
+    dash: {
+      balance: 'Vault Balance', loading: 'Loading...',
+      positions: 'Open Positions', empty: 'No positions',
+      running: 'Running', paused: 'Paused', engineOff: 'Engine Off',
+      totalPnl: 'Total P&L', pnlDetail: 'Total P&L | {0} trades',
+      risk: 'Risk Control', riskNormal: 'Normal', riskDetail: 'Per-trade: $50,000 | Daily: $200,000',
+      posDetail: 'Position Details', recentTrades: 'Recent Trades', noTrades: 'No trades yet'
+    },
+    withdraw: {
+      title: 'Withdraw', usdt: 'Withdraw All USDT', bnb: 'Withdraw All BNB',
+      desc: 'Funds go directly back to your TP Wallet',
+      usdtConfirm: 'Withdraw all USDT to TP Wallet?',
+      bnbConfirm: 'Withdraw all BNB to TP Wallet?',
+      processing: 'Withdrawing...', usdtOk: 'USDT withdrawn to TP Wallet', bnbOk: 'BNB withdrawn to TP Wallet'
+    },
+    footer: 'ARK Quant Agent v3.0 · Smart Contract Wallet · On-chain Security'
+  },
+
+  ja: {
+    lang: '日本語', dir: 'ltr',
+    login: {
+      title: 'ARK Quant Agent',
+      subtitle: 'スマートコントラクトウォレット · 完全自動取引',
+      desc: '資金はオンチェーンコントラクトにあり、安全でコントロール可能',
+      step1: 'TPウォレットでサインイン（秘密鍵不要）',
+      step2: '専用コントラクトウォレットをワンクリックでデプロイ',
+      step3: 'USDTをコントラクトウォレットに転送',
+      step4: '取引を開始 — 完全自動',
+      connect: 'TPウォレットを接続',
+      connecting: '接続中...',
+      signing: 'TPウォレットで署名を確認してください...',
+      verifying: '署名を確認中...',
+      success: 'ログイン成功',
+      placeholder1: 'ウォレットアドレス (0x...)',
+      placeholder2: 'パスワード',
+      loginBtn: 'ログイン',
+      divider: '初めての方？',
+      registerBtn: '新規登録',
+      registering: '登録中...',
+      registerOk: '登録完了、自動ログインしました',
+      loginFooter: 'BSCウォレットアドレスとパスワードを入力',
+      fee: 'プラットフォーム手数料 20%（利益時のみ）',
+      noWallet: 'TokenPocketブラウザで開くか、TPウォレットをインストールしてください'
+    },
+    header: { version: 'v3.0 スマートコントラクトモード', logout: 'ログアウト' },
+    status: {
+      vault: 'Vault', deployed: 'デプロイ済み', undeployed: '未デプロイ',
+      trading: '取引', running: '稼働中', off: 'オフ',
+      strategy: '戦略', fee: '手数料', users: 'ユーザー'
+    },
+    deploy: {
+      title: 'スマートコントラクトウォレットをデプロイ',
+      desc: 'ユーザーごとに独立したコントラクトウォレット。資金は完全に分離され、プラットフォームは取引実行のみ可能。',
+      s1t: 'サインイン', s1d: 'ウォレットアドレス + パスワード',
+      s2t: 'デプロイ', s2d: 'ワンクリックVaultデプロイ',
+      s3t: '入金', s3d: 'USDT / BNB',
+      s4t: '取引開始', s4d: '完全自動',
+      btn: 'コントラクトウォレットをデプロイ',
+      deploying: 'デプロイ中（TP確認が必要）...',
+      confirm: 'Vaultをデプロイ中 — TPウォレットで確認してください...',
+      success: 'Vaultデプロイ完了！', failed: 'デプロイ失敗'
+    },
+    ctrl: {
+      start: '取引開始', stop: '取引停止', revoke: '緊急権限取り消し',
+      settings: '設定', refresh: '更新',
+      revokeConfirm: '⚠️ 緊急権限取り消しを確認？\n\nこれにより：\n1. ボットの資金操作が直ちに停止\n2. プラットフォームは取引不可に\n3. 資金はコントラクト内にあり、いつでも引き出せます\n\n確認？',
+      revoking: '権限を取消中...', revoked: '権限取消済み — プラットフォームは資金操作不可'
+    },
+    settings: {
+      title: '取引設定', strategy: '戦略',
+      conservative: '保守的（低リスク）', balanced: 'バランス（推奨）', aggressive: '積極的（高リターン）',
+      maxSingle: '1回あたり最大取引 (USDT)', dailyLimit: '1日制限 (USDT)',
+      save: '保存', cancel: 'キャンセル', saved: '設定保存済み'
+    },
+    dash: {
+      balance: 'Vault残高', loading: '読み込み中...',
+      positions: 'ポジション', empty: 'ポジションなし',
+      running: '稼働中', paused: '一時停止', engineOff: 'エンジン停止',
+      totalPnl: '累計損益', pnlDetail: '累計損益 | {0}件の取引',
+      risk: 'リスク管理', riskNormal: '正常', riskDetail: '1回: $50,000 | 1日: $200,000',
+      posDetail: 'ポジション詳細', recentTrades: '最近の取引', noTrades: '取引なし'
+    },
+    withdraw: {
+      title: '出金', usdt: '全USDT出金', bnb: '全BNB出金',
+      desc: '出金後、資金はTPウォレットに戻ります',
+      usdtConfirm: '全USDTをTPウォレットに出金？',
+      bnbConfirm: '全BNBをTPウォレットに出金？',
+      processing: '出金中...', usdtOk: 'USDT出金完了', bnbOk: 'BNB出金完了'
+    },
+    footer: 'ARK Quant Agent v3.0 · スマートコントラクトウォレット · オンチェーンセキュリティ'
+  },
+
+  ko: {
+    lang: '한국어', dir: 'ltr',
+    login: {
+      title: 'ARK Quant Agent',
+      subtitle: '스마트 컨트랙트 월렛 · 완전 자동 거래',
+      desc: '자금이 온체인 컨트랙트에 있어 안전하고 제어 가능',
+      step1: 'TP 월렛으로 로그인 (개인키 불필요)',
+      step2: '전용 컨트랙트 월렛 원클릭 배포',
+      step3: 'USDT를 컨트랙트 월렛으로 전송',
+      step4: '거래 시작 — 완전 자동',
+      connect: 'TP 월렛 연결',
+      connecting: '연결 중...',
+      signing: 'TP 월렛에서 서명을 확인하세요...',
+      verifying: '서명 확인 중...',
+      success: '로그인 성공',
+      placeholder1: '지갑 주소 (0x...)',
+      placeholder2: '비밀번호',
+      loginBtn: '로그인',
+      divider: '처음이신가요?',
+      registerBtn: '새 계정 등록',
+      registering: '등록 중...',
+      registerOk: '등록 완료, 자동 로그인됨',
+      loginFooter: 'BSC 지갑 주소와 비밀번호를 입력하세요',
+      fee: '플랫폼 수수료 20% (수익 시에만)',
+      noWallet: 'TokenPocket 브라우저에서 열거나 TP 월렛을 설치하세요'
+    },
+    header: { version: 'v3.0 스마트 컨트랙트 모드', logout: '로그아웃' },
+    status: {
+      vault: 'Vault', deployed: '배포됨', undeployed: '미배포',
+      trading: '거래', running: '실행 중', off: '중지',
+      strategy: '전략', fee: '수수료', users: '사용자'
+    },
+    deploy: {
+      title: '스마트 컨트랙트 월렛 배포',
+      desc: '각 사용자마다 독립된 컨트랙트 월렛. 자금이 완전히 분리되며 플랫폼은 거래 실행 권한만 가집니다.',
+      s1t: '로그인', s1d: '지갑 주소 + 비밀번호',
+      s2t: '배포', s2d: '원클릭 Vault 배포',
+      s3t: '입금', s3d: 'USDT / BNB',
+      s4t: '거래 시작', s4d: '완전 자동',
+      btn: '컨트랙트 월렛 배포',
+      deploying: '배포 중 (TP 확인 필요)...',
+      confirm: 'Vault 배포 중 — TP 월렛에서 확인하세요...',
+      success: 'Vault 배포 완료!', failed: '배포 실패'
+    },
+    ctrl: {
+      start: '거래 시작', stop: '거래 중지', revoke: '긴급 권한 취소',
+      settings: '설정', refresh: '새로고침',
+      revokeConfirm: '⚠️ 긴급 권한 취소 확인?\n\n이로 인해:\n1. 봇의 자금 운영이 즉시 중지\n2. 플랫폼은 더 이상 거래 불가\n3. 자금은 컨트랙트에 있으며 언제든 인출 가능\n\n확인?',
+      revoking: '권한 취소 중...', revoked: '권한 취소됨 — 플랫폼은 자금 운영 불가'
+    },
+    settings: {
+      title: '거래 설정', strategy: '전략',
+      conservative: '보수적 (저위험)', balanced: '균형 (추천)', aggressive: '공격적 (고수익)',
+      maxSingle: '1회 최대 거래 (USDT)', dailyLimit: '일일 한도 (USDT)',
+      save: '저장', cancel: '취소', saved: '설정 저장됨'
+    },
+    dash: {
+      balance: 'Vault 잔액', loading: '로딩...',
+      positions: '포지션', empty: '포지션 없음',
+      running: '실행 중', paused: '일시정지', engineOff: '엔진 중지',
+      totalPnl: '누적 손익', pnlDetail: '누적 손익 | {0}건 거래',
+      risk: '리스크 관리', riskNormal: '정상', riskDetail: '1회: $50,000 | 1일: $200,000',
+      posDetail: '포지션 상세', recentTrades: '최근 거래', noTrades: '거래 없음'
+    },
+    withdraw: {
+      title: '출금', usdt: '전체 USDT 출금', bnb: '전체 BNB 출금',
+      desc: '출금 후 자금이 TP 월렛으로 돌아갑니다',
+      usdtConfirm: '전체 USDT를 TP 월렛으로 출금?',
+      bnbConfirm: '전체 BNB를 TP 월렛으로 출금?',
+      processing: '출금 중...', usdtOk: 'USDT 출금 완료', bnbOk: 'BNB 출금 완료'
+    },
+    footer: 'ARK Quant Agent v3.0 · 스마트 컨트랙트 월렛 · 온체인 보안'
+  },
+
+  vi: {
+    lang: 'Tiếng Việt', dir: 'ltr',
+    login: {
+      title: 'ARK Quant Agent',
+      subtitle: 'Ví Thông Minh Hợp Đồng · Giao Dịch Tự Động',
+      desc: 'Quỹ của bạn nằm trên hợp đồng on-chain, an toàn và kiểm soát được',
+      step1: 'Đăng nhập bằng TP Wallet (không cần khóa riêng)',
+      step2: 'Triển khai ví hợp đồng cá nhân',
+      step3: 'Chuyển USDT vào ví hợp đồng',
+      step4: 'Bắt đầu giao dịch — hoàn toàn tự động',
+      connect: 'Kết nối TP Wallet',
+      connecting: 'Đang kết nối...',
+      signing: 'Vui lòng xác nhận chữ ký trong TP Wallet...',
+      verifying: 'Xác minh chữ ký...',
+      success: 'Đăng nhập thành công',
+      placeholder1: 'Địa chỉ ví (0x...)',
+      placeholder2: 'Mật khẩu',
+      loginBtn: 'Đăng nhập',
+      divider: 'Lần đầu sử dụng?',
+      registerBtn: 'Đăng ký tài khoản',
+      registering: 'Đang đăng ký...',
+      registerOk: 'Đăng ký thành công, đã tự động đăng nhập',
+      loginFooter: 'Nhập địa chỉ ví BSC và mật khẩu',
+      fee: 'Phí nền tảng 20% (chỉ khi có lợi nhuận)',
+      noWallet: 'Vui lòng mở trong trình duyệt TokenPocket hoặc cài đặt TP Wallet'
+    },
+    header: { version: 'v3.0 Chế Độ Hợp Đồng', logout: 'Đăng xuất' },
+    status: {
+      vault: 'Vault', deployed: 'Đã triển khai', undeployed: 'Chưa triển khai',
+      trading: 'Giao dịch', running: 'Đang chạy', off: 'Tắt',
+      strategy: 'Chiến lược', fee: 'Phí', users: 'Người dùng'
+    },
+    deploy: {
+      title: 'Triển Khai Ví Hợp Đồng Thông Minh',
+      desc: 'Mỗi người dùng có ví hợp đồng riêng biệt, quỹ được tách biệt hoàn toàn — nền tảng chỉ có quyền thực hiện giao dịch.',
+      s1t: 'Đăng nhập', s1d: 'Địa chỉ ví + mật khẩu',
+      s2t: 'Triển khai', s2d: 'Triển khai Vault',
+      s3t: 'Nạp tiền', s3d: 'USDT / BNB',
+      s4t: 'Giao dịch', s4d: 'Tự động hoàn toàn',
+      btn: 'Triển Khai Ví Hợp Đồng',
+      deploying: 'Đang triển khai (cần xác nhận TP)...',
+      confirm: 'Đang triển khai Vault — vui lòng xác nhận trong TP Wallet...',
+      success: 'Triển khai Vault thành công!', failed: 'Triển khai thất bại'
+    },
+    ctrl: {
+      start: 'Bắt đầu giao dịch', stop: 'Dừng giao dịch', revoke: 'Thu hồi khẩn cấp',
+      settings: 'Cài đặt', refresh: 'Làm mới',
+      revokeConfirm: '⚠️ Xác nhận thu hồi quyền khẩn cấp?\n\nĐiều này sẽ:\n1. Ngay lập tức dừng bot thao tác quỹ\n2. Nền tảng không thể thực hiện giao dịch\n3. Quỹ vẫn trong hợp đồng, có thể rút bất cứ lúc nào\n\nXác nhận?',
+      revoking: 'Đang thu hồi quyền...', revoked: 'Đã thu hồi — nền tảng không thể thao tác quỹ'
+    },
+    settings: {
+      title: 'Cài Đặt Giao Dịch', strategy: 'Chiến lược',
+      conservative: 'Thận trọng (Rủi ro thấp)', balanced: 'Cân bằng (Khuyến nghị)', aggressive: 'Tích cực (Lợi nhuận cao)',
+      maxSingle: 'Giao dịch tối đa/lần (USDT)', dailyLimit: 'Hạn mức ngày (USDT)',
+      save: 'Lưu', cancel: 'Hủy', saved: 'Đã lưu cài đặt'
+    },
+    dash: {
+      balance: 'Số dư Vault', loading: 'Đang tải...',
+      positions: 'Vị thế', empty: 'Không có vị thế',
+      running: 'Đang chạy', paused: 'Tạm dừng', engineOff: 'Engine tắt',
+      totalPnl: 'Tổng L/N', pnlDetail: 'Tổng L/N | {0} giao dịch',
+      risk: 'Quản lý rủi ro', riskNormal: 'Bình thường', riskDetail: 'Mỗi lần: $50,000 | Ngày: $200,000',
+      posDetail: 'Chi tiết vị thế', recentTrades: 'Giao dịch gần đây', noTrades: 'Chưa có giao dịch'
+    },
+    withdraw: {
+      title: 'Rút tiền', usdt: 'Rút toàn bộ USDT', bnb: 'Rút toàn bộ BNB',
+      desc: 'Sau khi rút, quỹ sẽ về trực tiếp TP Wallet',
+      usdtConfirm: 'Rút toàn bộ USDT vào TP Wallet?',
+      bnbConfirm: 'Rút toàn bộ BNB vào TP Wallet?',
+      processing: 'Đang rút...', usdtOk: 'Đã rút USDT', bnbOk: 'Đã rút BNB'
+    },
+    footer: 'ARK Quant Agent v3.0 · Ví Hợp Đồng Thông Minh · Bảo Mật On-chain'
+  },
+
+  ru: {
+    lang: 'Русский', dir: 'ltr',
+    login: {
+      title: 'ARK Quant Agent',
+      subtitle: 'Смарт-контракт кошелёк · Автоматическая торговля',
+      desc: 'Ваши средства в on-chain контрактах, безопасно и под контролем',
+      step1: 'Войти через TP Wallet (без приватного ключа)',
+      step2: 'Развернуть персональный контракт кошелёк',
+      step3: 'Перевести USDT в контракт кошелёк',
+      step4: 'Начать торговлю — полностью автоматически',
+      connect: 'Подключить TP Wallet',
+      connecting: 'Подключение...',
+      signing: 'Подтвердите подпись в TP Wallet...',
+      verifying: 'Проверка подписи...',
+      success: 'Вход выполнен',
+      placeholder1: 'Адрес кошелька (0x...)',
+      placeholder2: 'Пароль',
+      loginBtn: 'Войти',
+      divider: 'Впервые?',
+      registerBtn: 'Регистрация',
+      registering: 'Регистрация...',
+      registerOk: 'Зарегистрировано, авто-вход выполнен',
+      loginFooter: 'Введите адрес BSC кошелька и пароль',
+      fee: 'Комиссия платформы 20% (только с прибыли)',
+      noWallet: 'Откройте в браузере TokenPocket или установите TP Wallet'
+    },
+    header: { version: 'v3.0 Смарт-контракт режим', logout: 'Выход' },
+    status: {
+      vault: 'Vault', deployed: 'Развёрнут', undeployed: 'Не развёрнут',
+      trading: 'Торговля', running: 'Активна', off: 'Выкл',
+      strategy: 'Стратегия', fee: 'Комиссия', users: 'Пользователи'
+    },
+    deploy: {
+      title: 'Развернуть Смарт-контракт Кошелёк',
+      desc: 'У каждого пользователя изолированный контракт кошелёк. Средства полностью разделены — платформа имеет только право на исполнение сделок.',
+      s1t: 'Вход', s1d: 'Адрес кошелька + пароль',
+      s2t: 'Развернуть', s2d: 'Одноразовый деплой Vault',
+      s3t: 'Пополнить', s3d: 'USDT / BNB',
+      s4t: 'Торговля', s4d: 'Полностью автоматически',
+      btn: 'Развернуть Контракт Кошелёк',
+      deploying: 'Развёртывание (нужно подтверждение TP)...',
+      confirm: 'Развёртывание Vault — подтвердите в TP Wallet...',
+      success: 'Vault развёрнут!', failed: 'Ошибка развёртывания'
+    },
+    ctrl: {
+      start: 'Начать торговлю', stop: 'Остановить', revoke: 'Экстренный отзыв',
+      settings: 'Настройки', refresh: 'Обновить',
+      revokeConfirm: '⚠️ Подтвердить экстренный отзыв доступа?\n\nЭто:\n1. Немедленно остановит бот\n2. Платформа не сможет выполнять сделки\n3. Средства остаются в контракте, вывод в любое время\n\nПодтвердить?',
+      revoking: 'Отзыв доступа...', revoked: 'Доступ отозван — платформа не может оперировать средствами'
+    },
+    settings: {
+      title: 'Настройки Торговли', strategy: 'Стратегия',
+      conservative: 'Консервативная (низкий риск)', balanced: 'Сбалансированная (рекомендуется)', aggressive: 'Агрессивная (высокая доходность)',
+      maxSingle: 'Макс. сделка (USDT)', dailyLimit: 'Дневной лимит (USDT)',
+      save: 'Сохранить', cancel: 'Отмена', saved: 'Настройки сохранены'
+    },
+    dash: {
+      balance: 'Баланс Vault', loading: 'Загрузка...',
+      positions: 'Позиции', empty: 'Нет позиций',
+      running: 'Активна', paused: 'Пауза', engineOff: 'Движок выкл',
+      totalPnl: 'Общий P&L', pnlDetail: 'Общий P&L | {0} сделок',
+      risk: 'Управление рисками', riskNormal: 'Норма', riskDetail: 'За сделку: $50,000 | В день: $200,000',
+      posDetail: 'Детали позиций', recentTrades: 'Последние сделки', noTrades: 'Нет сделок'
+    },
+    withdraw: {
+      title: 'Вывод', usdt: 'Вывести весь USDT', bnb: 'Вывести весь BNB',
+      desc: 'Средства вернутся напрямую в TP Wallet',
+      usdtConfirm: 'Вывести весь USDT в TP Wallet?',
+      bnbConfirm: 'Вывести весь BNB в TP Wallet?',
+      processing: 'Вывод...', usdtOk: 'USDT выведен', bnbOk: 'BNB выведен'
+    },
+    footer: 'ARK Quant Agent v3.0 · Смарт-контракт кошелёк · On-chain безопасность'
+  },
+
+  ar: {
+    lang: 'العربية', dir: 'rtl',
+    login: {
+      title: 'ARK Quant Agent',
+      subtitle: 'محفظة العقود الذكية · تداول آلي بالكامل',
+      desc: 'أموالك في عقود على السلسلة، آمنة وقابلة للتحكم',
+      step1: 'تسجيل الدخول عبر TP Wallet (بدون مفتاح خاص)',
+      step2: 'نشر محفظة عقود خاصة بك بنقرة واحدة',
+      step3: 'تحويل USDT إلى محفظة العقود',
+      step4: 'بدء التداول — آلي بالكامل',
+      connect: 'ربط TP Wallet',
+      connecting: 'جاري الاتصال...',
+      signing: 'يرجى تأكيد التوقيع في TP Wallet...',
+      verifying: 'التحقق من التوقيع...',
+      success: 'تم تسجيل الدخول',
+      placeholder1: 'عنوان المحفظة (0x...)',
+      placeholder2: 'كلمة المرور',
+      loginBtn: 'تسجيل الدخول',
+      divider: 'مستخدم جديد؟',
+      registerBtn: 'حساب جديد',
+      registering: 'جاري التسجيل...',
+      registerOk: 'تم التسجيل وتسجيل الدخول تلقائيًا',
+      loginFooter: 'أدخل عنوان محفظة BSC وكلمة المرور',
+      fee: 'رسوم المنصة 20% (عند الأرباح فقط)',
+      noWallet: 'يرجى الفتح في متصفح TokenPocket أو تثبيت TP Wallet'
+    },
+    header: { version: 'v3.0 وضع العقود الذكية', logout: 'تسجيل خروج' },
+    status: {
+      vault: 'Vault', deployed: 'تم النشر', undeployed: 'غير منشور',
+      trading: 'التداول', running: 'يعمل', off: 'متوقف',
+      strategy: 'الاستراتيجية', fee: 'الرسوم', users: 'المستخدمون'
+    },
+    deploy: {
+      title: 'نشر محفظة العقود الذكية',
+      desc: 'كل مستخدم لديه محفظة عقود معزولة. الأموال منفصلة تمامًا — المنصة لها فقط حق تنفيذ التداولات.',
+      s1t: 'تسجيل', s1d: 'عنوان المحفظة + كلمة المرور',
+      s2t: 'نشر', s2d: 'نشر Vault',
+      s3t: 'إيداع', s3d: 'USDT / BNB',
+      s4t: 'التداول', s4d: 'آلي بالكامل',
+      btn: 'نشر محفظة العقود',
+      deploying: 'جاري النشر (يحتاج تأكيد TP)...',
+      confirm: 'جاري نشر Vault — يرجى التأكيد في TP Wallet...',
+      success: 'تم نشر Vault!', failed: 'فشل النشر'
+    },
+    ctrl: {
+      start: 'بدء التداول', stop: 'إيقاف التداول', revoke: 'إلغاء صلاحية طارئ',
+      settings: 'الإعدادات', refresh: 'تحديث',
+      revokeConfirm: '⚠️ تأكيد إلغاء الصلاحية الطارئ؟\n\nهذا سيؤدي إلى:\n1. إيقاف البوت فورًا\n2. المنصة لا يمكنها تنفيذ أي صفقات\n3. أموالك في العقد ويمكن سحبها في أي وقت\n\nتأكيد؟',
+      revoking: 'جاري إلغاء الصلاحية...', revoked: 'تم الإلغاء — المنصة لا يمكنها الوصول لأموالك'
+    },
+    settings: {
+      title: 'إعدادات التداول', strategy: 'الاستراتيجية',
+      conservative: 'تحفظي (مخاطر منخفضة)', balanced: 'متوازن (موصى به)', aggressive: 'هاجف (عائد مرتفع)',
+      maxSingle: 'أقصى صفقة (USDT)', dailyLimit: 'الحد اليومي (USDT)',
+      save: 'حفظ', cancel: 'إلغاء', saved: 'تم الحفظ'
+    },
+    dash: {
+      balance: 'رصيد Vault', loading: 'جاري التحميل...',
+      positions: 'المراكز', empty: 'لا مراكز',
+      running: 'يعمل', paused: 'متوقف مؤقتاً', engineOff: 'المحرك متوقف',
+      totalPnl: 'إجمالي الربح/الخسارة', pnlDetail: 'إجمالي P&L | {0} صفقة',
+      risk: 'إدارة المخاطر', riskNormal: 'طبيعي', riskDetail: 'لكل صفقة: $50,000 | يوميًا: $200,000',
+      posDetail: 'تفاصيل المراكز', recentTrades: 'التداولات الأخيرة', noTrades: 'لا صفقات'
+    },
+    withdraw: {
+      title: 'سحب', usdt: 'سحب كل USDT', bnb: 'سحب كل BNB',
+      desc: 'السحب يعود مباشرة إلى TP Wallet',
+      usdtConfirm: 'سحب كل USDT إلى TP Wallet؟',
+      bnbConfirm: 'سحب كل BNB إلى TP Wallet؟',
+      processing: 'جاري السحب...', usdtOk: 'تم سحب USDT', bnbOk: 'تم سحب BNB'
+    },
+    footer: 'ARK Quant Agent v3.0 · محفظة العقود الذكية · أمان على السلسلة'
+  },
+
+  es: {
+    lang: 'Español', dir: 'ltr',
+    login: {
+      title: 'ARK Quant Agent',
+      subtitle: 'Billetera de Smart Contract · Trading Automático',
+      desc: 'Tus fondos están en contratos on-chain, seguros y controlables',
+      step1: 'Iniciar con TP Wallet (sin clave privada)',
+      step2: 'Desplegar tu billetera de contrato personal',
+      step3: 'Transferir USDT a la billetera de contrato',
+      step4: 'Iniciar trading — completamente automático',
+      connect: 'Conectar TP Wallet',
+      connecting: 'Conectando...',
+      signing: 'Confirma la firma en TP Wallet...',
+      verifying: 'Verificando firma...',
+      success: 'Inicio de sesión exitoso',
+      placeholder1: 'Dirección de billetera (0x...)',
+      placeholder2: 'Contraseña',
+      loginBtn: 'Iniciar sesión',
+      divider: '¿Nuevo usuario?',
+      registerBtn: 'Crear cuenta',
+      registering: 'Registrando...',
+      registerOk: 'Registrado e iniciado sesión',
+      loginFooter: 'Ingresa tu dirección de billetera BSC y contraseña',
+      fee: 'Comisión 20% (solo en ganancias)',
+      noWallet: 'Abre en el navegador TokenPocket o instala TP Wallet'
+    },
+    header: { version: 'v3.0 Modo Smart Contract', logout: 'Salir' },
+    status: {
+      vault: 'Vault', deployed: 'Desplegado', undeployed: 'No desplegado',
+      trading: 'Trading', running: 'Activo', off: 'Apagado',
+      strategy: 'Estrategia', fee: 'Comisión', users: 'Usuarios'
+    },
+    deploy: {
+      title: 'Desplegar Tu Billetera de Smart Contract',
+      desc: 'Cada usuario tiene una billetera aislada. Los fondos están completamente separados — la plataforma solo tiene permiso de ejecución.',
+      s1t: 'Iniciar', s1d: 'Dirección + contraseña',
+      s2t: 'Desplegar', s2d: 'Desplegar Vault',
+      s3t: 'Fondear', s3d: 'USDT / BNB',
+      s4t: 'Trading', s4d: 'Automático',
+      btn: 'Desplegar Mi Billetera',
+      deploying: 'Desplegando (requiere confirmación TP)...',
+      confirm: 'Desplegando Vault — confirma en TP Wallet...',
+      success: '¡Vault desplegado!', failed: 'Error al desplegar'
+    },
+    ctrl: {
+      start: 'Iniciar Trading', stop: 'Detener Trading', revoke: 'Revocar Urgente',
+      settings: 'Configuración', refresh: 'Actualizar',
+      revokeConfirm: '⚠️ ¿Confirmar revocación urgente?\n\nEsto:\n1. Detendrá el bot inmediatamente\n2. La plataforma no puede ejecutar trades\n3. Tus fondos permanecen en el contrato\n\n¿Confirmar?',
+      revoking: 'Revocando acceso...', revoked: 'Acceso revocado'
+    },
+    settings: {
+      title: 'Configuración', strategy: 'Estrategia',
+      conservative: 'Conservador (Bajo riesgo)', balanced: 'Balanceado (Recomendado)', aggressive: 'Agresivo (Alto retorno)',
+      maxSingle: 'Máx por trade (USDT)', dailyLimit: 'Límite diario (USDT)',
+      save: 'Guardar', cancel: 'Cancelar', saved: 'Guardado'
+    },
+    dash: {
+      balance: 'Saldo Vault', loading: 'Cargando...',
+      positions: 'Posiciones', empty: 'Sin posiciones',
+      running: 'Activo', paused: 'Pausado', engineOff: 'Motor apagado',
+      totalPnl: 'P&L Total', pnlDetail: 'P&L Total | {0} trades',
+      risk: 'Control de Riesgo', riskNormal: 'Normal', riskDetail: 'Por trade: $50,000 | Diario: $200,000',
+      posDetail: 'Detalles de Posiciones', recentTrades: 'Trades Recientes', noTrades: 'Sin trades'
+    },
+    withdraw: {
+      title: 'Retirar', usdt: 'Retirar Todo USDT', bnb: 'Retirar Todo BNB',
+      desc: 'Los fondos van directo a tu TP Wallet',
+      usdtConfirm: '¿Retirar todo USDT a TP Wallet?',
+      bnbConfirm: '¿Retirar todo BNB a TP Wallet?',
+      processing: 'Retirando...', usdtOk: 'USDT retirado', bnbOk: 'BNB retirado'
+    },
+    footer: 'ARK Quant Agent v3.0 · Billetera Smart Contract · Seguridad On-chain'
+  },
+
+  pt: {
+    lang: 'Português', dir: 'ltr',
+    login: {
+      title: 'ARK Quant Agent',
+      subtitle: 'Carteira de Smart Contract · Trading Automático',
+      desc: 'Seus fundos estão em contratos on-chain, seguros e controláveis',
+      step1: 'Entrar com TP Wallet (sem chave privada)',
+      step2: 'Implantar sua carteira de contrato pessoal',
+      step3: 'Transferir USDT para a carteira de contrato',
+      step4: 'Iniciar trading — totalmente automático',
+      connect: 'Conectar TP Wallet',
+      connecting: 'Conectando...',
+      signing: 'Confirme a assinatura no TP Wallet...',
+      verifying: 'Verificando assinatura...',
+      success: 'Login bem-sucedido',
+      placeholder1: 'Endereço da carteira (0x...)',
+      placeholder2: 'Senha',
+      loginBtn: 'Entrar',
+      divider: 'Novo usuário?',
+      registerBtn: 'Criar conta',
+      registering: 'Registrando...',
+      registerOk: 'Registrado e logado',
+      loginFooter: 'Digite o endereço da carteira BSC e senha',
+      fee: 'Taxa 20% (apenas nos lucros)',
+      noWallet: 'Abra no navegador TokenPocket ou instale TP Wallet'
+    },
+    header: { version: 'v3.0 Modo Smart Contract', logout: 'Sair' },
+    status: {
+      vault: 'Vault', deployed: 'Implantado', undeployed: 'Não implantado',
+      trading: 'Trading', running: 'Ativo', off: 'Desligado',
+      strategy: 'Estratégia', fee: 'Taxa', users: 'Usuários'
+    },
+    deploy: {
+      title: 'Implantar Sua Carteira Smart Contract',
+      desc: 'Cada usuário tem uma carteira isolada. Fundos totalmente separados — a plataforma só tem permissão de execução.',
+      s1t: 'Entrar', s1d: 'Endereço + senha',
+      s2t: 'Implantar', s2d: 'Implantar Vault',
+      s3t: 'Depositar', s3d: 'USDT / BNB',
+      s4t: 'Trading', s4d: 'Automático',
+      btn: 'Implantar Minha Carteira',
+      deploying: 'Implantando (requer confirmação TP)...',
+      confirm: 'Implantando Vault — confirme no TP Wallet...',
+      success: 'Vault implantado!', failed: 'Falha na implantação'
+    },
+    ctrl: {
+      start: 'Iniciar Trading', stop: 'Parar Trading', revoke: 'Revogar Urgente',
+      settings: 'Configurações', refresh: 'Atualizar',
+      revokeConfirm: '⚠️ Confirmar revogação urgente?\n\nIsso:\n1. Para o bot imediatamente\n2. A plataforma não pode executar trades\n3. Seus fundos permanecem no contrato\n\nConfirmar?',
+      revoking: 'Revogando acesso...', revoked: 'Acesso revogado'
+    },
+    settings: {
+      title: 'Configurações', strategy: 'Estratégia',
+      conservative: 'Conservador (Baixo risco)', balanced: 'Balanceado (Recomendado)', aggressive: 'Agressivo (Alto retorno)',
+      maxSingle: 'Máx por trade (USDT)', dailyLimit: 'Limite diário (USDT)',
+      save: 'Salvar', cancel: 'Cancelar', saved: 'Salvo'
+    },
+    dash: {
+      balance: 'Saldo Vault', loading: 'Carregando...',
+      positions: 'Posições', empty: 'Sem posições',
+      running: 'Ativo', paused: 'Pausado', engineOff: 'Motor desligado',
+      totalPnl: 'P&L Total', pnlDetail: 'P&L Total | {0} trades',
+      risk: 'Controle de Risco', riskNormal: 'Normal', riskDetail: 'Por trade: $50,000 | Diário: $200,000',
+      posDetail: 'Detalhes', recentTrades: 'Trades Recentes', noTrades: 'Sem trades'
+    },
+    withdraw: {
+      title: 'Retirar', usdt: 'Retirar Todo USDT', bnb: 'Retirar Todo BNB',
+      desc: 'Os fundos vão direto para sua TP Wallet',
+      usdtConfirm: 'Retirar todo USDT para TP Wallet?',
+      bnbConfirm: 'Retirar todo BNB para TP Wallet?',
+      processing: 'Retirando...', usdtOk: 'USDT retirado', bnbOk: 'BNB retirado'
+    },
+    footer: 'ARK Quant Agent v3.0 · Carteira Smart Contract · Segurança On-chain'
+  }
+};
+
+window.I18N = I18N;
+
+
+// ═══════════════════════════════════════
+// 全局状态
+// ═══════════════════════════════════════
+const API = '';
+// [SECURITY#6-LOW] token存储在localStorage可被XSS读取，生产环境应改用HttpOnly Cookie
+let authToken = localStorage.getItem('ark_token') || null;
+let refreshTimer = null;
+let currentUser = JSON.parse(localStorage.getItem('ark_user') || 'null');
+let currentLang = localStorage.getItem('ark_lang') || 'zh';
+
+// ═══════════════════════════════════════
+// 国际化
+// ═══════════════════════════════════════
+function t(key) {
+  const lang = I18N[currentLang] || I18N.zh;
+  const keys = key.split('.');
+  let v = lang;
+  for (const k of keys) { v = v?.[k]; }
+  return v || key;
+}
+
+function applyLang(lang) {
+  currentLang = lang;
+  localStorage.setItem('ark_lang', lang);
+  const dir = I18N[lang]?.dir || 'ltr';
+  document.documentElement.setAttribute('lang', lang);
+  document.documentElement.setAttribute('dir', dir);
+
+  // 更新所有 data-i18n 元素
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const translated = t(key);
+    if (translated !== key) el.textContent = translated;
+  });
+
+  // 更新所有 data-i18n-placeholder 元素
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    const translated = t(key);
+    if (translated !== key) el.placeholder = translated;
+  });
+
+  // 更新 select option 文本
+  const stratSel = document.getElementById('setStrategy');
+  if (stratSel) {
+    stratSel.options[0].text = t('settings.conservative');
+    stratSel.options[1].text = t('settings.balanced');
+    stratSel.options[2].text = t('settings.aggressive');
+  }
+
+  // 重建语言栏
+  buildLangBar();
+}
+
+function buildLangBar() {
+  // 顶部自定义下拉菜单
+  const trigger = document.getElementById('langTrigger');
+  const menu = document.getElementById('langMenu');
+  if (trigger && menu) {
+    trigger.textContent = I18N[currentLang]?.lang || currentLang;
+    menu.innerHTML = '';
+    Object.keys(I18N).forEach(code => {
+      const item = document.createElement('div');
+      item.className = 'lang-dropdown-item' + (code === currentLang ? ' active' : '');
+      item.textContent = I18N[code].lang;
+      item.onclick = function(e) {
+        e.stopPropagation();
+        applyLang(code);
+        menu.classList.remove('show');
+      };
+      menu.appendChild(item);
+    });
+  }
+  // header 下拉菜单
+  const hd = document.getElementById('headerLangBar');
+  if (hd) {
+    let h = '<div class="lang-dropdown" style="position:relative">';
+    h += '<div class="lang-dropdown-trigger" onclick="toggleHeaderLangMenu(event)" style="background:transparent;border:1px solid #21262d;color:#8b949e;padding:5px 24px 5px 8px;border-radius:6px;font-size:.78em;font-weight:600;cursor:pointer">' + (I18N[currentLang]?.lang || currentLang) + '</div>';
+    h += '<div class="lang-dropdown-menu" id="headerLangMenu">';
+    Object.keys(I18N).forEach(code => {
+      h += '<div class="lang-dropdown-item' + (code === currentLang ? ' active' : '') + '" onclick="applyLang(\'' + code + '\');document.getElementById(\'headerLangMenu\').classList.remove(\'show\')">' + I18N[code].lang + '</div>';
+    });
+    h += '</div></div>';
+    hd.innerHTML = h;
+  }
+}
+
+// 切换语言下拉菜单显示/隐藏
+function toggleLangMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('langMenu');
+  if (menu) menu.classList.toggle('show');
+}
+function toggleHeaderLangMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('headerLangMenu');
+  if (menu) menu.classList.toggle('show');
+}
+// 点击其他地方关闭下拉
+if (!window._langCloseBound) {
+  window._langCloseBound = true;
+  document.addEventListener('click', function() {
+    document.querySelectorAll('.lang-dropdown-menu.show').forEach(m => m.classList.remove('show'));
+  });
+}
+
+// 页面加载时初始化语言栏
+applyLang(currentLang);
+
+// ═══════════════════════════════════════
+// 工具函数
+// ═══════════════════════════════════════
+function toast(msg, type = 'info') {
+  const tEl = document.getElementById('toast');
+  tEl.textContent = msg;
+  tEl.className = 'toast ' + type + ' show';
+  setTimeout(() => tEl.className = 'toast', 3500);
+}
+
+function show(el, v) { document.getElementById(el).textContent = v; }
+function html(el, v) { document.getElementById(el).innerHTML = v; }
+
+function saveSession(token, user) {
+  authToken = token;
+  currentUser = user;
+  if (token) localStorage.setItem('ark_token', token);
+  else localStorage.removeItem('ark_token');
+  if (user) localStorage.setItem('ark_user', JSON.stringify(user));
+  else localStorage.removeItem('ark_user');
+}
+
+function headers() {
+  // 用 X-API-Key 传递 token（避免 Cloudflare 拦截 Authorization header）
+  return authToken
+    ? { 'X-API-Key': authToken, 'Content-Type': 'application/json' }
+    : { 'Content-Type': 'application/json' };
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: headers() };
+  if (body) opts.body = JSON.stringify(body);
+  try {
+    const r = await fetch(API + path, opts);
+    const text = await r.text();
+    let data;
+    try { data = JSON.parse(text); } catch(parseErr) {
+      console.error('[API] Non-JSON response:', text.substring(0, 200));
+      throw new Error('服务器返回异常，请刷新重试');
+    }
+    if (!r.ok) {
+      console.error('[API] Error', r.status, data);
+      const err = new Error(data.error || data.detail || 'Request failed ' + r.status);
+      err.detail = data.detail || '';
+      err.data = data;
+      throw err;
+    }
+    return data;
+  } catch(fetchErr) {
+    console.error('[API] Fetch error:', fetchErr);
+    throw new Error('网络连接失败: ' + fetchErr.message);
+  }
+}
+
+// ═══════════════════════════════════════
+// 登录(只有密码登录)
+// ═══════════════════════════════════════
+
+// ═══════════════════════════════════════
+// 密码登录 / 注册
+// ═══════════════════════════════════════
+async function doPasswordLogin() {
+  const msg = document.getElementById('loginMsg');
+  const walletAddr = document.getElementById('loginWalletAddr').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!walletAddr || !password) { msg.className='msg err'; msg.textContent=t('login.placeholder1') ? '请输入钱包地址和密码' : 'Please enter wallet address and password'; return; }
+  if (!walletAddr.startsWith('0x') || walletAddr.length !== 42) { msg.className='msg err'; msg.textContent='钱包地址格式不正确'; return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = t('login.loginBtn') || '登录中...';
+  try {
+    const result = await api('POST', '/api/auth/login', { username: walletAddr.toLowerCase(), password });
+    saveSession(result.token, result.user);
+    msg.className = 'msg ok'; msg.textContent = t('login.success') || '登录成功';
+    setTimeout(() => {
+      document.getElementById('loginPage').style.display = 'none';
+      document.getElementById('appPage').style.display = 'block';
+      initDashboard();
+    }, 400);
+  } catch(e) {
+    msg.className = 'msg err'; msg.textContent = '\u274C ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = t('login.loginBtn') || '登录';
+  }
+}
+
+async function doRegister() {
+  const msg = document.getElementById('loginMsg');
+  const walletAddr = document.getElementById('loginWalletAddr').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!walletAddr || !password) { msg.className='msg err'; msg.textContent='请输入钱包地址和密码'; return; }
+  if (!walletAddr.startsWith('0x') || walletAddr.length !== 42) { msg.className='msg err'; msg.textContent='钱包地址格式不正确(0x...共42位)'; return; }
+  if (password.length < 6) { msg.className='msg err'; msg.textContent='密码至少 6 位'; return; }
+  const btn = document.getElementById('registerBtn');
+  btn.disabled = true; btn.textContent = t('login.registering') || '注册中...';
+  try {
+    const result = await api('POST', '/api/auth/register', {
+      username: walletAddr.toLowerCase(), password, walletAddress: walletAddr.toLowerCase()
+    });
+    saveSession(result.token, result.user);
+    msg.className = 'msg ok'; msg.textContent = t('login.registerOk') || '注册成功，已自动登录';
+    setTimeout(() => {
+      document.getElementById('loginPage').style.display = 'none';
+      document.getElementById('appPage').style.display = 'block';
+      initDashboard();
+    }, 400);
+  } catch(e) {
+    msg.className = 'msg err'; msg.textContent = '\u274C ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = t('login.registerBtn') || '注册新账号';
+  }
+}
+
+// ═══════════════════════════════════════
+// 仪表盘
+// ═══════════════════════════════════════
+async function initDashboard() {
+  const addr = currentUser?.walletAddress || currentUser?.address || '';
+  show('walletAddr', addr ? addr.slice(0, 6) + '...' + addr.slice(-4) : '--');
+  await refreshDashboard();
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(refreshDashboard, 5000);
+}
+
+async function refreshDashboard() {
+  try {
+    const data = await api('POST', '/api/dashboard', {});
+    let vault = {};
+    try { vault = await api('POST', '/api/vault/status', {}); } catch(e) { /* 没有vault也没关系 */ }
+    renderDashboard(data, vault);
+    // [fix#30] 自动检查并触发 USDT approve
+    if (vault?.deployed) await _checkAndApproveUSDT();
+  } catch (e) {
+    if (e.message === '未登录') logout();
+  }
+}
+
+// [fix#30] 检查 Vault→Router allowance，不足则触发 approve
+async function _checkAndApproveUSDT() {
+  try {
+    const eth = await getEthereum();
+    if (!eth) return;
+    // 检查当前 allowance
+    const USDT = '0x55d398326f99059fF775485246999027B3197955';
+    const ROUTER = '0x10ED43C718714eb63d5aA57B78B54704E256024E';
+    const accounts = await eth.request({ method: 'eth_accounts' });
+    const from = accounts[0];
+    // allowance(address,address) = 0xdd62ed3e
+    const allowanceData = '0xdd62ed3e' + from.slice(2).toLowerCase().padStart(64, '0') + ROUTER.slice(2).toLowerCase().padStart(64, '0');
+    const allowanceRaw = await eth.request({ method: 'eth_call', params: [{ to: USDT, data: allowanceData }, 'latest'] });
+    const allowance = BigInt(allowanceRaw);
+    const maxUint = 2n ** 256n - 1n;
+    if (allowance < maxUint / 2n) {
+      // allowance 不足，触发 approve
+      // approve(address,uint256) = 0x095ea7b3
+      const approveData = '0x095ea7b3' + ROUTER.slice(2).toLowerCase().padStart(64, '0') + maxUint.toString(16).padStart(64, '0');
+      toast('🔑 正在授权 USDT 给 DEX...', 'info');
+      const txHash = await eth.request({ method: 'eth_sendTransaction', params: [{
+        from: from,
+        to: USDT,
+        data: approveData,
+        gas: '0x7A120',
+      }] });
+      toast('✅ USDT 已授权给 DEX', 'ok');
+    }
+  } catch (e) {
+    // 静默失败，不打扰用户
+    console.warn('auto approve USDT failed:', e?.message || e);
+  }
+}
+
+function renderDashboard(data, vault) {
+  const u = data.user;
+  const eng = data.engine || {};
+
+  // 状态栏
+  var cexDot = document.getElementById('cexDot');
+  if (cexDot) cexDot.className = 's-dot ' + (u.cexMode ? 'on' : 'off');
+  show('tradingStatus', u.tradingEnabled ? t('status.running') : t('status.off'));
+  show('strategyLabel', { conservative: t('settings.conservative'), balanced: t('settings.balanced'), aggressive: t('settings.aggressive') }[u.strategy] || '--');
+  var ucEl = document.getElementById('userCount');
+  if (ucEl) show('userCount', (data.platform || {}).totalUsers || '--');
+
+  // 💰 钱包资产
+  const arkBal = u.arkBalance || 0;
+  const bnbBal = u.bnbBalance || 0;
+  const usdtBal = u.usdtBalance || 0;
+  const arkPrice = u.arkPriceUsd || 0;
+  const arkUsd = arkBal * arkPrice;
+  const totalUsd = arkUsd + bnbBal * 600 + usdtBal;
+  var setW = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+  setW('wArk', arkBal.toFixed(4) + ' ($' + arkUsd.toFixed(2) + ')');
+  setW('wUsdt', '$' + usdtBal.toFixed(2));
+  setW('wBnb', bnbBal.toFixed(4));
+  setW('wTotal', '$' + totalUsd.toFixed(2));
+  setW('wPrice', 'ARK 价格: $' + arkPrice.toFixed(4) + ' | 折合 $' + totalUsd.toFixed(2));
+
+  // 控制栏和仪表盘始终显示
+  var cbEl = document.getElementById('controlBar');
+  if (cbEl) cbEl.style.display = 'flex';
+  var dgEl = document.getElementById('dashboardGrid');
+  if (dgEl) dgEl.style.display = 'grid';
+
+  // 持仓
+  const positions = eng.positions || {};
+  const userPositions = eng.userPositions || positions;
+  const posArr = Object.entries(userPositions);
+  show('posCount', posArr.length);
+
+  const pb = document.getElementById('posBox');
+  if (pb) {
+    if (!posArr.length) {
+      pb.innerHTML = '<div class="empty">' + t('dash.empty') + '</div>';
+    } else {
+      let h = '';
+      posArr.forEach(([sym, p]) => {
+        const isL = p.side === 'LONG';
+        const pnl = p.pnl || 0;
+        const pc = pnl >= 0 ? 'green' : 'red';
+        h += '<div class="pos-card ' + (isL ? 'long' : 'short') + '">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center">'
+          + '<span class="pos-sym">' + sym.replace('USDT','') + '</span>'
+          + '<span class="pos-side ' + (isL ? 'long' : 'short') + '">' + p.side + ' ' + (p.leverage||6) + 'x</span>'
+          + '</div>'
+          + '<div class="pos-det">Entry: $' + (p.entryPrice?.toFixed(4)||'--') + ' | Now: $' + (p.markPrice?.toFixed(4)||'--') + '</div>'
+          + '<div class="pos-pnl ' + pc + '">$' + pnl.toFixed(4) + '</div></div>';
+      });
+      pb.innerHTML = h;
+    }
+  }
+
+  // 盈亏
+  const pnl = (vault && vault.totalPnl) || u.totalPnl || 0;
+  show('totalPnl', (pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toFixed(2));
+  var pnlEl = document.getElementById('totalPnl');
+  if (pnlEl) pnlEl.className = 'val ' + (pnl >= 0 ? 'green' : 'red');
+  const totalTrades = (vault && vault.totalTrades) || u.totalTrades || 0;
+  const pnlDet = t('dash.pnlDetail').replace('{0}', totalTrades);
+  show('pnlDetail', pnlDet);
+
+  // 交易记录
+  const trades = eng.recentTrades || [];
+  const tl = document.getElementById('tList');
+  if (tl) {
+    if (!trades.length) {
+      tl.innerHTML = '<div class="empty">' + t('dash.noTrades') + '</div>';
+    } else {
+      let th = '';
+      trades.slice().reverse().forEach(tr => {
+        const time = new Date(tr.timestamp).toLocaleString();
+        const cls = tr.action === 'LONG' ? 'green' : tr.action === 'SHORT' ? 'red' : 'yellow';
+        const pnlStr = tr.pnl ? (tr.pnl > 0 ? '+$' + tr.pnl.toFixed(2) : '-$' + Math.abs(tr.pnl).toFixed(2)) : '';
+        th += '<div class="titem"><span>' + time + ' <span class="' + cls + '">' + tr.action + '</span> ' + tr.symbol + '</span>'
+          + (pnlStr ? '<span class="' + (tr.pnl > 0 ? 'green' : 'red') + '">' + pnlStr + '</span>' : '<span>--</span>') + '</div>';
+      });
+      tl.innerHTML = th;
+    }
+  }
+
+  var ssEl = document.getElementById('setStrategy');
+  if (ssEl) ssEl.value = u.strategy || 'balanced';
+}
+
+// ═══════════════════════════════════════
+// Vault 操作
+// ═══════════════════════════════════════
+// Factory 地址从后端动态获取（不再硬编码）
+let FACTORY_ADDRESS = null;
+const FACTORY_ABI = [{"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"deployVault","outputs":[{"internalType":"address","name":"vault","type":"address"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"getVault","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}];
+
+// 从后端获取 Factory 地址
+async function getFactoryAddress() {
+  if (FACTORY_ADDRESS) return FACTORY_ADDRESS;
+  try {
+    const r = await fetch(API + '/api/config/factory');
+    if (r.ok) {
+      const data = await r.json();
+      if (data.factoryAddress) {
+        FACTORY_ADDRESS = data.factoryAddress;
+        return FACTORY_ADDRESS;
+      }
+    }
+  } catch(e) {}
+  // 兜底
+  FACTORY_ADDRESS = '0x0eFB86c39c3649B40977a3BEc083ABd3D67a89f3'; // V5: fix limits 18 decimals + swap works
+  return FACTORY_ADDRESS;
+}
+
+// ═══════ 链上交互工具 ═══════
+async function getEthereum() {
+  if (window.ethereum) return window.ethereum;
+  if (window.okxwallet) return window.okxwallet;
+  // Trust Wallet may need a moment to inject
+  await new Promise(r => setTimeout(r, 500));
+  if (window.ethereum) return window.ethereum;
+  if (window.okxwallet) return window.okxwallet;
+  throw new Error('No wallet detected. Please open this page inside Trust Wallet or OKX Wallet DApp browser.');
+}
+
+async function ensureBSC() {
+  const eth = await getEthereum();
+  const chainId = await eth.request({ method: 'eth_chainId' });
+  if (chainId !== '0x38') { // 56 in hex
+    try {
+      await eth.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
+    } catch (e) {
+      throw new Error('Please switch to BSC network in your wallet');
+    }
+  }
+  return eth;
+}
+
+// ═══════ Vault 部署（前端直签 + 后端代部署 fallback）═══════
+async function deployVault() {
+  const btn = document.getElementById('deployBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> ' + t('deploy.deploying');
+  try {
+    const userAddress = currentUser?.walletAddress || currentUser?.address;
+    if (!userAddress) { toast('❌ 未登录', 'err'); return; }
+
+    // 1. 先检查链上是否已部署
+    try {
+      const checkR = await api('GET', '/api/vault/status');
+      if (checkR.deployed) {
+        toast('✅ Vault already deployed', 'ok');
+        await refreshDashboard();
+        return;
+      }
+    } catch(e) {}
+
+    // 2. 动态获取 Factory 地址
+    const factoryAddr = await getFactoryAddress();
+    if (!factoryAddr) { toast('❌ Factory 合约未配置', 'err'); return; }
+
+    // 3. 检查是否有 TP 钱包连接
+    let ethereum = null;
+    try { ethereum = await getEthereum(); } catch(e) {}
+
+    if (ethereum) {
+      // 模式 A：前端直签（TP 钱包内）
+      try {
+        await ensureBSC();
+        const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+        const connectAddr = accounts[0];
+        if (connectAddr.toLowerCase() !== userAddress.toLowerCase()) {
+          toast('⚠️ 钱包地址不匹配：' + connectAddr.slice(0,10) + ' vs ' + userAddress.slice(0,10) + '\n\n请确保 TP 钱包连接的是你注册时使用的钱包', 'err');
+          // fallback to backend deploy
+          throw new Error('address mismatch');
+        }
+
+
+        toast('🔗 Confirm deployment in your wallet...', 'info');
+        const provider = new ethers.BrowserProvider(ethereum);
+        const factory = new ethers.Contract(factoryAddr, FACTORY_ABI, provider);
+        const existing = await factory.getVault(userAddress);
+        if (existing && existing !== '0x0000000000000000000000000000000000000000') {
+          await api('POST', '/api/vault/sync', { vaultAddress: existing });
+          toast('✅ Vault synced: ' + existing.slice(0, 12) + '...', 'ok');
+          await refreshDashboard();
+          return;
+        }
+        const signer = await provider.getSigner();
+        const factoryWithSigner = new ethers.Contract(factoryAddr, FACTORY_ABI, signer);
+        const tx = await factoryWithSigner.deployVault(userAddress);
+        toast('⏳ Waiting confirmation...', 'info');
+        await tx.wait();
+        const vaultAddress = await factory.getVault(userAddress);
+        if (!vaultAddress || vaultAddress === '0x0000000000000000000000000000000000000000') {
+          throw new Error('Vault not found on-chain after deploy');
+        }
+        await api('POST', '/api/vault/sync', { vaultAddress });
+        toast('✅ Vault deployed! ' + vaultAddress.slice(0, 12) + '...', 'ok');
+        await refreshDashboard();
+        return;
+      } catch(e) {
+        console.log('Frontend deploy failed, falling back to backend:', e.message);
+        // fall through to backend deploy
+      }
+    }
+
+    // 模式 B：后端代部署（无需 TP 钱包连接）
+    // 注意：此模式需要 TRADER_PRIVATE_KEY 环境变量
+    toast('⚠️ 未检测到 TP 钱包连接，尝试后端部署...', 'info');
+    try {
+      const result = await api('POST', '/api/vault/deploy');
+      if (result.success) {
+        toast('✅ Vault deployed! ' + result.vaultAddress.slice(0, 12) + '...', 'ok');
+      } else {
+        toast('✅ ' + (result.message || 'Deployed'), 'ok');
+      }
+      await refreshDashboard();
+    } catch(e) {
+      if (e.message?.includes('交易器') || e.message?.includes('TRADER_PRIVATE_KEY') || e.detail?.includes('402')) {
+        toast('⚠️ 请在 TP 钱包中打开此页面并连接钱包部署，或联系管理员配置交易器', 'err');
+      } else {
+        throw e;
+      }
+    }
+  } catch (e) {
+    console.error('Deploy error:', e);
+    const msg = e.message?.includes('user rejected') ? 'Transaction rejected' : e.message;
+    if (msg?.includes('deploy') || msg?.includes('revert')) {
+
+    } else {
+      toast('❌ ' + (t('deploy.failed') || 'Deploy failed') + ': ' + msg, 'err');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = t('deploy.btn');
+  }
+}
+
+async function toggleTrading(enable) {
+  try {
+    await api('POST', '/api/vault/trading', { enabled: enable });
+    toast(enable ? '✅ ' + t('ctrl.start') : '⏹ ' + t('ctrl.stop'), enable ? 'ok' : 'info');
+    await refreshDashboard();
+  } catch (e) { toast('❌ ' + e.message, 'err'); }
+}
+
+// 退出
+    if (resp.method === 'user-signed') {
+      // V2: 用户是 owner，需要在 TP 钱包中签名
+      const eth = await getEthereum();
+      if (!eth) { toast('❌ 请在 TP 钱包中打开此页面', 'err'); return; }
+      const provider = new ethers.BrowserProvider(eth);
+      const signer = await provider.getSigner();
+      const vaultABI = ['function withdrawAllUSDT()'];
+      const vault = new ethers.Contract(resp.vaultAddress, vaultABI, signer);
+      const tx = await vault.withdrawAllUSDT();
+      toast('⏳ 等待链上确认...', 'info');
+      await tx.wait();
+      toast('✅ USDT 已提取到你的 TP 钱包', 'ok');
+    } else {
+      toast('✅ ' + t('withdraw.usdtOk'), 'ok');
+    }
+    await refreshDashboard();
+  } catch (e) { toast('❌ ' + (e.reason || e.message), 'err'); }
+}
+
+// (DEX withdraw functions removed — now using CEX mode)
+  } catch (e) { toast('❌ ' + (e.reason || e.message), 'err'); }
+}
+
+// ═══════════════════════════════════════
+// 入金功能（用户 TP 钱包直接签名）
+// ═══════════════════════════════════════
+const USDT_CONTRACT = '0x55d398326f99059fF775485246999027B3197955';
+
+// (DEX vault functions removed — now using CEX mode)
+
+// ═══════════════════════════════════════
+// 设置
+// ═══════════════════════════════════════
+function toggleSettings() { document.getElementById('settingsPanel').classList.toggle('open'); }
+
+async function saveSettings() {
+  try {
+    await api('POST', '/api/vault/strategy', { strategy: document.getElementById('setStrategy').value });
+    await api('POST', '/api/vault/trade-amount', { tradeAmount: Number(document.getElementById('setTradeAmount').value) });
+    // [fix#27] setTradeLimits 需要 owner 签名，直接用原始 eth_sendTransaction
+    const maxSingle = Number(document.getElementById('setMaxSingle').value);
+    const dailyLimit = Number(document.getElementById('setDailyLimit').value);
+    if (maxSingle > 0 || dailyLimit > 0) {
+      try {
+        const eth = await getEthereum();
+        if (eth) {
+          const userVault = await api('GET', '/api/vault/status');
+          if (userVault && userVault.vaultAddress) {
+            // 手动 ABI 编码 setTradeLimits(uint256,uint256)
+            const selector = '0x03439a9f';
+            const pad = (n) => n.toString(16).padStart(64, '0');
+            const toWei18 = (v) => {
+              const s = BigInt(Math.round(v)).toString(16);
+              const pad64 = s.padStart(64, '0');
+              return pad64;
+            };
+            // ethers.parseUnits 太复杂，手算：50000 * 10^18
+            const maxHex = BigInt(Math.round(maxSingle)) * 1000000000000000000n;
+            const dailyHex = BigInt(Math.round(dailyLimit)) * 1000000000000000000n;
+            const calldata = selector + maxHex.toString(16).padStart(64, '0') + dailyHex.toString(16).padStart(64, '0');
+            const accounts = await eth.request({ method: 'eth_accounts' });
+            const txParams = {
+              from: accounts[0],
+              to: userVault.vaultAddress,
+              data: calldata,
+              gas: '0x493E0',
+            };
+            toast('⏳ 请在钱包中确认交易...', 'info');
+            const txHash = await eth.request({ method: 'eth_sendTransaction', params: [txParams] });
+            toast('✅ 限额已更新！tx: ' + txHash.slice(0, 18) + '...', 'ok');
+          }
+        } else {
+          toast('⚠️ 请在钱包 DApp 浏览器中操作', 'err');
+        }
+      } catch (e) {
+        console.warn('setTradeLimits failed:', e);
+        const msg = e?.data?.message || e?.message || e?.reason || String(e);
+        toast('⚠️ 限额设置失败: ' + msg.slice(0, 100), 'err');
+      }
+    }
+    toast('✅ ' + t('settings.saved'), 'ok');
+    toggleSettings();
+    await refreshDashboard();
+    // [fix#30] 自动触发 USDT approve 给 PancakeSwap Router
+    await _autoApproveRouter();
+  } catch (e) { toast('❌ ' + e.message, 'err'); }
+}
+
+// [fix#30] 自动 approve USDT 给 Router（需要 owner 钱包签名）
+async function _autoApproveRouter() {
+  try {
+    const eth = await getEthereum();
+    if (!eth) return;
+    const status = await api('GET', '/api/vault/status');
+    if (!status?.vaultAddress) return;
+    // 检查当前 allowance
+    const USDT = '0x55d398326f99059fF775485246999027B3197955';
+    const ROUTER = '0x10ED43C718714eb63d5aA57B78B54704E256024E';
+    const accounts = await eth.request({ method: 'eth_accounts' });
+    // approve(address,uint256) selector = 0x095ea7b3
+    const maxUint = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+    // 手算: approve(Router, maxUint)
+    const approveData = '0x095ea7b3' + ROUTER.slice(2).toLowerCase().padStart(64, '0') + maxUint.slice(2);
+    toast('🔑 正在授权 USDT 给 DEX...', 'info');
+    const txHash = await eth.request({ method: 'eth_sendTransaction', params: [{
+      from: accounts[0],
+      to: USDT,
+      data: approveData,
+      gas: '0x7A120',
+    }] });
+    toast('✅ USDT 已授权给 DEX: ' + txHash.slice(0, 18) + '...', 'ok');
+  } catch (e) {
+    console.warn('auto approve failed:', e);
+    toast('⚠️ DEX 授权失败: ' + (e?.data?.message || e?.message || '').slice(0, 80), 'err');
+  }
+}
+
+function quickInvest(val) {
+  const inp = document.getElementById('investAmount');
+  if (val === 'max') {
+    // 用用户钱包 USDT 余额
+    const u = currentUser || {};
+    inp.value = Math.floor((u.usdtBalance || 0) * 100) / 100;
+  } else {
+    inp.value = val;
+  }
+}
+
+async function saveInvest() {
+  const amt = Number(document.getElementById('investAmount').value);
+  const msg = document.getElementById('investMsg');
+  if (amt < 0) { msg.style.color = '#f85149'; msg.textContent = '金额不能为负'; return; }
+  try {
+    await api('POST', '/api/vault/trade-amount', { tradeAmount: amt });
+    msg.style.color = '#3fb950'; msg.textContent = '✅ 已设置投资 ' + amt + ' USDT';
+    show('currentInvest', amt);
+    setTimeout(() => { msg.textContent = ''; }, 3000);
+  } catch (e) {
+    msg.style.color = '#f85149'; msg.textContent = '❌ ' + e.message;
+  }
+}
+
+async function loadUserSettings() {
+  try {
+    const s = await api('GET', '/api/vault/user-settings');
+    document.getElementById('investAmount').value = s.tradeAmount || 0;
+    show('currentInvest', s.tradeAmount || 0);
+    document.getElementById('setStrategy').value = s.strategy || 'balanced';
+    document.getElementById('setMaxSingle').value = s.maxSingle || 50000;
+    document.getElementById('setDailyLimit').value = s.dailyLimit || 200000;
+  } catch (e) { /* 忽略 */ }
+}
+
+// ═══════════════════════════════════════
+// ═══════════════════════════════════════
+// 一键迁移旧 Vault 资金
+// ═══════════════════════════════════════
+async function migrateFromOldVault() {
+  try {
+    const eth = await getEthereum();
+    if (!eth) { toast('请在 TP 钱包中操作', 'err'); return; }
+    const accounts = await eth.request({ method: 'eth_accounts' });
+    const from = accounts[0];
+
+    // 获取新旧 Vault 地址
+    const vault = await api('GET', '/api/vault/status');
+    const oldVault = vault.oldVaultAddress;
+    const newVault = vault.vaultAddress;
+    if (!oldVault || !newVault) { toast('无法获取 Vault 地址', 'err'); return; }
+
+    const USDT = '0x55d398326f99059fF775485246999027B3197955';
+    const msg = `将资金从旧 Vault 迁移到新 Vault:\n\n旧: ${oldVault.slice(0,12)}...\n新: ${newVault.slice(0,12)}...\n\n将签名 2 笔交易:\n1. 从旧 Vault 提取全部 USDT\n2. 从旧 Vault 提取全部 BNB\n\n确认继续？`;
+    if (!confirm(msg)) return;
+
+    // 1. withdrawAllUSDT() = 0x328fc4f8 (旧Vault)
+    toast('⏳ Step 1/2: 提取旧 Vault USDT...', 'info');
+    try {
+      const tx1 = await eth.request({ method: 'eth_sendTransaction', params: [{
+        from, to: oldVault, data: '0x328fc4f8', gas: '0x493E0',
+      }] });
+      toast('✅ USDT 提取成功: ' + tx1.slice(0, 16) + '...', 'ok');
+    } catch(e) {
+      if (e.code === 4001) { toast('❌ 用户取消', 'err'); return; }
+      toast('⚠️ USDT 提取失败: ' + (e.message||e.data?.message||'').slice(0,80), 'err');
+    }
+
+    // 2. 旧Vault可能没有 withdrawAllBNB，尝试 withdrawAll()
+    toast('⏳ Step 2/2: 提取旧 Vault BNB...', 'info');
+    try {
+      const tx2 = await eth.request({ method: 'eth_sendTransaction', params: [{
+        from, to: oldVault, data: '0x853828b6', gas: '0x493E0',
+      }] });
+      toast('✅ BNB 提取成功: ' + tx2.slice(0, 16) + '...', 'ok');
+    } catch(e) {
+      if (e.code === 4001) { toast('⚠️ BNB 提取已取消（不影响 USDT）', 'info'); }
+      else toast('⚠️ BNB 提取失败: ' + (e.message||e.data?.message||'').slice(0,80), 'err');
+    }
+
+    document.getElementById('migrateMsg').textContent = '✅ 请在 TP 钱包中将提取的资金转入新 Vault: ' + newVault.slice(0,10) + '...';
+    toast('✅ 迁移完成！请手动转入新 Vault', 'ok');
+  } catch(e) {
+    toast('❌ 迁移失败: ' + e.message, 'err');
+  }
+}
+
+// 退出
+// ═══════════════════════════════════════
+async function logout() {
+  try { await api('POST', '/api/auth/logout'); } catch (e) {}
+  saveSession(null, null);
+  if (refreshTimer) clearInterval(refreshTimer);
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('appPage').style.display = 'none';
+}
+
+// ═══════════════════════════════════════
+// 回测
+// ═══════════════════════════════════════
+async function runBacktest() {
+  const el = document.getElementById('backtestResult');
+  el.textContent = '⏳ 回测中...';
+  el.className = '';
+  try {
+    const r = await api('GET', '/api/backtest');
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.82em">
+        <div>初始资金: <b>$${r.initialCapital.toLocaleString()}</b></div>
+        <div>最终资金: <b style="color:${r.totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">$${r.finalCapital.toLocaleString()}</b></div>
+        <div>总盈亏: <b style="color:${r.totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">$${r.totalPnl}</b></div>
+        <div>收益率: <b style="color:${parseFloat(r.roi) >= 0 ? 'var(--green)' : 'var(--red)'}">${r.roi}</b></div>
+        <div>总交易: ${r.totalTrades} 笔</div>
+        <div>胜率: <b>${r.winRate}</b></div>
+        <div>盈利: ${r.wins} | 亏损: ${r.losses}</div>
+        <div>单笔均盈: $${r.avgPnlPerTrade}</div>
+      </div>
+      <div style="margin-top:8px;font-size:.75em;color:var(--muted)">${r.strategy} | ${r.disclaimer}</div>
+    `;
+  } catch(e) { el.textContent = '❌ ' + e.message; }
+}
+
+// ═══════════════════════════════════════
+// 用户反馈
+// ═══════════════════════════════════════
+let _fbRating = 3;
+function setFbRating(n) {
+  _fbRating = n;
+  const stars = document.getElementById('fbStars').children;
+  for (let i = 0; i < stars.length; i++) {
+    stars[i].style.opacity = i < n ? '1' : '0.3';
+  }
+}
+async function submitFeedback() {
+  const symbol = document.getElementById('fbSymbol').value;
+  const comment = document.getElementById('fbComment').value;
+  try {
+    await api('POST', '/api/user/feedback', { symbol, rating: _fbRating, comment });
+    document.getElementById('fbComment').value = '';
+    alert(t('msg.settingsSaved') || '反馈已提交，感谢！');
+  } catch(e) { alert('❌ ' + e.message); }
+}
+
+// ═══════════════════════════════════════
+// CEX API Key 管理（简化版）
+// ═══════════════════════════════════════
+
+async function checkCexStatus() {
+  try {
+    const data = await api('POST', '/api/dashboard', {});
+    const u = data.user || {};
+    const cexBanner = document.getElementById('cexBanner');
+    const cexConnected = document.getElementById('cexConnected');
+    if (!cexBanner) return;
+    if (u.isAdmin) { cexBanner.style.display = 'none'; return; }
+    cexBanner.style.display = 'block';
+    if (u.cexMode) {
+      // 已绑定
+      cexBanner.querySelector('#cexForm').style.display = 'none';
+      cexConnected.style.display = 'flex';
+      // 隐藏绑定按钮
+      var btns = cexBanner.querySelectorAll('.btn');
+      btns.forEach(function(b) { if (b.textContent.includes('币安') || b.textContent.includes('粘贴')) b.style.display = 'none'; });
+    } else {
+      cexConnected.style.display = 'none';
+    }
+  } catch(e) {}
+}
+
+function showCexForm() {
+  var f = document.getElementById('cexForm');
+  if (f) { f.style.display = 'block'; f.scrollIntoView({behavior:'smooth'}); }
+}
+
+function hideCexForm() {
+  var f = document.getElementById('cexForm');
+  if (f) f.style.display = 'none';
+}
+
+async function verifyCexKeys() {
+  const apiKey = document.getElementById('cexApiKey').value.trim();
+  const secretKey = document.getElementById('cexSecretKey').value.trim();
+  const resultEl = document.getElementById('cexResult');
+  const btn = document.getElementById('cexVerifyBtn');
+  if (!apiKey || !secretKey) { resultEl.className = 'cex-status err'; resultEl.textContent = '请输入 API Key 和 Secret Key'; return; }
+  btn.disabled = true; btn.textContent = '⏳ 验证中...';
+  resultEl.className = 'cex-status info'; resultEl.textContent = '正在验证 API Key...';
+  try {
+    const resp = await fetch('/api/verify-api-key', {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ apiKey, secretKey })
+    });
+    const data = await resp.json();
+    if (data.valid || data.success) {
+      const balances = data.balances || {};
+      const totalUsdt = balances.USDT || data.balance || 0;
+      resultEl.className = 'cex-status ok';
+      resultEl.innerHTML = '✅ API Key 验证成功！余额: <b>$' + (typeof totalUsdt === 'number' ? totalUsdt.toFixed(2) : totalUsdt) + ' USDT</b>';
+      toast('✅ Binance API 绑定成功！', 'ok');
+      setTimeout(() => {
+        document.getElementById('cexForm').style.display = 'none';
+        document.getElementById('cexConnected').style.display = 'flex';
+        // 隐藏绑定按钮
+        var banner = document.getElementById('cexBanner');
+        if (banner) { var btns = banner.querySelectorAll('.btn'); btns.forEach(b => { if (b.textContent.includes('币安') || b.textContent.includes('粘贴')) b.style.display = 'none'; }); }
+      }, 1500);
+    } else {
+      resultEl.className = 'cex-status err';
+      resultEl.textContent = '❌ ' + (data.error || '验证失败');
+    }
+  } catch(e) {
+    resultEl.className = 'cex-status err';
+    resultEl.textContent = '❌ 网络错误: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '✅ 验证并绑定';
+  }
+}
+
+async function unbindCex() {
+  if (!confirm('确定要解绑 Binance API Key 吗？解绑后将停止 CEX 交易。')) return;
+  try {
+    await api('POST', '/api/unbind-cex');
+    toast('✅ 已解绑', 'ok');
+    await checkCexStatus();
+  } catch(e) { toast('❌ ' + e.message, 'err'); }
+}
+
+setTimeout(checkCexStatus, 1000);
+
+// ═══════════════════════════════════════
+// 初始化
+// ═══════════════════════════════════════
+applyLang(currentLang);
+
+// 页面加载时自动恢复 session
+(async () => {
+  if (authToken && currentUser) {
+    try {
+      // 公网GET被tunnel拦截，所以用POST验证token
+      const data = await api('POST', '/api/dashboard', {});
+      if (data && data.user) {
+        currentUser = data.user;
+        localStorage.setItem('ark_user', JSON.stringify(currentUser));
+        document.getElementById('loginPage').style.display = 'none';
+        document.getElementById('appPage').style.display = 'block';
+        renderDashboard(data, {});
+      } else {
+        saveSession(null, null);
+      }
+    } catch(e) {
+      // token 过期或无效，清除并显示登录页
+      saveSession(null, null);
+    }
+  }
+})();
+
+// ═══ 按钮事件绑定（TP钱包/QQ浏览器兼容） ═══
+document.addEventListener('DOMContentLoaded', function() {
+  var loginBtn = document.getElementById('loginBtn');
+  var registerBtn = document.getElementById('registerBtn');
+  if (loginBtn) {
+    loginBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      doPasswordLogin();
+    });
+  }
+  if (registerBtn) {
+    registerBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      doRegister();
+    });
+  }
+});
+
+// ═══ 紧急修复：强制覆盖按钮事件（最原始JS，兼容所有浏览器） ═══
+setTimeout(function() {
+  var rb = document.getElementById('registerBtn');
+  var lb = document.getElementById('loginBtn');
+  if (rb) {
+    rb.onclick = function() {
+      var a = document.getElementById('loginWalletAddr');
+      var p = document.getElementById('loginPassword');
+      var m = document.getElementById('loginMsg');
+      if (!a || !p || !m) { alert('元素未找到'); return; }
+      var addr = a.value.replace(/\s/g, '');
+      var pwd = p.value;
+      if (!addr) { m.className='msg err'; m.textContent='请输入钱包地址'; return; }
+      if (!addr.match(/^0x[0-9a-fA-F]{40}$/)) { m.className='msg err'; m.textContent='钱包地址格式不对(需要0x开头42位)'; return; }
+      if (pwd.length < 6) { m.className='msg err'; m.textContent='密码至少6位'; return; }
+      m.className='msg ok'; m.textContent='注册中...';
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/auth/register', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.timeout = 10000;
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          try {
+            var r = JSON.parse(xhr.responseText);
+            if (r.success) {
+              m.className='msg ok'; m.textContent='注册成功！正在进入...';
+              localStorage.setItem('ark_token', r.token);
+              localStorage.setItem('ark_user', JSON.stringify(r.user));
+              setTimeout(function() {
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('appPage').style.display = 'block';
+              }, 300);
+            } else {
+              m.className='msg err'; m.textContent=r.error || '注册失败';
+            }
+          } catch(e) {
+            m.className='msg err'; m.textContent='请求失败: ' + xhr.status;
+          }
+        }
+      };
+      xhr.onerror = function() { m.className='msg err'; m.textContent='网络错误，请检查网络'; };
+      xhr.ontimeout = function() { m.className='msg err'; m.textContent='请求超时，请重试'; };
+      xhr.send(JSON.stringify({username:addr.toLowerCase(), password:pwd, walletAddress:addr.toLowerCase()}));
+    };
+  }
+  if (lb) {
+    lb.onclick = function() {
+      var a = document.getElementById('loginWalletAddr');
+      var p = document.getElementById('loginPassword');
+      var m = document.getElementById('loginMsg');
+      if (!a || !p || !m) { alert('元素未找到'); return; }
+      var addr = a.value.replace(/\s/g, '');
+      var pwd = p.value;
+      if (!addr || !pwd) { m.className='msg err'; m.textContent='请输入地址和密码'; return; }
+      m.className='msg ok'; m.textContent='登录中...';
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/auth/login', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.timeout = 10000;
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          try {
+            var r = JSON.parse(xhr.responseText);
+            if (r.success) {
+              m.className='msg ok'; m.textContent='登录成功！';
+              localStorage.setItem('ark_token', r.token);
+              localStorage.setItem('ark_user', JSON.stringify(r.user));
+              setTimeout(function() {
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('appPage').style.display = 'block';
+              }, 300);
+            } else {
+              m.className='msg err'; m.textContent=r.error || '登录失败';
+            }
+          } catch(e) {
+            m.className='msg err'; m.textContent='请求失败: ' + xhr.status;
+          }
+        }
+      };
+      xhr.onerror = function() { m.className='msg err'; m.textContent='网络错误'; };
+      xhr.ontimeout = function() { m.className='msg err'; m.textContent='超时'; };
+      xhr.send(JSON.stringify({username:addr.toLowerCase(), password:pwd}));
+    };
+  }
+}, 500);
+</script>
+</body>
+</html>

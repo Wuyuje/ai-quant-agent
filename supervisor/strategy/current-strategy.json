@@ -1,0 +1,39 @@
+{
+  "timestamp": 1783739043340,
+  "volatility": {
+    "regime": "normal",
+    "avgAtr": 0,
+    "recommendation": ""
+  },
+  "symbolSelection": {
+    "mode": "normal",
+    "focus": [],
+    "blacklist": [],
+    "recommendation": ""
+  },
+  "timeframe": {
+    "current": "1h",
+    "recommended": "1h",
+    "reason": ""
+  },
+  "leverage": {
+    "current": 5,
+    "recommended": 5,
+    "reason": "正常波动，标准5x"
+  },
+  "positionSize": {
+    "riskPerTrade": 0.02,
+    "recommendation": ""
+  },
+  "riskLevel": "low",
+  "positionManagement": {
+    "maxHold": 2,
+    "recommendation": ""
+  },
+  "performance": {
+    "winRate": 0,
+    "profitFactor": 0,
+    "recentTrades": 0,
+    "recommendation": ""
+  }
+}

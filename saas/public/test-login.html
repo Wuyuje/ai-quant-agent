@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ARK Quant Agent</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,sans-serif;background:#0a0e17;color:#e0e0e0;min-height:100vh;overflow-x:hidden}
+.login-box{background:#161b22;padding:30px;border-radius:16px;width:90%;max-width:420px;margin:80px auto}
+input{width:100%;padding:14px;margin:8px 0;border-radius:10px;border:1px solid #333;background:#0d1117;color:#fff;font-size:16px;box-sizing:border-box}
+button{width:100%;padding:14px;margin:8px 0;border:none;border-radius:10px;font-size:16px;font-weight:bold;cursor:pointer}
+.g{background:#238636;color:#fff}
+.b{background:#1f6feb;color:#fff}
+.r{background:#da3633;color:#fff}
+#msg{margin-top:10px;padding:12px;border-radius:8px;text-align:center;font-size:.9em}
+
+/* 仪表盘样式 */
+.hdr{background:#161b22;padding:16px;border-bottom:1px solid #21262d}
+.hdr h1{color:#58a6ff;font-size:1.1em}
+.addr{color:#8b949e;font-size:.78em;font-family:monospace;margin-top:4px;word-break:break-all}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:16px}
+.card{background:#161b22;border:1px solid #21262d;border-radius:12px;padding:14px}
+.card h3{color:#8b949e;font-size:.72em;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.card .val{font-size:1.4em;font-weight:700}
+.gn{color:#3fb950}.yl{color:#d29922}.bl{color:#58a6ff}.pr{color:#bc8cff}
+.sec{padding:0 16px 16px}
+.sec h2{color:#58a6ff;font-size:.95em;margin-bottom:8px}
+.it{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.it .lb{color:#8b949e;font-size:.82em}
+.it .vl{font-weight:600;font-size:.85em}
+.topbtn{text-align:right;padding:8px 16px 0}
+</style>
+</head><body>
+
+<div id="P">
+<div style="display:flex;justify-content:center;align-items:center;min-height:100vh">
+<div class="login-box">
+  <h2 style="text-align:center;color:#58a6ff;margin-bottom:24px">ARK Quant Agent</h2>
+  <input id="inpAddr" placeholder="钱包地址 0x..." autocomplete="off">
+  <input id="inpPwd" type="password" placeholder="密码" autocomplete="off">
+  <button class="g" id="btnL">登录</button>
+  <button class="b" id="btnR">注册新账号</button>
+  <div id="msg" style="display:none"></div>
+</div>
+</div>
+</div>
+
+<div id="D" style="display:none">
+  <div class="hdr">
+    <div style="display:flex;justify-content:space-between;align-items:start">
+      <div>
+        <h1>ARK Quant Agent</h1>
+        <div class="addr" id="a1">--</div>
+      </div>
+      <button class="r" style="width:auto;padding:8px 16px;font-size:.82em;margin:0" id="btnX">退出</button>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card"><h3>USDT</h3><div class="val yl" id="c1">--</div><div style="color:#8b949e;font-size:.72em;margin-top:2px">交易资金</div></div>
+    <div class="card"><h3>BNB</h3><div class="val pr" id="c2">--</div><div style="color:#8b949e;font-size:.72em;margin-top:2px">Gas</div></div>
+    <div class="card"><h3>策略</h3><div class="val bl" id="c3">--</div></div>
+    <div class="card"><h3>交易</h3><div class="val" id="c4">--</div></div>
+  </div>
+  <div class="sec">
+    <h2>账户信息</h2>
+    <div class="it"><span class="lb">钱包地址</span><span class="vl" id="a2" style="font-family:monospace;font-size:.72em;word-break:break-all;max-width:220px;text-align:right"></span></div>
+    <div class="it"><span class="lb">状态</span><span class="vl gn">已激活</span></div>
+    <div class="it"><span class="lb">ARK</span><span class="vl" id="c5">--</span></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var P=document.getElementById('P');
+  var D=document.getElementById('D');
+  var M=document.getElementById('msg');
+  var bL=document.getElementById('btnL');
+  var bR=document.getElementById('btnR');
+  var bX=document.getElementById('btnX');
+
+  function showM(cls,txt){
+    M.style.display='block';
+    M.style.background=cls==='ok'?'#0d4429':cls==='err'?'#490b0b':'#0d2d4a';
+    M.style.color=cls==='ok'?'#3fb950':cls==='err'?'#f85149':'#58a6ff';
+    M.textContent=txt;
+  }
+
+  function go(d){
+    var u=d.user||{};
+    P.style.display='none';
+    D.style.display='block';
+    var addr=u.address||u.walletAddress||'';
+    document.getElementById('a1').textContent=addr?addr.substring(0,8)+'...'+addr.substring(38):'';
+    document.getElementById('a2').textContent=addr;
+    document.getElementById('c1').textContent='$'+(u.usdtBalance||0).toFixed(2);
+    document.getElementById('c2').textContent=typeof u.bnbBalance==='number'?u.bnbBalance.toFixed(6):'--';
+    var s=u.strategy||'';
+    var sm={balanced:'均衡',aggressive:'激进',conservative:'稳健',arksetup:'ARK'};
+    document.getElementById('c3').textContent=sm[s]||s||'--';
+    document.getElementById('c4').innerHTML=u.tradingEnabled?'<span class="gn">开启</span>':'<span style="color:#8b949e">未开启</span>';
+    document.getElementById('c5').textContent=typeof u.arkBalance==='number'?u.arkBalance.toFixed(2)+' ARK':'--';
+  }
+
+  function doReq(method,url,data,cb){
+    var x=new XMLHttpRequest();
+    x.open(method,url,true);
+    x.setRequestHeader('Content-Type','application/json');
+    x.timeout=20000;
+    x.onreadystatechange=function(){
+      if(x.readyState===4){
+        try{cb(JSON.parse(x.responseText))}
+        catch(e){showM('err','响应解析失败: '+x.responseText.substring(0,100))}
+      }
+    };
+    x.onerror=function(){showM('err','网络连接失败')};
+    x.ontimeout=function(){showM('err','请求超时')};
+    x.send(data?JSON.stringify(data):null);
+  }
+
+  bL.onclick=function(){
+    var a=document.getElementById('inpAddr').value.trim();
+    var p=document.getElementById('inpPwd').value;
+    if(!a||!p){showM('err','请输入地址和密码');return}
+    showM('info','登录中...');
+    doReq('POST','/api/auth/login',{username:a.toLowerCase(),password:p},function(r){
+      if(r.success){
+        try{localStorage.setItem('ak_tk',r.token)}catch(e){}
+        try{localStorage.setItem('ak_us',JSON.stringify(r.user))}catch(e){}
+        go(r);
+      }else{showM('err',r.error||'登录失败')}
+    });
+  };
+
+  bR.onclick=function(){
+    var a=document.getElementById('inpAddr').value.trim();
+    var p=document.getElementById('inpPwd').value;
+    if(!a||!p){showM('err','请输入地址和密码');return}
+    if(!a.match(/^0x[0-9a-fA-F]{40}$/)){showM('err','地址格式错误');return}
+    showM('info','注册中...');
+    doReq('POST','/api/auth/register',{username:a.toLowerCase(),password:p,walletAddress:a.toLowerCase()},function(r){
+      if(r.success){
+        try{localStorage.setItem('ak_tk',r.token)}catch(e){}
+        try{localStorage.setItem('ak_us',JSON.stringify(r.user))}catch(e){}
+        go(r);
+      }else{showM('err',r.error||'注册失败')}
+    });
+  };
+
+  bX.onclick=function(){
+    try{localStorage.removeItem('ak_tk');localStorage.removeItem('ak_us')}catch(e){}
+    D.style.display='none';
+    P.style.display='';
+  };
+
+  // 自动恢复 - 用 try-catch 包裹所有 DOM 操作防止黑屏
+  try{
+    var t=localStorage.getItem('ak_tk');
+    var u=localStorage.getItem('ak_us');
+    if(t&&u){
+      var ud=JSON.parse(u);
+      if(ud&&ud.address){go({user:ud})}
+    }
+  }catch(e){
+    // 任何错误就显示登录页，不黑屏
+    try{localStorage.removeItem('ak_tk');localStorage.removeItem('ak_us')}catch(e2){}
+  }
+})();
+</script>
+</body></html>
