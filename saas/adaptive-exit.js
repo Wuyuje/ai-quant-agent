@@ -273,12 +273,12 @@ class AdaptiveExitManager {
       };
     }
 
-    // ═══ 5. 到手利润止盈 — 扣全部费用+抽成后到手>0.5%就锁利 ═══
-    // 只在移动止盈已激活时才触发（峰值超过1R后才考虑）
-    if (exitCalc.trailingActive && takeHome > 0.5) {
-      // 峰值回撤超过0.3%且到手仍>0.5% → 锁利
+    // ═══ 5. 到手利润止盈 — 扣全部费用+抽成后到手>1.0%才锁利 ═══
+    // v118: 从0.5%提高到1.0% — 让利润跑更远, 提高盈亏比
+    if (exitCalc.trailingActive && takeHome > 1.0) {
+      // 峰值回撤超过0.5%且到手仍>1.0% → 锁利
       const drawdown = peakPnlPct - grossPnlPct;
-      if (drawdown > 0.3 && takeHome > 0.5) {
+      if (drawdown > 0.5 && takeHome > 1.0) {
         return {
           shouldClose: true,
           reason: `🟢 锁利止盈 到手=${takeHome.toFixed(2)}% (峰值${peakTakeHome.toFixed(2)}% 回撤${drawdown.toFixed(2)}%)`,

@@ -266,20 +266,24 @@ class MasterDBrain {
     // 核心问题：之前的保本出在毛利1.72%→0.08%时平仓，扣完成本净亏-0.64%
     // 根因：保本出条件太宽 + 止盈门槛太高 = 赚的时候没赚到，亏的时候全额亏
     
-    // 1. v113.9: 硬止损 — 净亏损超过成本×3.5（之前2.0太紧导致正常波动即止损）
-    // v113.8分析: 杠杆4x成本=0.72%, 止损×2=净-1.44%, 价格仅反向0.18%就止损
-    // crypto正常波动0.5-2%/h → 0.18%波动=几乎每次开仓即止损 → 胜率12.8%
-    // ×3.5: 杠杆4x止损=净-2.52%, 价格需反向0.63% → 给策略足够呼吸空间
-    const hardStop = -(costPct * 3.5);
+    // v118: 修复核心亏损问题
+    // 旧逻辑: hardStop = -(costPct × 3.5) → 杠杆3x时仅-1.89%, 价格反向0.63%就止损
+    // crypto正常波动0.5-2%/h → 几乎每次都被扫 → 胜率47%但盈亏比0.69
+    // 新逻辑: 硬止损用固定equity风险, 不跟成本挂钩
+    // 杠杆3x: 止损-4.5% (价格需反向1.5%) → 给趋势足够空间
+    // 杠杆5x: 止损-3.5% (价格需反向0.7%) → 高杠杆收紧
+    // 杠杆8x: 止损-2.5% (价格需反向0.31%) → 超高杠杆更紧
+    const hardStop = leverage >= 8 ? -2.5 : leverage >= 5 ? -3.5 : -4.5;
     if (netPnlPct <= hardStop) {
-      return { action: 'CLOSE', type: 'STOP_LOSS', reason: `🔴 hard stop net=${netPnlPct.toFixed(2)}% <= ${hardStop.toFixed(2)}%`, grossPnlPct, netPnlPct, costPct, holdMinutes };
+      return { action: 'CLOSE', type: 'STOP_LOSS', reason: `🔴 hard stop net=${netPnlPct.toFixed(2)}% <= ${hardStop.toFixed(2)}% [lev=${leverage}x]`, grossPnlPct, netPnlPct, costPct, holdMinutes };
     }
 
-    // 2. v113.47: 分级止盈 — peak>3%时应该在还有利润时止盈
-    // 之前止盈门槛太高(5%), LTC涨到4.3%不止盈, 回落后才平 = 亏着平
-    const tpTarget1 = costPct + 0.80;  // 趋势不利时: 净利>0.98%
-    const tpTarget2 = costPct + 2.00;  // 趋势中性: 净利>2.18%
-    const tpTarget3 = costPct + 4.00;  // v113.47: 5→4 大赚才止盈
+    // v118: 止盈门槛提高 — 让利润跑, 不要赚一点就跑
+    // 旧: 一级止盈 net>0.98% 就平 → 赢的只赚1.4%, 输的亏2.04%, 盈亏比0.69
+    // 新: 一级止盈 net>2.0% (趋势不利时), 二级>4%, 三级>8%
+    const tpTarget1 = costPct + 1.50;  // 趋势不利时: 净利>2.04% (杠杆3x)
+    const tpTarget2 = costPct + 3.50;  // 趋势中性: 净利>4.04%
+    const tpTarget3 = costPct + 7.00;  // 大趋势: 净利>7.54%
     if (netPnlPct >= tpTarget3) {
       return { action: 'CLOSE', type: 'TAKE_PROFIT', reason: `🟢 三级止盈 net=${netPnlPct.toFixed(2)}% user=${(netPnlPct*0.8).toFixed(2)}%`, grossPnlPct, netPnlPct, costPct, holdMinutes };
     }
@@ -296,19 +300,17 @@ class MasterDBrain {
       }
     }
 
-    // 3. v105: 移动止盈 — 取代保本出
-    // v113.47: 修复关键bug — 之前peak>2%回撤到负数也平仓 = 高位没卖低位卖
-    // 现在分两种情况:
-    //   a) peak>3%: 在峰值剩余40%处止盈 (保护大部分利润)
-    //   b) peak>2%: 只在还有正利润时平 (保本优先, 不亏着平)
-    if (peakNet > 3.0 && holdMinutes > 20) {
-      const trailingTarget = peakNet * 0.5; // 保留峰值50%的利润
+    // v118: 移动止盈 — 让利润跑更远
+    // 旧: peak>3%保住50% → peak=3%时回到1.5%就平 → 太早锁利
+    // 新: peak>4%保住60%, peak>2%保住40%
+    if (peakNet > 4.0 && holdMinutes > 20) {
+      const trailingTarget = peakNet * 0.6; // 保留峰值60%的利润
       if (netPnlPct < trailingTarget && netPnlPct > 0) {
         return { action: 'CLOSE', type: 'TRAILING_STOP', reason: `🔄 移动止盈 peak=${peakNet.toFixed(2)}% now=${netPnlPct.toFixed(2)}% (保住${(trailingTarget).toFixed(2)}%)`, grossPnlPct, netPnlPct, costPct, holdMinutes };
       }
     }
-    if (peakNet > 2.0 && peakNet <= 3.0 && holdMinutes > 20) {
-      // 峰值2-3%: 回撤到保本线才平, 不亏着平
+    if (peakNet > 2.0 && peakNet <= 4.0 && holdMinutes > 30) {
+      // 峰值2-4%: 回撤到保本线才平, 不亏着平
       if (netPnlPct < costPct * 0.5 && netPnlPct > 0) {
         return { action: 'CLOSE', type: 'TRAILING_STOP', reason: `🔄 保本止盈 peak=${peakNet.toFixed(2)}% now=${netPnlPct.toFixed(2)}%`, grossPnlPct, netPnlPct, costPct, holdMinutes };
       }

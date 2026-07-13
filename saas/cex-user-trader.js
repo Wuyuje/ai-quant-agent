@@ -749,12 +749,12 @@ class CEXUserTrader {
           }
         }
       }
-      // v113.25: 超时兜底 — 放宽到4小时+12小时
-      if (!shouldClose && holdHours * 60 > 240 && netPnlPct < -0.02) {
+      // v118: 超时兜底 — 放宽到6小时+18小时, 匹配新止盈止损逻辑
+      if (!shouldClose && holdHours * 60 > 360 && netPnlPct < -0.03) {
         shouldClose = true;
         reason = `⏰超时止损 ${(netPnlPct*100).toFixed(1)}% ${holdHours.toFixed(0)}h`;
       }
-      if (!shouldClose && holdHours * 60 > 720) {
+      if (!shouldClose && holdHours * 60 > 1080) {
         shouldClose = true;
         reason = `⏰最大持仓时间 ${holdHours.toFixed(0)}h`;
       }

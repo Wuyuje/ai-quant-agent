@@ -997,8 +997,18 @@ class Engine {
     const maxSlots = this.positionSizer._calcMaxPositions(balanceUsd) - posCount;
     const topCount = Math.min(scored.length, maxSlots);
     let pickedDirections = { LONG: longCount, SHORT: shortCount };
-    // v113.52: 神经网络优先 — 只选神经网络置信度≥0.5或综合评分≥8的币
-    const strongPicks = scored.filter(s => (s.nnConfidence >= 0.5 && s.nnAgrees) || s.strength >= 8.0);
+    // v118: 信号质量过滤 — 趋势方向必须一致才能开仓
+    // 旧: 时间框架不一致只扣50%但仍能开仓 → 入场即被反向波动扫止损
+    // 新: NN明确矛盾或NN概率不支持 → 直接排除, 不浪费仓位
+    const strongPicks = scored.filter(s => {
+      const details = s.details || '';
+      // NN明确矛盾 → 排除
+      if (details.includes('NN矛盾')) return false;
+      // NN概率不支持 → 排除
+      if (details.includes('NN概率不支持')) return false;
+      // 神经网络置信度≥0.5且方向一致 OR 综合评分≥8
+      return (s.nnConfidence >= 0.5 && s.nnAgrees) || s.strength >= 8.0;
+    });
     const picksToOpen = strongPicks.length > 0 ? strongPicks.slice(0, topCount) : [];
     if (picksToOpen.length === 0 && scored.length > 0) {
       this._log(`📊 候选${scored.length}个但无强信号(nn≥0.5或str≥8)，暂不开仓`);
