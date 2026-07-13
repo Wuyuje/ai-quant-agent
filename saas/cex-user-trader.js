@@ -810,16 +810,29 @@ class CEXUserTrader {
       // 执行平仓
       try {
         await client.closePosition(pos.symbol);
-        // v122.2: 修复posNotional计算 — 用pos.qty(数量)×entryPrice, 不用localPos.amount(已是名义值,多乘一次)
-        // getAllPositions返回qty(数量), localPos.amount是qty×entry(名义值), 再乘entry会多算一倍
-        const posNotional = Math.abs(pos.qty || 0) * (pos.entryPrice || currentPrice);
-        const margin = posNotional / leverage;
-        const realPnlUsdt = netPnlPct * margin;
-        this._log(`📉 ${wallet.slice(0,8)} 平仓 ${pos.symbol} | ${reason} | PnL ${(netPnlPct*100).toFixed(2)}% = $${realPnlUsdt.toFixed(4)} | ${holdHours.toFixed(1)}h`);
+        // v122.7: 修复PnL虚高117倍Bug
+        // - 系统开的仓: 用开仓时记录的保证金(localPos.size) × netPnlPct
+        // - 同步来的仓: 直接用Binance API返回的unRealizedProfit(pos.pnl), 不用qty反推
+        //   (qty可能包含非系统开的大仓位, 用qty×entry算出的PnL会虚高leverage倍)
+        const localPosData = state.positions?.[pos.symbol];
+        const isSyncedPos = localPosData?._syncedFromBinance === true;
+        let realPnlUsdt;
+        if (isSyncedPos && typeof pos.pnl === 'number' && isFinite(pos.pnl)) {
+          // 同步仓位: 用Binance API返回的真实未实现盈亏
+          realPnlUsdt = pos.pnl;
+        } else {
+          // 系统开的仓: netPnlPct × 保证金
+          const margin = localPosData?.size || localPosData?.amount || 
+            (Math.abs(pos.qty || 0) * (pos.entryPrice || currentPrice) / leverage);
+          realPnlUsdt = netPnlPct * margin;
+        }
+        this._log(`📉 ${wallet.slice(0,8)} 平仓 ${pos.symbol} | ${reason} | PnL ${(netPnlPct*100).toFixed(2)}% = $${realPnlUsdt.toFixed(4)} | ${holdHours.toFixed(1)}h${isSyncedPos ? ' [同步仓位]' : ''}`);
         this._logTrade(wallet, { symbol: pos.symbol, action: 'CLOSE', amount: Math.abs(pos.qty || 0), price: currentPrice, pnl: realPnlUsdt, reason, holdHours: holdHours.toFixed(1), timestamp: Date.now() });
         this._updateStats(wallet, netPnlPct, realPnlUsdt);
         const pnlUsdt = realPnlUsdt;
-        if (pnlUsdt > 0) this._collectServiceFee(wallet, pos.symbol, pnlUsdt, netPnlPct);
+        // v122.7: 同步仓位(非系统开的)不收服务费 — 只对系统开仓的盈利收费
+        if (pnlUsdt > 0 && !isSyncedPos) this._collectServiceFee(wallet, pos.symbol, pnlUsdt, netPnlPct);
+        else if (pnlUsdt > 0 && isSyncedPos) this._log(`📊 ${wallet.slice(0,8)} 同步仓位盈利 $${pnlUsdt.toFixed(2)} — 不收服务费`);
         if (!this._consecutiveLosses) this._consecutiveLosses = {};
         if (netPnlPct < 0) {
           this._consecutiveLosses[wallet] = (this._consecutiveLosses[wallet]||0)+1;
@@ -857,11 +870,17 @@ class CEXUserTrader {
       for (const pos of existingPositions) {
         if (!state.positions[pos.symbol]) {
           this._log(`📥 ${wallet.slice(0,10)} 同步Binance持仓到本地: ${pos.symbol} ${pos.side} lev=${pos.leverage}x entry=${pos.entryPrice}`);
+          // v122.7: 修复PnL虚高117倍Bug — 同步仓位时size/amount存保证金(=notional/lev), 不存notional
+          // 旧代码: size = qty * entryPrice = notional → PnL = netPnlPct × notional 虚高leverage倍
+          // 新代码: size = qty * entryPrice / leverage = margin → PnL = netPnlPct × margin 正确
+          const _syncNotional = Math.abs(parseFloat(pos.qty)) * pos.entryPrice;
+          const _syncMargin = _syncNotional / (pos.leverage || 3);
           state.positions[pos.symbol] = {
             side: pos.side,
             entryPrice: pos.entryPrice,
-            size: Math.abs(parseFloat(pos.qty)) * pos.entryPrice,
-            amount: Math.abs(parseFloat(pos.qty)) * pos.entryPrice,
+            size: _syncMargin,
+            amount: _syncMargin,
+            notional: _syncNotional,
             leverage: pos.leverage || 3,
             openTime: pos.timestamp || Date.now(),
             _peakPnl: 0,
@@ -1042,7 +1061,7 @@ class CEXUserTrader {
           this._log(`📈 ${wallet.slice(0,8)} 开仓 ${futuresSymbol} ${cand.side} | $${positionUsdt.toFixed(2)} × ${leverage}x | score=${cand.score}`);
           if (!state.positions) state.positions = {};
           // v113.70: 保存开仓时的ATR — 止损监控用这个值, 不用实时klines(可能被引擎覆盖为5m)
-          state.positions[futuresSymbol] = { side: cand.side, entryPrice: result.price, size: positionUsdt, amount: positionUsdt, leverage, openTime: Date.now(), _peakPnl: 0, _openAtrPct: atrPct };
+          state.positions[futuresSymbol] = { side: cand.side, entryPrice: result.price, size: positionUsdt, amount: positionUsdt, notional: positionUsdt * leverage, leverage, openTime: Date.now(), _peakPnl: 0, _openAtrPct: atrPct, _syncedFromBinance: false };
           // v119: 开仓后立即清除持仓缓存 — 确保下一轮能获取到新仓位
           this._positionCache[cacheKey] = null;
           this._saveState();
