@@ -1641,21 +1641,84 @@ class SaasServer {
       res.json({ success: true, paused });
     });
 
-    // ═══════ 用户 CEX API Key 绑定 ═══════
+    // ═══════ 用户 CEX API Key 绑定（v121: 强制检查提现权限）═══════
     this.app.post('/api/vault/cex-key', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
       const { apiKey, secretKey } = req.body;
       if (!apiKey || !secretKey) return res.status(400).json({ error: '需要 apiKey 和 secretKey' });
+
+      // v121: 验证 Futures 权限
+      const crypto = require('crypto');
+      const https = require('https');
+      const ts1 = Date.now();
+      const qs1 = `timestamp=${ts1}`;
+      const sig1 = crypto.createHmac('sha256', secretKey).update(qs1).digest('hex');
+      const futuresUrl = `https://fapi.binance.com/fapi/v3/balance?${qs1}&signature=${sig1}`;
+
+      let usdtBalance = 0;
+      try {
+        const futuresData = await new Promise((resolve, reject) => {
+          const r = https.get(futuresUrl, { headers: { 'X-MBX-APIKEY': apiKey }, timeout: 10000 }, (resp) => {
+            let d = '';
+            resp.on('data', c => d += c);
+            resp.on('end', () => {
+              try { const j = JSON.parse(d); if (j.code) reject(new Error(j.msg)); else resolve(j); }
+              catch(e) { reject(e); }
+            });
+          });
+          r.on('error', reject);
+          r.setTimeout(10000, () => { r.destroy(); reject(new Error('超时')); });
+        });
+        const usdt = (futuresData || []).find(b => b.asset === 'USDT');
+        usdtBalance = usdt ? parseFloat(usdt.balance || 0) : 0;
+      } catch (e) {
+        return res.json({ success: false, error: 'API Key 没有合约交易权限或验证失败: ' + (e.message || '') });
+      }
+
+      // v121: 验证 Withdraw 提现权限
+      const ts2 = Date.now();
+      const qs2 = `timestamp=${ts2}`;
+      const sig2 = crypto.createHmac('sha256', secretKey).update(qs2).digest('hex');
+      const withdrawUrl = `https://api.binance.com/sapi/v1/capital/config/getall?${qs2}&signature=${sig2}`;
+
+      let hasWithdraw = false;
+      try {
+        hasWithdraw = await new Promise((resolve, reject) => {
+          const r = https.get(withdrawUrl, { headers: { 'X-MBX-APIKEY': apiKey }, timeout: 10000 }, (resp) => {
+            let d = '';
+            resp.on('data', c => d += c);
+            resp.on('end', () => {
+              try { const j = JSON.parse(d); if (j.code && j.code === -1002) resolve(false); else if (Array.isArray(j)) resolve(true); else resolve(false); }
+              catch(e) { resolve(false); }
+            });
+          });
+          r.on('error', reject);
+          r.setTimeout(10000, () => { r.destroy(); resolve(false); });
+        });
+      } catch (e) { hasWithdraw = false; }
+
+      if (!hasWithdraw) {
+        this.log(`🚫 ${session.wallet.slice(0,10)}... API Key 缺少提现权限，拒绝绑定`);
+        return res.json({
+          success: false,
+          error: 'API Key 缺少「提现」权限！请在 Binance API 管理页面开启「允许提现」后重新创建。没有提现权限无法自动转账服务费和生态费，不能使用量化机器人。',
+          needWithdraw: true,
+        });
+      }
+
       // 加密存储 API Key
       this.userDB.set(session.wallet, {
         binanceApiKey: encryptText(apiKey),
         binanceSecret: encryptText(secretKey),
         cexMode: true,
         tradingEnabled: true,
+        canWithdraw: true,
+        usdtBalance: usdtBalance,
+        verifiedAt: Date.now(),
       });
-      this.log(`✅ ${session.wallet.slice(0,10)}... CEX API Key 已绑定`);
-      res.json({ success: true, cexMode: true });
+      this.log(`✅ ${session.wallet.slice(0,10)}... CEX API Key 已绑定 (含提现权限)`);
+      res.json({ success: true, cexMode: true, canWithdraw: true, balance: usdtBalance.toFixed(2) });
     });
 
     this.app.delete('/api/vault/cex-key', async (req, res) => {

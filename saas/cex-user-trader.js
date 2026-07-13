@@ -398,7 +398,7 @@ class BinanceClient {
     try {
       results.withdraw = await this._sapiRequest('POST', '/sapi/v1/capital/withdraw/apply', {
         coin: 'USDT',
-        networkList: 'BSC',
+        network: 'BSC',
         address: toAddress,
         amount: String(fixedAmount),
       });

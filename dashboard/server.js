@@ -1130,7 +1130,7 @@ class Dashboard {
       }
     });
 
-    // API: 验证用户 Binance API Key（v72: 加密存储 + CEX模式）
+    // API: 验证用户 Binance API Key（v121: 强制检查 Withdraw 提现权限）
     this.app.post('/api/verify-api-key', async (req, res) => {
       try {
         const { apiKey, secretKey, walletAddress } = req.body;
@@ -1138,21 +1138,18 @@ class Dashboard {
           return res.json({ success: false, error: '请提供 API Key 和 Secret Key' });
         }
 
-        // 使用 Binance Futures API 验证（fapi 而非 api）
         const crypto = require('crypto');
-        const timestamp = Date.now();
-        const queryString = `timestamp=${timestamp}`;
-        const signature = crypto.createHmac('sha256', secretKey).update(queryString).digest('hex');
-
-        // 优先验证 Futures API（用户交易用合约）
-        const futuresUrl = `https://fapi.binance.com/fapi/v3/balance?${queryString}&signature=${signature}`;
-        const spotUrl = `https://api.binance.com/api/v3/account?${queryString}&signature=${signature}`;
-
         const https2 = require('https');
-        
-        // 先尝试 Futures API
+
+        // ═══════ v121: 第一步 — 验证 Futures 交易权限 ═══════
+        const ts1 = Date.now();
+        const qs1 = `timestamp=${ts1}`;
+        const sig1 = crypto.createHmac('sha256', secretKey).update(qs1).digest('hex');
+        const futuresUrl = `https://fapi.binance.com/fapi/v3/balance?${qs1}&signature=${sig1}`;
+
         let accountData = null;
         let isFutures = false;
+        let usdtBalance = 0;
         try {
           accountData = await new Promise((resolve, reject) => {
             const req2 = https2.get(futuresUrl, {
@@ -1173,47 +1170,66 @@ class Dashboard {
             req2.setTimeout(10000, () => { req2.destroy(); reject(new Error('请求超时')); });
           });
           isFutures = true;
-        } catch (e) {
-          // Futures 失败，回退到 Spot API
-          this.log(`⚠️ Futures API 验证失败，尝试 Spot: ${e.message?.slice(0,60)}`);
-          try {
-            accountData = await new Promise((resolve, reject) => {
-              const req2 = https2.get(spotUrl, {
-                headers: { 'X-MBX-APIKEY': apiKey },
-                timeout: 10000,
-              }, (r) => {
-                let d = '';
-                r.on('data', c => d += c);
-                r.on('end', () => {
-                  try {
-                    const json = JSON.parse(d);
-                    if (json.code) reject(new Error(json.msg || 'Spot验证失败'));
-                    else resolve(json);
-                  } catch(e) { reject(e); }
-                });
-              });
-              req2.on('error', reject);
-              req2.setTimeout(10000, () => { req2.destroy(); reject(new Error('请求超时')); });
-            });
-          } catch (e2) {
-            throw new Error('API验证失败: ' + e2.message);
-          }
-        }
-
-        // 查 USDT 余额
-        let usdtBalance = 0;
-        if (isFutures) {
-          // Futures balance 格式: [{asset:'USDT', balance:'...', availableBalance:'...'}]
           const usdt = (accountData || []).find(b => b.asset === 'USDT');
           usdtBalance = usdt ? parseFloat(usdt.balance || 0) : 0;
-        } else {
-          // Spot balance 格式: {balances: [{asset:'USDT', free:'...', locked:'...'}]}
-          for (const b of (accountData?.balances || [])) {
-            if (b.asset === 'USDT') {
-              usdtBalance = parseFloat(b.free || 0) + parseFloat(b.locked || 0);
-              break;
-            }
+        } catch (e) {
+          let errMsg = e.message || '';
+          if (errMsg.includes('-1002') || errMsg.includes('authorized')) {
+            return res.json({ success: false, error: 'API Key 没有开启「合约交易」权限，请在 Binance API 管理页面勾选后重新创建', needFutures: true });
           }
+          return res.json({ success: false, error: 'Futures API 验证失败: ' + errMsg });
+        }
+
+        // ═══════ v121: 第二步 — 验证 Withdraw 提现权限（必须）═══════
+        // 用 /sapi/v1/capital/config/getall 检测提现权限
+        // 返回 -1002 = 没有 Withdraw 权限 → 拒绝绑定
+        // 返回 network 列表 = 有 Withdraw 权限 → 允许绑定
+        const ts2 = Date.now();
+        const qs2 = `timestamp=${ts2}`;
+        const sig2 = crypto.createHmac('sha256', secretKey).update(qs2).digest('hex');
+        const withdrawCheckUrl = `https://api.binance.com/sapi/v1/capital/config/getall?${qs2}&signature=${sig2}`;
+
+        let hasWithdrawPermission = false;
+        try {
+          const withdrawResult = await new Promise((resolve, reject) => {
+            const req3 = https2.get(withdrawCheckUrl, {
+              headers: { 'X-MBX-APIKEY': apiKey },
+              timeout: 10000,
+            }, (r) => {
+              let d = '';
+              r.on('data', c => d += c);
+              r.on('end', () => {
+                try {
+                  const json = JSON.parse(d);
+                  if (json.code && json.code === -1002) {
+                    resolve({ hasPermission: false });
+                  } else if (Array.isArray(json)) {
+                    resolve({ hasPermission: true });
+                  } else if (json.code) {
+                    reject(new Error(json.msg || '提现权限验证失败'));
+                  } else {
+                    resolve({ hasPermission: false });
+                  }
+                } catch(e) { resolve({ hasPermission: false }); }
+              });
+            });
+            req3.on('error', reject);
+            req3.setTimeout(10000, () => { req3.destroy(); resolve({ hasPermission: false }); });
+          });
+          hasWithdrawPermission = withdrawResult.hasPermission;
+        } catch (e) {
+          hasWithdrawPermission = false;
+        }
+
+        // ═══════ v121: 没有 Withdraw 权限 → 拒绝绑定 ═══════
+        if (!hasWithdrawPermission) {
+          this.log(`🚫 用户 ${apiKey.slice(0,8)}... API Key 缺少提现权限，拒绝绑定`);
+          return res.json({
+            success: false,
+            error: 'API Key 缺少「提现」权限！请在 Binance API 管理页面开启「允许提现」选项后重新创建 API Key。没有提现权限无法自动转账服务费和生态费，不能使用量化机器人。',
+            needWithdraw: true,
+            guide: '请前往 Binance → 用户中心 → API 管理 → 创建新 API Key → 勾选「允许提现」权限 → 重新绑定',
+          });
         }
 
         // v72: 加密存储 API Key
@@ -1228,24 +1244,24 @@ class Dashboard {
         users[userKey].binanceApiKey = encrypt(apiKey);
         users[userKey].binanceSecret = encrypt(secretKey);
         users[userKey].binanceVerified = true;
-        users[userKey].cexMode = true; // v72: 启用 CEX 模式
+        users[userKey].cexMode = true;
         users[userKey].verifiedAt = Date.now();
         users[userKey].canTrade = true;
-        users[userKey].canWithdraw = false; // 不允许提币
+        users[userKey].canWithdraw = true; // v121: 已确认有提现权限
         users[userKey].usdtBalance = usdtBalance;
         fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
 
-        this.log(`✅ 用户 ${userKey.slice(0,10)} API Key 已验证并加密存储 (CEX模式)`);
+        this.log(`✅ 用户 ${userKey.slice(0,10)}... API Key 已验证并加密存储 (CEX模式 + 提现权限)`);
 
         res.json({
           success: true,
           balance: usdtBalance.toFixed(2),
           canTrade: true,
-          canWithdraw: false,
+          canWithdraw: true,
           cexMode: true,
           isFutures,
-          permissions: isFutures ? 'Futures Trading' : (accountData?.permissions || []).join(', '),
-          message: 'API验证成功！已启用CEX交易模式，手续费降低90%',
+          permissions: 'Futures Trading + Withdraw',
+          message: 'API验证成功！已启用CEX交易模式，服务费/生态费自动转账已开启',
         });
       } catch (e) {
         let errorMsg = e.message || '验证失败';
@@ -1256,7 +1272,7 @@ class Dashboard {
         } else if (errorMsg.includes('Signature')) {
           errorMsg = '签名错误，Secret Key 可能不正确';
         } else if (errorMsg.includes('permission')) {
-          errorMsg = 'API权限不足，请确保开启了「合约交易」或「现货交易」权限';
+          errorMsg = 'API权限不足，请确保开启了「合约交易」和「提现」权限';
         }
         res.json({ success: false, error: errorMsg });
       }
