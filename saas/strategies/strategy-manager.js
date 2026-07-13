@@ -438,40 +438,45 @@ class StrategyManager {
       weak: 0.06,     // v116: 0.08→0.06
     };
 
+    // v120: 置信度动态计算 — 根据融合分与阈值的距离, 越远越确信
+    // 旧逻辑: strong=0.85, moderate=0.65, weak=0.45 固定值
+    // 新逻辑: 在基础值上根据融合分强度浮动
     let action = 'HOLD';
     let strength = 'none';
     let confidence = 0;
     let reasons = [];
+    const absNorm = Math.abs(_effectiveNormalized);
 
     if (_effectiveNormalized > thresholds.strong) {
       action = 'BUY';
       strength = 'strong';
-      confidence = 0.85;
+      // 融合分越高越确信: 0.25→0.75, 0.5→0.85, 0.8→0.95
+      confidence = Math.min(0.95, 0.70 + (absNorm - thresholds.strong) * 0.5);
       reasons.push('强烈买入信号');
     } else if (_effectiveNormalized > thresholds.moderate) {
       action = 'BUY';
       strength = 'moderate';
-      confidence = 0.65;
+      confidence = Math.min(0.80, 0.55 + (absNorm - thresholds.moderate) * 0.5);
       reasons.push('中等买入信号');
     } else if (_effectiveNormalized > thresholds.weak) {
       action = 'BUY';
       strength = 'weak';
-      confidence = 0.45;
+      confidence = 0.40 + (absNorm - thresholds.weak) * 0.3;
       reasons.push('弱买入信号');
     } else if (_effectiveNormalized < -thresholds.strong) {
       action = 'SELL';
       strength = 'strong';
-      confidence = 0.85;
+      confidence = Math.min(0.95, 0.70 + (absNorm - thresholds.strong) * 0.5);
       reasons.push('强烈卖出信号');
     } else if (_effectiveNormalized < -thresholds.moderate) {
       action = 'SELL';
       strength = 'moderate';
-      confidence = 0.65;
+      confidence = Math.min(0.80, 0.55 + (absNorm - thresholds.moderate) * 0.5);
       reasons.push('中等卖出信号');
     } else if (_effectiveNormalized < -thresholds.weak) {
       action = 'SELL';
       strength = 'weak';
-      confidence = 0.45;
+      confidence = 0.40 + (absNorm - thresholds.weak) * 0.3;
       reasons.push('弱卖出信号');
     } else {
       action = 'HOLD';
@@ -486,10 +491,26 @@ class StrategyManager {
       reasons.push('波动率异常: 信心减半');
     }
 
-    // v113.15: 一致性检查 — 时间框架不一致降分但不归零，顺势信号仍可开仓
+    // v120: 一致性检查 — 时间框架不一致时大幅降低置信度, 低于开仓门槛自然被拦截
+    // 旧逻辑: confidence *= 0.5 → 0.85*0.5=0.42 > 0.40门槛 → 全部通过
+    // 新逻辑: confidence *= 0.35 → 0.85*0.35=0.30 < 0.45门槛 → 自动拦截
+    // 例外: 如果至少2/3时间框架同向(不完全一致但多数一致), 只降60%
     if (!consistency.consistent) {
-      confidence *= 0.5;  // v113.15: 从 confidence=0 改为降50%
-      reasons.push('⚠️时间框架不一致-50%');
+      const trendCounts = consistency.trends || [];
+      const upCount = trendCounts.filter(t => t === 'up').length;
+      const downCount = trendCounts.filter(t => t === 'down').length;
+      const maxAgree = Math.max(upCount, downCount);
+      const totalTf = trendCounts.length || 1;
+      
+      if (maxAgree >= totalTf - 1) {
+        // 只差1个时间框架 → 降50% (足够强的信号仍可通过)
+        confidence *= 0.50;
+        reasons.push(`⚠️时间框架近似一致(${maxAgree}/${totalTf})-50%`);
+      } else {
+        // 2个以上时间框架不一致 → 降65%, 基本无法通过
+        confidence *= 0.35;
+        reasons.push(`⚠️时间框架不一致-65%`);
+      }
     }
 
     // v60: ML矛盾检查

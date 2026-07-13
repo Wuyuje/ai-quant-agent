@@ -1163,13 +1163,23 @@ class CEXUserTrader {
           const signal = analysis.finalSignal;
           if (!signal || signal.action === 'HOLD') continue;
           const dir = signal.action === 'BUY' ? 'LONG' : 'SHORT';
-          // 反弹过滤(和管理员engine.js一样)
+          // v120: 反弹过滤(和管理员engine.js一致) — 追跌追涨直接拦截
           const recentCloses = k.slice(-6).map(c => c.close);
           const minLow = Math.min(...recentCloses);
           const maxHigh = Math.max(...recentCloses);
           const bouncePct = maxHigh > minLow ? (md.price - minLow) / (maxHigh - minLow) * 100 : 50;
-          if (dir === 'SHORT' && bouncePct > 80) continue;
-          if (dir === 'LONG' && bouncePct < 20) continue;
+          const last3Up = recentCloses[2] < recentCloses[1] && recentCloses[1] < recentCloses[0];
+          const last3Down = recentCloses[2] > recentCloses[1] && recentCloses[1] > recentCloses[0];
+          // v120: 追跌做空(bounce<15%) → 拦截
+          if (dir === 'SHORT' && bouncePct < 15) continue;
+          // v120: 反弹中做空(连续3涨+bounce>50%) → 拦截
+          if (dir === 'SHORT' && last3Up && bouncePct > 50) continue;
+          // v120: 追涨做多(bounce>85%) → 拦截
+          if (dir === 'LONG' && bouncePct > 85) continue;
+          // v120: 下跌中做多(连续3跌+bounce<50%) → 拦截
+          if (dir === 'LONG' && last3Down && bouncePct < 50) continue;
+          // v120: 置信度太低(<0.45) → 拦截, 跟engine.js一致
+          if (signal.confidence < 0.45) continue;
           const strength = Math.abs(signal.score) * 4 + signal.confidence * 2;
           // v113.8: strength阈值从2.0降到1.2 — 让weak信号(confidence=0.45)也能进入候选
           // 原来strength=confidence*4=1.8被<2.0过滤，导致用户几乎永远空仓

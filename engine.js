@@ -657,9 +657,14 @@ class Engine {
             brainDetails.push(`📈历史胜率高${(_mem.recentWinRate*100).toFixed(0)}%`);
           }
         } else if (brainAnalysis && brainAnalysis.action === 'WAIT') {
-          // Brain 不确定 → 不阻止但也不加分
-          brainDetails.push(`⚪Brain观望`);
+          // v120: Brain观望 → 降20%而非完全不影响
+          // 旧逻辑: brainAgreement=1.0 不阻止也不加分 → Brain形同虚设
+          // 新逻辑: brainAgreement=0.8 → 降低score但不完全否决
+          brainAgreement = 0.80;
+          brainDetails.push(`⚪Brain观望(-20%)`);
           if (brainAnalysis.blockReasons && brainAnalysis.blockReasons.length > 0) {
+            // 如果Brain有明确阻止理由 → 再降20%
+            brainAgreement *= 0.80;
             brainDetails.push(`(${brainAnalysis.blockReasons.join(',')})`);
           }
         }
@@ -734,46 +739,68 @@ class Engine {
         const last3Up = recentCloses[2] < recentCloses[1] && recentCloses[1] < recentCloses[0];
 
         if (dir === 'SHORT') {
+          // v120: 追跌做空(bounce<15%) → 直接拦截, 不只减分
+          // 旧逻辑: bounce<20% → strength×0.4 但仍能开仓
+          // 新逻辑: bounce<15% → 直接continue拦截
+          if (bouncePct < 15) {
+            this._log(`⛔ ${symbol} 追跌做空(位置${bouncePct.toFixed(0)}%<15%) — 直接拦截`);
+            if (!this._lastSignals) this._lastSignals = [];
+            this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_CHASE_DROP', score:signal.score, timestamp:Date.now()});
+            continue;
+          }
+          // v120: 连续3根上涨且bounce>50% → 反弹中做空, 直接拦截
+          // 旧逻辑: 连续3根上涨 → strength×0.7 但仍能开仓
+          if (last3Up && bouncePct > 50) {
+            this._log(`⛔ ${symbol} 反弹中做空(连续3根上涨+位置${bouncePct.toFixed(0)}%) — 直接拦截`);
+            if (!this._lastSignals) this._lastSignals = [];
+            this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_REBOUND_SHORT', score:signal.score, timestamp:Date.now()});
+            continue;
+          }
           // v113.71: 高卖 — 反弹到高位时做空更好
-          // bouncePct高=价格在近6根K线高位=反弹到位=高卖
           if (bouncePct > 80) {
             // 太高可能是强突破
             strength *= 0.5;
             details.push(`⚠️强突破做空-50% (回升${bouncePct.toFixed(0)}%) — 等稳定`);
-          } else if (bouncePct < 20) {
-            // 追跌 — 惩罚
-            strength *= 0.4;
-            details.push(`⚠️追跌做空-60% (位置${bouncePct.toFixed(0)}%) — 等反弹`);
           } else if (bouncePct > 60) {
             // 高卖 — 加分
             strength *= 1.2;
             details.push(`✅高卖做空+20% (回升${bouncePct.toFixed(0)}%)`);
-          }
-          // 连续3根上涨
-          if (last3Up) {
-            strength *= 0.7;
-            details.push('⚠️连续3根上涨-30%');
+          } else {
+            // 正常位置 15-60%
+            if (last3Up) {
+              strength *= 0.7;
+              details.push('⚠️连续3根上涨-30%');
+            }
           }
         }
 
         if (dir === 'LONG') {
+          // v120: 追涨做多(bounce>85%) → 直接拦截
+          if (bouncePct > 85) {
+            this._log(`⛔ ${symbol} 追涨做多(位置${bouncePct.toFixed(0)}%>85%) — 直接拦截`);
+            if (!this._lastSignals) this._lastSignals = [];
+            this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_CHASE_LONG', score:signal.score, timestamp:Date.now()});
+            continue;
+          }
+          // v120: 连续3根下跌且bounce<50% → 下跌中做多, 直接拦截
+          const last3Down = recentCloses[2] > recentCloses[1] && recentCloses[1] > recentCloses[0];
+          if (last3Down && bouncePct < 50) {
+            this._log(`⛔ ${symbol} 下跌中做多(连续3根下跌+位置${bouncePct.toFixed(0)}%) — 直接拦截`);
+            if (!this._lastSignals) this._lastSignals = [];
+            this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_DROP_LONG', score:signal.score, timestamp:Date.now()});
+            continue;
+          }
           // v113.71: 底买 — 回调到低位时做多更好
-          // bouncePct低=价格在近6根K线低位=回调到位=底买
-          if (bouncePct < 20) {
+          if (bouncePct < 15) {
             // 太低可能是接飞刀
             strength *= 0.5;
             details.push(`⚠️急跌中做多-50% (位置${bouncePct.toFixed(0)}%) — 等稳定`);
-          } else if (bouncePct > 80) {
-            // 追涨 — 惩罚
-            strength *= 0.4;
-            details.push(`⚠️追涨做多-60% (位置${bouncePct.toFixed(0)}%) — 等回调`);
           } else if (bouncePct < 40) {
             // 底买 — 加分
             strength *= 1.2;
             details.push(`✅底买做多+20% (位置${bouncePct.toFixed(0)}%)`);
           }
           // 连续3根下跌
-          const last3Down = recentCloses[2] > recentCloses[1] && recentCloses[1] > recentCloses[0];
           if (last3Down) {
             strength *= 0.7;
             details.push('⚠️连续3根下跌-30%');
@@ -855,9 +882,11 @@ class Engine {
           this._lastSignals.push({symbol, dir, strength, confidence: signal.confidence, signal: 'WEAK', score: signal.score, timestamp: Date.now()});
           continue;
         }
-        // v113.44: 置信度门槛 — 低置信度信号容易假突破
-        if (signal.confidence < 0.40) {
-          this._log(`⚪ ${symbol} ${tf} 置信度太低 conf=${signal.confidence.toFixed(2)} < 0.40 — 尝试下一个级别`);
+        // v120: 置信度门槛从0.40提高到0.45
+        // 旧逻辑: 0.40 → 时间框架不一致0.85×0.5=0.42 > 0.40 → 全部通过
+        // 新逻辑: 0.45 → 时间框架不一致0.85×0.35=0.30 < 0.45 → 自动拦截
+        if (signal.confidence < 0.45) {
+          this._log(`⚪ ${symbol} ${tf} 置信度太低 conf=${signal.confidence.toFixed(2)} < 0.45 — 尝试下一个级别`);
           if (!this._lastSignals) this._lastSignals = [];
           this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'LOW_CONF', score:signal.score, timestamp:Date.now()});
           continue;
