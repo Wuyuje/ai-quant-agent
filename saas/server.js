@@ -1547,6 +1547,35 @@ class SaasServer {
         totalTrades = userState.totalTrades || 0;
       }
 
+      // v121: 获取用户提现权限和费用转账状态
+      let canWithdraw = user?.canWithdraw || false;
+      let feeTransferStatus = null;
+      if (this.cexUserTrader) {
+        // 从磁盘读取最新用户数据（dashboard绑定路径直接写文件）
+        try {
+          const freshUsers = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'saas-users.json'), 'utf8'));
+          const freshUser = freshUsers[walletAddr] || freshUsers[walletAddr?.toLowerCase()] || {};
+          if (freshUser.canWithdraw === true) canWithdraw = true;
+        } catch(e) {}
+        // 获取费用状态
+        const feeState = this.cexUserTrader._feeState?.pending?.[walletAddr] || this.cexUserTrader._feeState?.pending?.[walletAddr?.toLowerCase()] || [];
+        const cooldown = this.cexUserTrader._transferFailCooldown?.[walletAddr] || this.cexUserTrader._transferFailCooldown?.[walletAddr?.toLowerCase()];
+        const totalPendingPlatform = feeState.reduce((s,r) => s + parseFloat(r.platformFee), 0);
+        const totalPendingEco = feeState.reduce((s,r) => s + parseFloat(r.ecoFund), 0);
+        feeTransferStatus = {
+          hasWithdrawPermission: canWithdraw,
+          pendingCount: feeState.length,
+          pendingPlatformFee: +totalPendingPlatform.toFixed(2),
+          pendingEcoFee: +totalPendingEco.toFixed(2),
+          pendingTotal: +(totalPendingPlatform + totalPendingEco).toFixed(2),
+          cooldownActive: cooldown ? (Date.now() - cooldown.lastFailAt < (this.cexUserTrader.TRANSFER_COOLDOWN_MS || 1800000)) : false,
+          cooldownRemainMin: cooldown ? Math.max(0, Math.ceil(((this.cexUserTrader.TRANSFER_COOLDOWN_MS || 1800000) - (Date.now() - cooldown.lastFailAt)) / 60000)) : 0,
+          failCount: cooldown?.failCount || 0,
+          maxFail: this.cexUserTrader.TRANSFER_MAX_FAIL || 3,
+          permanentlyStopped: cooldown ? cooldown.failCount >= (this.cexUserTrader.TRANSFER_MAX_FAIL || 3) : false,
+        };
+      }
+
       res.json({
         success: true,
         user: {
@@ -1554,6 +1583,9 @@ class SaasServer {
           strategy: user?.strategy || 'balanced',
           tradingEnabled: user?.tradingEnabled || false,
           vaultAddress: user?.vaultAddress,
+          // v121: 提现权限 + 费用转账状态
+          canWithdraw,
+          feeTransferStatus,
           // 1️⃣ Vault合约余额
           vault: {
             usdt: vaultUsdt,
