@@ -258,20 +258,24 @@ class AdaptiveExitManager {
     // 这样低波动时硬止损跟着收紧, 高波动时放宽到-5%
     const netSlPct = this.toNetPnl(exitCalc.slPct, leverage, holdHours);
     const dynamicHardStop = Math.max(-5.0, netSlPct * 0.8); // v122: -3.5→-5 放宽给趋势空间
-    if (netPnlPct <= dynamicHardStop) {
+    // v122.5: 硬止损也加0.10%缓冲 — 大额止损更需要确认, 避免插针误触发
+    if (netPnlPct <= dynamicHardStop - 0.10) {
       const isHard = Math.abs(dynamicHardStop - (-5.0)) < 0.01;
       return {
         shouldClose: true,
-        reason: `🔴 ${isHard ? '硬止损' : 'ATR止损'} 净=${netPnlPct.toFixed(2)}% ≤ ${dynamicHardStop.toFixed(2)}%`,
+        reason: `🔴 ${isHard ? '硬止损' : 'ATR止损'} 净=${netPnlPct.toFixed(2)}% ≤ ${(dynamicHardStop - 0.10).toFixed(2)}%`,
         type: 'STOP_LOSS'
       };
     }
 
     // ═══ 2. ATR止损 (保留, 跟动态硬止损互补) ═══
-    if (netSlPct < 0 && netPnlPct <= netSlPct) {
+    // v122.5: 加入0.15%缓冲区 — 实盘数据显示37%的ATR止损是噪音/插针(差距<0.10%)
+    // 止损线需要被「明确突破」才触发, 而不是触碰就触发
+    // 缓冲区 = 0.15% (约1-2个跳动点), 只影响止损延迟<0.15%, 不影响止盈
+    if (netSlPct < 0 && netPnlPct <= netSlPct - 0.15) {
       return {
         shouldClose: true,
-        reason: `🔴 ATR止损 净=${netPnlPct.toFixed(2)}% ≤ ${netSlPct.toFixed(2)}% [${exitCalc.reasons?.slice(0,2).join(',')}]`,
+        reason: `🔴 ATR止损 净=${netPnlPct.toFixed(2)}% ≤ ${(netSlPct - 0.15).toFixed(2)}% [${exitCalc.reasons?.slice(0,2).join(',')}]`,
         type: 'STOP_LOSS'
       };
     }
