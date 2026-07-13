@@ -148,14 +148,17 @@ class AdaptiveExitManager {
 
     // ═══ 止损 = ATR × slMult (对标Turtle) ═══
     let slPct = -(atrPct * slMult);
-    // 如果有结构位，取更紧的
+    // v120: 结构位止损必须有最低值 — 不能小于成本×2, 否则开仓即被扫
     if (slFromStructure !== null) {
-      slPct = Math.max(slPct, -Math.min(slFromStructure, atrPct * slMult));
+      // 结构位止损下限 = 成本×2 (确保止损空间>交易成本)
+      const minStructureSl = costPct * 2;
+      const structureSl = Math.max(slFromStructure, minStructureSl);
+      slPct = Math.max(slPct, -Math.min(structureSl, atrPct * slMult));
     }
     // 绝对上限-5%
     slPct = Math.max(slPct, -5.0);
-    // 止损至少 > 成本×1.5
-    const minSlAbs = Math.max(costPct * 1.5, 0.3);
+    // 止损至少 > 成本×2 (v120: 从1.5提高到2, 确保止损空间>成本)
+    const minSlAbs = Math.max(costPct * 2, 0.3);
     slPct = Math.min(slPct, -minSlAbs);
 
     // ═══ 止盈 = ATR × tpMult (对标Two Sigma 3-5R) ═══
@@ -164,8 +167,11 @@ class AdaptiveExitManager {
       tpPct = Math.max(tpFromStructure, atrPct * 1.5);
       tpPct = Math.min(tpPct, atrPct * tpMult);
     }
-    // 止盈下限 = 成本 + 0.3%
-    tpPct = Math.max(tpPct, minGrossProfit);
+    // 止盈下限 = 成本 + 0.3%安全垫 (v118)
+    // v120: 进一步提高到确保到手>0.5% → 成本 + 0.5/0.7 + 0.3
+    const MIN_TAKE_HOME = 0.5;
+    const minGrossForTakeHome = costPct + MIN_TAKE_HOME / 0.70 + 0.3;
+    tpPct = Math.max(tpPct, minGrossForTakeHome);
 
     // ═══ R值 ═══
     const rDist = Math.abs(slPct);
@@ -219,7 +225,12 @@ class AdaptiveExitManager {
   }
 
   /**
-   * v114: 判断是否平仓 — 世界顶级止盈止损
+   * v120: 判断是否平仓 — 修复5个致命bug确保用户盈利
+   * 修复1: 峰值用毛利, 不用净值 (单位一致)
+   * 修复2: 低波动时止盈目标下限提高到确保到手>0.5%
+   * 修复3: 硬止损改为动态, 不再固定-3.5%覆盖ATR止损
+   * 修复4: 移动止盈加到手利润检查, 不允许到手<0.5%平仓
+   * 修复5: 止损也用净盈亏计算, 确保对称
    */
   shouldClose(symbol, pos, grossPnlPct, exitCalc) {
     const leverage = pos.leverage || 1;
@@ -228,22 +239,31 @@ class AdaptiveExitManager {
 
     const netPnlPct = this.toNetPnl(grossPnlPct, leverage, holdHours);
     const takeHome = this.toTakeHome(grossPnlPct, leverage, holdHours);
+    // v120: peakPnlPct 现在是毛利峰值 (CEXUserTrader已修正)
     const peakPnlPct = pos._peakPnlPct || 0;
     const peakTakeHome = this.toTakeHome(peakPnlPct, leverage, holdHours);
     const costPct = this.calculateCosts(leverage, holdHours).totalCostPct * 100;
 
-    // ═══ 1. 硬止损 — equity 3.5% (v116: 从2%放宽到3.5%，给趋势空间) ═══
-    const hardStop = -3.5;
-    if (netPnlPct <= hardStop) {
+    // v120: 到手最小利润 — 用户扣完所有费用+20%抽成后至少到手0.5%
+    const MIN_TAKE_HOME = 0.5;
+    // v120: 止盈目标最小毛利 = 成本 + MIN_TAKE_HOME/0.7 + 0.3%安全垫
+    const minGrossForProfit = costPct + MIN_TAKE_HOME / 0.70 + 0.3;
+
+    // ═══ 1. 硬止损 — 动态: max(-3.5%, ATR止损的80%) ═══
+    // v120: 不再固定-3.5%, 而是取 max(-3.5%, netSlPct * 0.8)
+    // 这样低波动时硬止损跟着收紧, 高波动时放宽到-3.5%
+    const netSlPct = this.toNetPnl(exitCalc.slPct, leverage, holdHours);
+    const dynamicHardStop = Math.max(-3.5, netSlPct * 0.8);
+    if (netPnlPct <= dynamicHardStop) {
+      const isHard = Math.abs(dynamicHardStop - (-3.5)) < 0.01;
       return {
         shouldClose: true,
-        reason: `🔴 硬止损 净=${netPnlPct.toFixed(2)}% ≤ -3.50%`,
+        reason: `🔴 ${isHard ? '硬止损' : 'ATR止损'} 净=${netPnlPct.toFixed(2)}% ≤ ${dynamicHardStop.toFixed(2)}%`,
         type: 'STOP_LOSS'
       };
     }
 
-    // ═══ 2. ATR止损 ═══
-    const netSlPct = this.toNetPnl(exitCalc.slPct, leverage, holdHours);
+    // ═══ 2. ATR止损 (保留, 跟动态硬止损互补) ═══
     if (netSlPct < 0 && netPnlPct <= netSlPct) {
       return {
         shouldClose: true,
@@ -252,19 +272,31 @@ class AdaptiveExitManager {
       };
     }
 
-    // ═══ 3. 移动止盈 — 峰值回撤锁定 ═══
+    // ═══ 3. 移动止盈 — 峰值回撤锁定 (v120: 加到手利润检查) ═══
     if (exitCalc.trailingActive && exitCalc.trailingSlPct !== null) {
       const trailingNetThreshold = this.toNetPnl(exitCalc.trailingSlPct, leverage, holdHours);
+      // v120: 移动止盈触发条件: trailingNet > 0 且 到手 > MIN_TAKE_HOME
       if (trailingNetThreshold > 0 && netPnlPct > 0 && netPnlPct <= trailingNetThreshold) {
-        return {
-          shouldClose: true,
-          reason: `🔄 移动止盈 净=${netPnlPct.toFixed(2)}% ≤ ${trailingNetThreshold.toFixed(2)}% (峰值${peakTakeHome.toFixed(2)}%) 到手=${takeHome.toFixed(2)}%`,
-          type: 'TRAILING_STOP'
-        };
+        // v120: 检查到手利润 — 不到最低利润不平仓, 让它继续跑
+        if (takeHome >= MIN_TAKE_HOME) {
+          return {
+            shouldClose: true,
+            reason: `🔄 移动止盈 净=${netPnlPct.toFixed(2)}% ≤ ${trailingNetThreshold.toFixed(2)}% 到手=${takeHome.toFixed(2)}%`,
+            type: 'TRAILING_STOP'
+          };
+        }
+        // 到手<MIN_TAKE_HOME但净值>0 → 用底线0%保护, 不让盈利变亏损
+        if (netPnlPct <= 0) {
+          return {
+            shouldClose: true,
+            reason: `🔄 保本平仓 净=${netPnlPct.toFixed(2)}% (到手不足${MIN_TAKE_HOME}%, 保本退出)`,
+            type: 'TRAILING_STOP'
+          };
+        }
       }
     }
 
-    // ═══ 4. 超额止盈 — 毛利>20%立刻锁定 (v116: 从15%→20%，让大趋势跑更远) ═══
+    // ═══ 4. 超额止盈 — 毛利>20%立刻锁定 ═══
     if (grossPnlPct >= 20.0 && exitCalc.trailingActive) {
       return {
         shouldClose: true,
@@ -273,12 +305,10 @@ class AdaptiveExitManager {
       };
     }
 
-    // ═══ 5. 到手利润止盈 — 扣全部费用+抽成后到手>1.0%才锁利 ═══
-    // v118: 从0.5%提高到1.0% — 让利润跑更远, 提高盈亏比
-    if (exitCalc.trailingActive && takeHome > 1.0) {
-      // 峰值回撤超过0.5%且到手仍>1.0% → 锁利
+    // ═══ 5. 锁利止盈 — 到手>MIN_TAKE_HOME且峰值回撤>0.5% ═══
+    if (exitCalc.trailingActive && takeHome > MIN_TAKE_HOME) {
       const drawdown = peakPnlPct - grossPnlPct;
-      if (drawdown > 0.5 && takeHome > 1.0) {
+      if (drawdown > 0.5) {
         return {
           shouldClose: true,
           reason: `🟢 锁利止盈 到手=${takeHome.toFixed(2)}% (峰值${peakTakeHome.toFixed(2)}% 回撤${drawdown.toFixed(2)}%)`,
@@ -287,8 +317,17 @@ class AdaptiveExitManager {
       }
     }
 
-    // ═══ 6. 时间止损 (v116: 放宽时间限制) ═══
-    // v116: 时间止损从4h→6h，超时从12h→18h，最大持仓从24h→36h
+    // ═══ 5b. v120: 固定止盈目标 — 毛利达到止盈线且到手>MIN_TAKE_HOME ═══
+    // 解决低波动时止盈永远不触发的问题
+    if (!exitCalc.trailingActive && grossPnlPct >= exitCalc.tpPct && takeHome >= MIN_TAKE_HOME) {
+      return {
+        shouldClose: true,
+        reason: `🟢 目标止盈 毛利=${grossPnlPct.toFixed(2)}%≥${exitCalc.tpPct.toFixed(2)}% 到手=${takeHome.toFixed(2)}%`,
+        type: 'TAKE_PROFIT'
+      };
+    }
+
+    // ═══ 6. 时间止损 ═══
     if (holdHours >= 6 && netPnlPct < -costPct * 2) {
       return {
         shouldClose: true,

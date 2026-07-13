@@ -712,7 +712,11 @@ class CEXUserTrader {
         ? _userExit.toNetPnl(grossPnlPct, leverage, holdHours) / 100
         : rawPnlPct * leverage - this.FEE_RATE * 2 - this.FUNDING_RATE * Math.floor(holdHours / 8);
 
-      // 峰值追踪
+      // 峰值追踪 — v120: 追踪毛利峰值, 不用净值(避免单位不一致)
+      let peakGrossPct = localPos?._peakGrossPct || 0;
+      if (grossPnlPct > peakGrossPct) peakGrossPct = grossPnlPct;
+      if (state.positions?.[pos.symbol]) state.positions[pos.symbol]._peakGrossPct = peakGrossPct;
+      // 保留旧字段兼容
       let peakPnl = localPos?._peakPnl || 0;
       if (netPnlPct > peakPnl) peakPnl = netPnlPct;
       if (state.positions?.[pos.symbol]) state.positions[pos.symbol]._peakPnl = peakPnl;
@@ -725,7 +729,7 @@ class CEXUserTrader {
         const indicators = this.dataBus?.indicators?.[pos.symbol] || {};
         const brainDecision = this.brain.managePosition(pos.symbol, {
           side: pos.side, entryPrice: pos.entryPrice, leverage,
-          openTime, _peakPnlPct: peakPnl * 100,
+          openTime, _peakPnlPct: peakGrossPct,
         }, klines, indicators, null, null, null);
         if (brainDecision.action === 'CLOSE') {
           shouldClose = true;
@@ -737,12 +741,13 @@ class CEXUserTrader {
           // v113.70: 用开仓时存的ATR, 不用实时klines算的(可能被引擎覆盖为5m)
           const _openAtrPct = localPos?._openAtrPct || 1.5;
           const _grossPnl = grossPnlPct; // 已经是百分比 (rawPnlPct * leverage * 100)
+          // v120: 传毛利峰值, 不用净峰值(避免单位不一致)
           const _exitCalc = _userExit.calculate(pos.symbol, {
             side: pos.side, entryPrice: pos.entryPrice, leverage,
-            openTime, _peakPnlPct: peakPnl * 100,
+            openTime, _peakPnlPct: peakGrossPct,
           }, { price: currentPrice, atr: _openAtrPct * currentPrice / 100, atrPct: _openAtrPct, klines: _klines }, {});
           const _exitDecision = _userExit.shouldClose(pos.symbol, {
-            side: pos.side, entryPrice: pos.entryPrice, leverage, openTime, _peakPnlPct: peakPnl * 100,
+            side: pos.side, entryPrice: pos.entryPrice, leverage, openTime, _peakPnlPct: peakGrossPct,
           }, _grossPnl, _exitCalc);
           if (_exitDecision && _exitDecision.shouldClose) {
             shouldClose = true;
