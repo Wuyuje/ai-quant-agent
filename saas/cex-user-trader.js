@@ -689,8 +689,11 @@ class CEXUserTrader {
     }
 
     // 修复：检查盖茨费授权状态 — 未授权或余额不足时暂停开新仓，但保留持仓监控
+    // 管理员豁免：不需要盖茨费授权
     let _gatesFeePaused = false;
-    if (userData.gatesFeeApproved === false) {
+    if (this._isAdmin(wallet)) {
+      // 管理员跳过盖茨费检查
+    } else if (!userData.gatesFeeApproved) {
       _gatesFeePaused = true;
       if (this._cycleCount % 10 === 0) {
         this._log(`⏸️ ${wallet.slice(0, 10)}... 盖茨费未授权(BSC USDT approve)，暂停开新仓，继续监控持仓`);

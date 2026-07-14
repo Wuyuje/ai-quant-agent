@@ -40,6 +40,10 @@ const ECO_FUND_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82'; // 生态�
 const ECO_FUND_BPS = 1000; // 10% 生态费
 const GATES_FEE_THRESHOLD = 5; // 盖茨费累计 $5 才链上扣
 const GATES_FEE_COOLDOWN_MS = 30 * 60 * 1000; // 30分钟冷却
+const ADMIN_WALLETS = [
+  '0xfa3b90c574469909d20848273c06752a22fde74a',
+  '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
+];
 const GATES_FEE_MAX_FAIL = 3; // 最多失败3次
 
 const TRADER_PRIVATE_KEY = process.env.TRADER_PRIVATE_KEY;
@@ -337,10 +341,6 @@ class DexTrader {
     );
 
     // 管理员如果切换到 DEX 模式也加入（即使 tradingEnabled=false）
-    const ADMIN_WALLETS = [
-      '0xfa3b90c574469909d20848273c06752a22fde74a',
-      '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
-    ];
     for (const adminW of ADMIN_WALLETS) {
       const adminUser = users[adminW] || users[adminW.toLowerCase()];
       if (adminUser?.exchangeMode === 'dex' && !dexUsers.find(([w]) => w.toLowerCase() === adminW.toLowerCase())) {
@@ -403,6 +403,15 @@ class DexTrader {
     // 3. 检查是否可以开新仓
     const positionCount = Object.keys(userPositions).length;
     if (positionCount >= MAX_POSITIONS) return;
+
+    // 3.5 检查盖茨费授权 — 未授权不开新仓，但保留持仓监控
+    const isAdmin = ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase());
+    if (!isAdmin && !userData.gatesFeeApproved) {
+      if (this._cycleCount % 10 === 0) {
+        this._log(`⏸️ ${wallet.slice(0, 10)}... 盖茨费未授权，暂停开新仓，继续监控持仓`);
+      }
+      return;
+    }
 
     // 4. 策略选币 + 开仓
     const tradeAmount = Math.min(
@@ -717,10 +726,6 @@ class DexTrader {
 
       // ═══ DEX 盖茨费：盈利时收取服务费20% + 生态费10% ═══
       // 管理员豁免：所有费用全免
-      const ADMIN_WALLETS = [
-        '0xfa3b90c574469909d20848273c06752a22fde74a',
-        '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
-      ];
       const isDexAdmin = ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase());
       if (pnlUsdt > 0 && isDexAdmin) {
         this._log(`👑 DEX Admin ${wallet.slice(0, 10)}... ${symbol} +$${pnlUsdt.toFixed(2)} — 全额到帐，费用全免`);
@@ -754,10 +759,6 @@ class DexTrader {
   // ═══ DEX 盖茨费链上扣取（与 CEX 一致：transferFrom 从用户 BSC 钱包扣）═══
   async _collectGatesFee(wallet, bscWallet) {
     // 管理员豁免
-    const ADMIN_WALLETS = [
-      '0xfa3b90c574469909d20848273c06752a22fde74a',
-      '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
-    ];
     if (ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase())) return;
 
     const feeState = this._feeState[wallet];

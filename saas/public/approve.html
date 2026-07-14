@@ -243,7 +243,7 @@ async function approveUSDT() {
 
     // 通知后端更新状态
     try {
-      await fetch('/api/vault/approve-confirmed', {
+      var confirmResp = await fetch('/api/vault/approve-confirmed', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -251,7 +251,18 @@ async function approveUSDT() {
         },
         body: JSON.stringify({ txHash: txHash })
       });
-    } catch (e) { /* ignore */ }
+      var confirmData = await confirmResp.json();
+      if (!confirmData.success) {
+        showMsg('链上验证失败: ' + (confirmData.error || '未知错误') + '\\n请稍后重试或联系管理员', 'err');
+        setStep(3, 'err');
+        document.getElementById('approveBtn').disabled = false;
+        return;
+      }
+    } catch (e) {
+      showMsg('网络错误: ' + e.message + '，授权可能已成功，请刷新页面查看状态', 'err');
+      setStep(3, 'err');
+      return;
+    }
 
     setStep(3, 'done');
     showMsg('✅ 授权成功！盖茨费系统已激活，3秒后返回...', 'ok');

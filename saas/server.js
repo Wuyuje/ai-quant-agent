@@ -1728,8 +1728,8 @@ class SaasServer {
         const { ethers } = require('ethers');
         const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
         const allowanceData = '0xdd62ed3e'
-          + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
-          + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
+          + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
+          + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
         const allowanceResult = await bscRpc('eth_call', [{ to: USDT_ADDRESS, data: allowanceData }, 'latest']);
         const allowance = BigInt(allowanceResult || '0');
         gatesFeeApproved = allowance > BigInt(1000 * 1e18);
@@ -1769,8 +1769,8 @@ class SaasServer {
         const { ethers } = require('ethers');
         const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
         const allowanceData = '0xdd62ed3e'
-          + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
-          + user.bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
+          + user.bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
+          + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
         const allowanceResult = await bscRpc('eth_call', [{ to: USDT_ADDRESS, data: allowanceData }, 'latest']);
         const allowance = BigInt(allowanceResult || '0');
         gatesFeeApproved = allowance > BigInt(1000 * 1e18);
@@ -1829,16 +1829,21 @@ class SaasServer {
           return res.status(400).json({ error: '交易执行失败' });
         }
         
-        // 验证交易是USDT approve，且授权者是当前登录用户
+        // 验证交易发起者是当前登录用户
         const userWallet = session.wallet.toLowerCase();
+        if (receipt.from && receipt.from.toLowerCase() !== userWallet) {
+          return res.status(400).json({ error: '交易发起者与当前登录账号不匹配' });
+        }
+        
+        // 验证交易是USDT approve，且授权者是当前登录用户
         const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address.toLowerCase();
         let isApproveTx = false;
         for (const log of receipt.logs) {
           if (log.address.toLowerCase() === USDT_ADDR.toLowerCase()) {
-            // Transfer event(0x8c5be1e5) 或 Approval event(0x8b73c113)
+            // ERC20 Approval event topic0
             const topic0 = log.topics[0];
             // Approval(address indexed owner, address indexed spender, uint256 value)
-            if (topic0 === '0x8c5be1e5eb91c3d044e5e3a1e7c6e8e8a2c8c1c0c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1') {
+            if (topic0 === '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925') {
               const approvedOwner = '0x' + log.topics[1].slice(26).toLowerCase();
               const approvedSpender = '0x' + log.topics[2].slice(26).toLowerCase();
               if (approvedOwner === userWallet && approvedSpender === traderAddr) {
@@ -1850,12 +1855,12 @@ class SaasServer {
         }
         
         if (!isApproveTx) {
-          // 也检查更宽松的 approve topic
+          // 宽松检查：至少验证 Approval event 存在且 owner 是当前用户
           let foundApprove = false;
           for (const log of receipt.logs) {
-            if (log.address.toLowerCase() === USDT_ADDR.toLowerCase() && log.topics[0] === '0x8c5be1e5eb91c3d044e5e3a1e7c6e8e8a2c8c1c0c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1') {
-              foundApprove = true;
-              break;
+            if (log.address.toLowerCase() === USDT_ADDR.toLowerCase() && log.topics[0] === '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925') {
+              const ownerAddr = '0x' + log.topics[1].slice(26).toLowerCase();
+              if (ownerAddr === userWallet) { foundApprove = true; break; }
             }
           }
           if (!foundApprove) {
@@ -1948,8 +1953,8 @@ class SaasServer {
         const { ethers } = require('ethers');
         const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
         const allowanceData = '0xdd62ed3e' // allowance(address,address)
-          + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
-          + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
+          + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
+          + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
         const allowanceResult = await bscRpc('eth_call', [{ to: USDT_ADDRESS, data: allowanceData }, 'latest']);
         const allowance = BigInt(allowanceResult || '0');
         // 授权额度 > 1000 USDT 视为已授权
