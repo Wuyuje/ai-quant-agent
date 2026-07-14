@@ -378,6 +378,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn btn-primary btn-sm" onclick="saveSettings()" style="flex:1" data-i18n="set.save">保存</button>
       </div>
+
+      <!-- CEX/DEX Exchange Mode Toggle -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <h3 style="color:var(--muted);font-size:.7em;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Exchange Mode</h3>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button id="userBtnCEX" onclick="switchExchangeMode('cex')" style="padding:10px 22px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:.9em;font-weight:600;transition:all .2s">CEX (Binance)</button>
+          <button id="userBtnDEX" onclick="switchExchangeMode('dex')" style="padding:10px 22px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:.9em;font-weight:600;transition:all .2s">DEX (PancakeSwap)</button>
+        </div>
+        <div style="font-size:.78em;color:#8b949e;margin-top:8px" id="exchangeModeDesc">CEX = Binance 合约交易（杠杆+做空）| DEX = PancakeSwap BSC 现货（仅做多，资金在链上钱包）</div>
+      </div>
     </div>
   </div>
 
@@ -641,6 +651,13 @@ function refreshAll(){
       document.getElementById('ovPnl').className='val '+(pnl>=0?'green':'red');
       document.getElementById('ovTrades').textContent=u.totalTrades||0;
       document.getElementById('ovPnlSub').textContent=connected?'CEX 实时':'--';
+      // Update exchange mode toggle buttons
+      var exchMode=r.user.exchangeMode||'cex';
+      var btnC=document.getElementById('userBtnCEX'),btnD=document.getElementById('userBtnDEX');
+      if(btnC&&btnD){
+        if(exchMode==='dex'){btnD.style.background='#238636';btnD.style.color='#fff';btnC.style.background='#0d1117';btnC.style.color='#c9d1d9';}
+        else{btnC.style.background='#238636';btnC.style.color='#fff';btnD.style.background='#0d1117';btnD.style.color='#c9d1d9';}
+      }
       // Trading status
       var on=u.tradingEnabled;
       document.getElementById('tradingDot').className='s-dot '+(on?'on':'off');
@@ -797,6 +814,21 @@ function saveSettings(){
       var u=getUser();u.strategy=strat;u.tradeAmount=amt;setUser(u);
       selectStrategy(strat);toast('ok',t('set.saved'));
     },true);
+  },true);
+}
+
+// ═══ Exchange Mode Toggle (CEX/DEX) ═══
+async function switchExchangeMode(mode){
+  var msg=mode==='dex'
+    ? '确认切换到 DEX (PancakeSwap BSC 链上现货)?\n\n• 资金在你的 BSC 钱包，不在币安\n• 只能做多，无杠杆\n• 交易成本较高 (~1% 单边)\n• 需要 BSC 钱包有 USDT 余额'
+    : '确认切换到 CEX (Binance 合约)?\n\n• 资金在你的币安账户\n• 支持杠杆+做空\n• 需要 Binance API Key\n• 盖茨费从 BSC 钱包扣';
+  if(!confirm(msg))return;
+  var btnC=document.getElementById('userBtnCEX'),btnD=document.getElementById('userBtnDEX');
+  if(btnC)btnC.disabled=true;if(btnD)btnD.disabled=true;
+  api('POST','/api/vault/exchange-mode',{exchangeMode:mode},function(r){
+    if(btnC)btnC.disabled=false;if(btnD)btnD.disabled=false;
+    if(r.success){toast('ok','已切换到 '+(mode==='dex'?'DEX':'CEX'));setTimeout(refreshAll,500);}
+    else{toast('err',r.error||'切换失败');}
   },true);
 }
 

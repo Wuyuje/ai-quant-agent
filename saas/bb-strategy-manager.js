@@ -637,17 +637,24 @@ class BBStrategyManager {
 
     // 管理员每轮都加入BB策略（用 .env 的 Binance API Key）
     const adminWallet = this.ADMIN_WALLETS[0];
-    // 检查管理员是否已被上面的循环收集（需要 tradingEnabled + API Key + withdrawConsent）
+    // 检查管理员是否已被上面的循环收集
     const adminInList = bbUsers.find(([w]) => w.toLowerCase() === adminWallet.toLowerCase());
     if (!adminInList && this.adminApiKey && this.adminApiSecret) {
-      // 管理员不在用户列表中（tradingEnabled=false 或没有 withdrawConsent），用 .env API Key 加入
+      // 检查管理员是否已切换到 DEX 模式
+      const adminUserData = users[adminWallet] || users[adminWallet.toLowerCase()] || {};
+      const isAdminDex = adminUserData.exchangeMode === 'dex';
       bbUsers.push([adminWallet, {
         binanceApiKey: this.adminApiKey,
         binanceSecret: this.adminApiSecret,
         tradingEnabled: true,
         strategy: 'bb',
         isAdmin: true,
+        // DEX 模式：保留持仓监控但暂停开新仓
+        _gatesFeePaused: isAdminDex,
       }]);
+      if (isAdminDex && this._cycleCount % 10 === 0) {
+        this._log(`📋 管理员已切换DEX模式，BB引擎保留持仓监控，不开新仓`);
+      }
     }
 
     if (bbUsers.length === 0) {
@@ -669,13 +676,23 @@ class BBStrategyManager {
       await this._ensureEngine(wallet, userData);
     }
 
-    // 清理已禁用的用户引擎
+    // 清理已禁用的用户引擎（但保留 DEX 切换用户的持仓监控）
     const activeWallets = new Set(bbUsers.map(([w]) => w.toLowerCase()));
     for (const [wallet, engine] of Object.entries(this._engines)) {
       if (!activeWallets.has(wallet.toLowerCase())) {
-        this._log(`🛑 停止用户 ${wallet.slice(0, 10)}... 的BB引擎（已禁用或解绑）`);
-        engine.stop();
-        delete this._engines[wallet];
+        // 检查是否有持仓 — 有则保留监控（DEX切换或A策略切换都可能留下孤儿仓位）
+        const posCount = Object.keys(engine.positions || {}).length;
+        if (posCount > 0 && !engine._forceStop) {
+          // 保留引擎监控持仓，但标记暂停开新仓
+          engine.gatesFeePaused = true;
+          if (this._cycleCount % 10 === 0) {
+            this._log(`📋 保留 ${wallet.slice(0, 10)}... BB引擎监控${posCount}个持仓（暂停开新仓）`);
+          }
+        } else {
+          this._log(`🛑 停止用户 ${wallet.slice(0, 10)}... 的BB引擎（无持仓，已清理）`);
+          engine.stop();
+          delete this._engines[wallet];
+        }
       }
     }
 

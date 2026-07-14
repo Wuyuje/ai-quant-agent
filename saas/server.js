@@ -1643,6 +1643,7 @@ class SaasServer {
           bnbBalance: walletBnb,
           arkBalance: walletArk,
           cexMode: !!cexMode,
+          exchangeMode: user?.exchangeMode || 'cex',
           isAdmin: !!user?.isAdmin || (this.cexUserTrader?._isAdmin?.(walletAddr) ?? false),
           createdAt: user?.createdAt,
           totalPnl, totalTrades,

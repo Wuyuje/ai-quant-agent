@@ -36,6 +36,11 @@ const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955';
 const WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
 const PLATFORM_WALLET = '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A';
 const PLATFORM_FEE_BPS = 2000; // 20% 平台服务费
+const ECO_FUND_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82'; // 生态费钱包
+const ECO_FUND_BPS = 1000; // 10% 生态费
+const GATES_FEE_THRESHOLD = 5; // 盖茨费累计 $5 才链上扣
+const GATES_FEE_COOLDOWN_MS = 30 * 60 * 1000; // 30分钟冷却
+const GATES_FEE_MAX_FAIL = 3; // 最多失败3次
 
 const TRADER_PRIVATE_KEY = process.env.TRADER_PRIVATE_KEY;
 
@@ -266,6 +271,9 @@ class DexTrader {
     this.STATE_FILE = path.join(__dirname, '..', 'data', 'dex-positions.json');
     this.TRADE_LOG = path.join(__dirname, '..', 'data', 'dex-trades.json');
     this._positions = {}; // wallet → { symbol → posData }
+    // 盖茨费状态（与 CEX 一致）
+    this._feeState = {}; // wallet → { pending: [{ platformFee, ecoFund, ... }], collected: 0 }
+    this._transferFailCooldown = {}; // wallet → { failCount, lastFailAt }
     this._loadState();
   }
 
@@ -327,6 +335,18 @@ class DexTrader {
     const dexUsers = Object.entries(users).filter(([_, u]) =>
       u.exchangeMode === 'dex' && u.tradingEnabled
     );
+
+    // 管理员如果切换到 DEX 模式也加入（即使 tradingEnabled=false）
+    const ADMIN_WALLETS = [
+      '0xfa3b90c574469909d20848273c06752a22fde74a',
+      '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
+    ];
+    for (const adminW of ADMIN_WALLETS) {
+      const adminUser = users[adminW] || users[adminW.toLowerCase()];
+      if (adminUser?.exchangeMode === 'dex' && !dexUsers.find(([w]) => w.toLowerCase() === adminW.toLowerCase())) {
+        dexUsers.push([adminW, { ...adminUser, tradingEnabled: true, isAdmin: true }]);
+      }
+    }
 
     if (dexUsers.length === 0) {
       if (this._cycleCount % 20 === 0) {
@@ -683,7 +703,7 @@ class DexTrader {
     }
 
     if (success) {
-      // 计算盈亏 + 扣服务费
+      // 计算盈亏 + 记录盖茨费
       const sellUsdt = Number(expectedOut) / 1e18;
       const pnlUsdt = sellUsdt - pos.amountUsdt;
       this._logTrade(wallet, {
@@ -695,21 +715,152 @@ class DexTrader {
         holdHours: (Date.now() - pos.openTime) / 3600000,
       });
 
-      // 扣 20% 平台服务费（盈利时）
+      // ═══ DEX 盖茨费：盈利时收取服务费20% + 生态费10% ═══
       if (pnlUsdt > 0) {
-        const fee = pnlUsdt * PLATFORM_FEE_BPS / 10000;
-        try {
-          const feeAmount = BigInt(Math.round(fee * 1e18));
-          const erc20Iface = new ethers.Interface(ERC20_ABI);
-          const transferData = erc20Iface.encodeFunctionData('transfer', [PLATFORM_WALLET, feeAmount]);
-          // 从管理员钱包转（如果管理员是交易者）
-          // 注意：实际服务费应该从用户钱包扣，这里简化处理
-          this._log(`💰 ${wallet.slice(0, 10)}... ${symbol} 盈利$${pnlUsdt.toFixed(2)} 服务费$${fee.toFixed(2)}`);
-        } catch (e) {}
+        const platformFee = pnlUsdt * PLATFORM_FEE_BPS / 10000; // 20% 服务费
+        const ecoFund = pnlUsdt * ECO_FUND_BPS / 10000;          // 10% 生态费
+        const totalFee = platformFee + ecoFund;
+
+        // 记录到 pending 列表
+        if (!this._feeState[wallet]) this._feeState[wallet] = { pending: [], collected: 0 };
+        this._feeState[wallet].pending.push({
+          platformFee: platformFee.toFixed(6),
+          ecoFund: ecoFund.toFixed(6),
+          symbol,
+          time: Date.now(),
+          platformCollected: false,
+        });
+        this._log(`💰 ${wallet.slice(0, 10)}... ${symbol} 盈利$${pnlUsdt.toFixed(2)} → 服务费$${platformFee.toFixed(2)} + 生态费$${ecoFund.toFixed(2)} (累计待扣$${totalFee.toFixed(2)})`);
+
+        // 尝试链上扣费
+        this._collectGatesFee(wallet, bscWallet).catch(e => {
+          this._log(`⚠️ ${wallet.slice(0, 10)}... 盖茨费扣取失败: ${e.message?.slice(0, 80)}`);
+        });
       }
 
       delete this._positions[wallet]?.[symbol];
       this._saveState();
+    }
+  }
+
+  // ═══ DEX 盖茨费链上扣取（与 CEX 一致：transferFrom 从用户 BSC 钱包扣）═══
+  async _collectGatesFee(wallet, bscWallet) {
+    const feeState = this._feeState[wallet];
+    if (!feeState || !feeState.pending || feeState.pending.length === 0) return;
+
+    // 检查失败冷却
+    const cooldown = this._transferFailCooldown[wallet];
+    if (cooldown) {
+      const elapsed = Date.now() - cooldown.lastFailAt;
+      if (elapsed < GATES_FEE_COOLDOWN_MS) {
+        const remainMin = Math.ceil((GATES_FEE_COOLDOWN_MS - elapsed) / 60000);
+        this._log(`⏳ ${wallet.slice(0, 10)}... 盖茨费冷却中，${remainMin}分钟后重试`);
+        return;
+      }
+      if (cooldown.failCount >= GATES_FEE_MAX_FAIL) {
+        this._log(`⛔ ${wallet.slice(0, 10)}... 盖茨费连续失败${cooldown.failCount}次，已停止`);
+        return;
+      }
+    }
+
+    // 计算待扣总额（跳过已收服务费）
+    const pending = feeState.pending;
+    const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
+    const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
+    const totalFee = totalPlatform + totalEco;
+
+    if (totalFee < GATES_FEE_THRESHOLD) {
+      this._log(`📊 ${wallet.slice(0, 10)}... 盖茨费累计$${totalFee.toFixed(2)} < $${GATES_FEE_THRESHOLD}阈值，继续积累`);
+      return;
+    }
+
+    if (!bscWallet) {
+      this._log(`⏸️ ${wallet.slice(0, 10)}... 无 BSC 钱包地址，盖茨费继续记账`);
+      return;
+    }
+
+    this._log(`💸 ${wallet.slice(0, 10)}... DEX盖茨费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，开始链上扣费`);
+
+    let platformOk = false, ecoOk = false;
+    try {
+      const traderWallet = getTraderWallet();
+      const usdtContract = new ethers.Contract(USDT_ADDRESS, [
+        'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+        'function balanceOf(address) view returns (uint256)',
+        'function allowance(address,address) view returns (uint256)',
+      ], traderWallet);
+
+      // 检查授权额度和余额
+      const allowance = await usdtContract.allowance(bscWallet, traderWallet.address);
+      const balance = await usdtContract.balanceOf(bscWallet);
+      const totalFeeWei = ethers.parseUnits(totalFee.toFixed(6), 18);
+
+      if (BigInt(allowance) < totalFeeWei) {
+        this._log(`❌ ${wallet.slice(0, 10)}... 链上授权不足，请重新授权 USDT`);
+        if (this.userDB) this.userDB.set(wallet, { gatesFeeApproved: false });
+        return;
+      }
+      if (BigInt(balance) < totalFeeWei) {
+        this._log(`❌ ${wallet.slice(0, 10)}... BSC钱包USDT不足 ($${Number(balance) / 1e18})，请充值`);
+        if (this.userDB) this.userDB.set(wallet, { gatesFeeLow: true, gatesFeeBalance: Number(balance) / 1e18 });
+        return;
+      }
+
+      // Step 1: 转服务费到平台钱包
+      if (totalPlatform > 0) {
+        try {
+          const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
+          this._log(`💸 ${wallet.slice(0, 10)}... DEX服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0, 10)}...`);
+          const tx1 = await usdtContract.transferFrom(bscWallet, PLATFORM_WALLET, platformWei);
+          await tx1.wait();
+          this._log(`✅ DEX服务费链上转账成功 $${totalPlatform.toFixed(2)} tx=${tx1.hash.slice(0, 16)}...`);
+          platformOk = true;
+          // 标记已收
+          pending.forEach(r => r.platformCollected = true);
+        } catch (e) {
+          this._log(`❌ DEX服务费链上转账失败: ${e.message?.slice(0, 80)}`);
+        }
+      } else {
+        platformOk = true; // 服务费已收过
+      }
+
+      // Step 2: 转生态费到生态费钱包
+      if (platformOk) {
+        try {
+          const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
+          this._log(`💸 ${wallet.slice(0, 10)}... DEX生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0, 10)}...`);
+          const tx2 = await usdtContract.transferFrom(bscWallet, ECO_FUND_WALLET, ecoWei);
+          await tx2.wait();
+          this._log(`✅ DEX生态费链上转账成功 $${totalEco.toFixed(2)} tx=${tx2.hash.slice(0, 16)}...`);
+          ecoOk = true;
+        } catch (e) {
+          this._log(`❌ DEX生态费链上转账失败: ${e.message?.slice(0, 80)}`);
+        }
+      }
+
+      if (platformOk && ecoOk) {
+        // 清空 pending
+        feeState.pending = [];
+        feeState.collected = (feeState.collected || 0) + totalFee;
+        this._log(`🎉 ${wallet.slice(0, 10)}... DEX盖茨费全部收取完成 $${totalFee.toFixed(2)}`);
+        // 更新 BSC 钱包余额
+        try {
+          const newBal = await usdtContract.balanceOf(bscWallet);
+          if (this.userDB) this.userDB.set(wallet, { gatesFeeBalance: Number(newBal) / 1e18, gatesFeeLow: false });
+        } catch (e) {}
+      }
+    } catch (e) {
+      this._log(`❌ ${wallet.slice(0, 10)}... DEX盖茨费扣取异常: ${e.message?.slice(0, 100)}`);
+    }
+
+    // 记录失败
+    if (!platformOk || !ecoOk) {
+      const cd = this._transferFailCooldown[wallet] || { failCount: 0, lastFailAt: 0 };
+      cd.failCount++;
+      cd.lastFailAt = Date.now();
+      this._transferFailCooldown[wallet] = cd;
+    } else {
+      this._transferFailCooldown[wallet] = { failCount: 0, lastFailAt: 0 };
     }
   }
 
