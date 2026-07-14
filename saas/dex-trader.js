@@ -716,7 +716,15 @@ class DexTrader {
       });
 
       // ═══ DEX 盖茨费：盈利时收取服务费20% + 生态费10% ═══
-      if (pnlUsdt > 0) {
+      // 管理员豁免：所有费用全免
+      const ADMIN_WALLETS = [
+        '0xfa3b90c574469909d20848273c06752a22fde74a',
+        '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
+      ];
+      const isDexAdmin = ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase());
+      if (pnlUsdt > 0 && isDexAdmin) {
+        this._log(`👑 DEX Admin ${wallet.slice(0, 10)}... ${symbol} +$${pnlUsdt.toFixed(2)} — 全额到帐，费用全免`);
+      } else if (pnlUsdt > 0) {
         const platformFee = pnlUsdt * PLATFORM_FEE_BPS / 10000; // 20% 服务费
         const ecoFund = pnlUsdt * ECO_FUND_BPS / 10000;          // 10% 生态费
         const totalFee = platformFee + ecoFund;
@@ -745,6 +753,13 @@ class DexTrader {
 
   // ═══ DEX 盖茨费链上扣取（与 CEX 一致：transferFrom 从用户 BSC 钱包扣）═══
   async _collectGatesFee(wallet, bscWallet) {
+    // 管理员豁免
+    const ADMIN_WALLETS = [
+      '0xfa3b90c574469909d20848273c06752a22fde74a',
+      '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
+    ];
+    if (ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase())) return;
+
     const feeState = this._feeState[wallet];
     if (!feeState || !feeState.pending || feeState.pending.length === 0) return;
 
