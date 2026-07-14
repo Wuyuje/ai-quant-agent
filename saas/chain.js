@@ -14,9 +14,9 @@ const VAULT_ABI = require('./abi.js');
 
 // ─── RPC 配置 ───
 const RPC_ENDPOINTS = [
-  'https://bsc-dataseed.binance.org',
-  'https://bsc-dataseed1.defibit.io',
-  'https://bsc-dataseed1.ninicoin.io',
+  'https://bsc-rpc.publicnode.com',
+  'https://bsc.drpc.org',
+  'https://1rpc.io/bnb',
   'https://bsc-rpc.publicnode.com',
 ];
 let _currentRpc = 0;

@@ -23,7 +23,7 @@ const crypto = require('crypto');
 // ═══════════════════════════════════════
 const CONFIG = {
   // BSC RPC
-  rpcUrl: 'https://bsc-dataseed.binance.org',
+  rpcUrl: 'https://bsc-rpc.publicnode.com',
   
   // ARK 代币合约
   arkTokenContract: '0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D',

@@ -126,10 +126,9 @@ const pendingFundRequests = new Map(); // userAddress → { wallet, amount, reas
 
 // ─── 配置 ───
 const BSC_RPC_LIST = [
-  'https://bsc-dataseed.binance.org',
-  'https://bsc-dataseed1.binance.org',
-  'https://bsc-dataseed2.binance.org',
-  'https://bsc-dataseed3.binance.org',
+  'https://bsc-rpc.publicnode.com',
+  'https://bsc.drpc.org',
+  'https://1rpc.io/bnb',
 ];
 let _rpcIndex = 0;
 function BSC_RPC() { return BSC_RPC_LIST[_rpcIndex % BSC_RPC_LIST.length]; }
@@ -1253,7 +1252,7 @@ class SaasServer {
       // 验证链上 Vault 确实属于该用户
       try {
         const { ethers } = require('ethers');
-        const provider = new ethers.JsonRpcProvider('https://bsc-dataseed.binance.org'); // static RPC for balance check
+        const provider = new ethers.JsonRpcProvider('https://bsc-rpc.publicnode.com'); // static RPC for balance check
         const vaultContract = new ethers.Contract(vaultAddress, [
           'function owner() view returns (address)',
           'function userAddress() view returns (address)'
@@ -1704,6 +1703,7 @@ class SaasServer {
       // 查询链上Approve授权
       let gatesFeeApproved = false;
       try {
+        const { ethers } = require('ethers');
         const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
         const allowanceData = '0xdd62ed3e'
           + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
@@ -1744,6 +1744,7 @@ class SaasServer {
         gatesFeeBalance = Number(rawBal) / 1e18;
       } catch (e) { /* ignore */ }
       try {
+        const { ethers } = require('ethers');
         const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
         const allowanceData = '0xdd62ed3e'
           + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
@@ -1761,8 +1762,36 @@ class SaasServer {
         gatesFeeBalance: gatesFeeBalance.toFixed(2),
         gatesFeeApproved,
         gatesFeeLow: gatesFeeBalance < 5,
-        traderWalletAddr: new ethers.Wallet(TRADER_PRIVATE_KEY).address,
+        traderWalletAddr: new (require('ethers').ethers).Wallet(TRADER_PRIVATE_KEY).address,
       });
+    });
+
+    // ═══ 盖茨费：获取USDT授权参数（供前端MetaMask发送approve交易） ═══
+    this.app.get('/api/vault/approve-params', async (req, res) => {
+      const session = this._auth(req);
+      if (!session) return res.status(401).json({ error: '未登录' });
+      const user = this.userDB.get(session.wallet);
+      const { ethers } = require('ethers');
+      const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+      res.json({
+        success: true,
+        usdtAddress: USDT_ADDRESS,
+        traderAddress: traderWalletAddr,
+        bscWalletAddr: user?.bscWalletAddr || session.wallet,
+        bscChainId: '0x38',
+        bscRpcUrls: ['https://bsc-rpc.publicnode.com', 'https://bsc.drpc.org'],
+      });
+    });
+
+    // ═══ 盖茨费：用户在前端通过MetaMask签名approve后，通知后端更新状态 ═══
+    this.app.post('/api/vault/approve-confirmed', async (req, res) => {
+      const session = this._auth(req);
+      if (!session) return res.status(401).json({ error: '未登录' });
+      const { txHash } = req.body;
+      this.log(`✅ ${session.wallet.slice(0,10)}... USDT approve 交易已上链: ${txHash?.slice(0,16)}...`);
+      // 更新用户状态为已授权
+      this.userDB.set(session.wallet, { gatesFeeApproved: true });
+      res.json({ success: true, message: '授权成功，盖茨费系统已激活' });
     });
 
     this.app.post('/api/vault/cex-key', async (req, res) => {
@@ -1838,6 +1867,7 @@ class SaasServer {
       // 检查链上Approve授权 — TRADER_WALLET 是否被授权从用户BSC钱包提取USDT
       let gatesFeeApproved = false;
       try {
+        const { ethers } = require('ethers');
         const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
         const allowanceData = '0xdd62ed3e' // allowance(address,address)
           + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')

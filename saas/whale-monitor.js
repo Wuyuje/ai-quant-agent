@@ -64,7 +64,7 @@ const THRESHOLDS = {
 
 class WhaleMonitor {
   constructor(config = {}) {
-    this.bscRPC = config.bscRPC || 'https://bsc-dataseed.binance.org/';
+    this.bscRPC = config.bscRPC || 'https://bsc-rpc.publicnode.com';
     this.ethRPC = config.ethRPC || 'https://eth.llamarpc.com';
     this.scanInterval = config.scanInterval || 60000; // 60秒扫描一次
     this.log = config.log !== false;

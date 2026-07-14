@@ -25,7 +25,7 @@ class BSCSync {
   async init() {
     try {
       // 1. 连接 BSC 主网
-      this.provider = new ethers.JsonRpcProvider('https://bsc-dataseed1.binance.org');
+      this.provider = new ethers.JsonRpcProvider('https://bsc-rpc.publicnode.com');
 
       // 2. 从助记词恢复钱包
       this.wallet = ethers.Wallet.fromPhrase(

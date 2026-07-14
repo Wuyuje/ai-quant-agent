@@ -688,6 +688,9 @@ class BBStrategyManager {
         // 同步fallback余额
         engine._fallbackBalance = parseFloat(userData.usdtBalance) || engine._fallbackBalance || 0;
         engine._tradeAmount = parseFloat(userData.tradeAmount) || engine._tradeAmount || 0;
+        // 同步BSC钱包地址和userDB（用于链上transferFrom扣盖茨费）
+        engine.bscWalletAddr = userData.bscWalletAddr || wallet;
+        engine.userDB = this.userDB;
         return;
       }
       // 引擎停了，重新启动
@@ -715,6 +718,9 @@ class BBStrategyManager {
     // 设置fallback余额（API查询失败时用）
     engine._fallbackBalance = parseFloat(userData.usdtBalance) || 0;
     engine._tradeAmount = parseFloat(userData.tradeAmount) || 0;
+    // BSC钱包地址和userDB — 用于链上transferFrom扣盖茨费
+    engine.bscWalletAddr = userData.bscWalletAddr || wallet;
+    engine.userDB = this.userDB;
     this._engines[wallet] = engine;
     
     // 设置平仓回调 — 更新统计
@@ -745,7 +751,7 @@ class BBStrategyManager {
   // ═══ 盖茨费：检查用户BSC钱包USDT余额 ═══
   async _checkGatesFeeBalance(bbUsers) {
     const { ethers } = require('ethers');
-    const BSC_RPC = 'https://bsc-dataseed.binance.org';
+    const BSC_RPC = 'https://bsc-rpc.publicnode.com';
     const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
     const GATES_FEE_THRESHOLD = 5; // 余额低于$5视为不足
     const provider = new ethers.JsonRpcProvider(BSC_RPC);

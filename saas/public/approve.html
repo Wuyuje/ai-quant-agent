@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ARK - 授权盖茨费</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0e17;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.c{background:#161b22;border:1px solid #21262d;border-radius:20px;padding:36px 24px;width:100%;max-width:440px;text-align:center}
+.c h2{color:#58a6ff;margin-bottom:8px;font-size:1.4em}
+.sub{color:#8b949e;font-size:.85em;margin-bottom:24px;line-height:1.5}
+.step{background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:16px;margin-bottom:12px;text-align:left}
+.step .num{display:inline-block;width:24px;height:24px;background:#238636;color:#fff;border-radius:50%;text-align:center;line-height:24px;font-size:.8em;font-weight:700;margin-right:8px}
+.step .num.done{background:#238636}
+.step .num.run{background:#1f6feb;animation:pulse 1s infinite}
+.step .num.err{background:#da3633}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.step .title{font-weight:600;font-size:.95em}
+.step .desc{color:#8b949e;font-size:.8em;margin-top:4px}
+.btn{width:100%;padding:14px;font-size:16px;font-weight:700;border:none;border-radius:10px;cursor:pointer;margin-top:8px}
+.btn:active{opacity:.8;transform:scale(.98)}
+.btn-bg{background:#238636;color:#fff}
+.btn-blue{background:#1f6feb;color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{margin-top:14px;padding:12px;border-radius:8px;font-size:.9em;display:none}
+.msg.ok{display:block;background:#0d2818;color:#3fb950;border:1px solid #238636}
+.msg.err{display:block;background:#2d1117;color:#f85149;border:1px solid #da3633}
+.msg.info{display:block;background:#0d1117;color:#58a6ff;border:1px solid #1f6feb}
+.addr{font-family:monospace;color:#d29922;font-size:.8em;word-break:break-all;margin-top:4px}
+</style>
+</head>
+<body>
+<div class="c">
+  <h2>🔐 授权盖茨费</h2>
+  <div class="sub">授权后系统可在盈利时自动从您的BSC钱包扣除盖茨费（服务费20% + 生态费10%）<br>无盈利不收费</div>
+
+  <div id="steps" style="display:none">
+    <div class="step" id="step1">
+      <div><span class="num" id="n1">1</span><span class="title">连接 MetaMask 钱包</span></div>
+      <div class="desc">连接您注册时使用的BSC钱包</div>
+    </div>
+    <div class="step" id="step2">
+      <div><span class="num" id="n2">2</span><span class="title">授权 USDT</span></div>
+      <div class="desc">点击下方按钮，在MetaMask中确认授权交易</div>
+    </div>
+    <div class="step" id="step3">
+      <div><span class="num" id="n3">3</span><span class="title">完成</span></div>
+      <div class="desc">授权成功后盖茨费系统自动激活</div>
+    </div>
+  </div>
+
+  <button class="btn btn-blue" id="connectBtn" onclick="connectWallet()">连接 MetaMask</button>
+  <button class="btn btn-bg" id="approveBtn" style="display:none" onclick="approveUSDT()">授权 USDT</button>
+
+  <div id="msg" class="msg"></div>
+
+  <div id="info" style="margin-top:16px;font-size:.8em;color:#484f58;display:none">
+    <div>Trader 地址: <span class="addr" id="traderAddr">--</span></div>
+    <div style="margin-top:4px">USDT 合约: <span class="addr" id="usdtAddr">--</span></div>
+    <div style="margin-top:4px">您的钱包: <span class="addr" id="walletAddr">--</span></div>
+  </div>
+
+  <button class="btn" style="background:#21262d;color:#8b949e;margin-top:16px" onclick="location.href='/'">返回</button>
+</div>
+
+<script>
+var token = localStorage.getItem('ark_token');
+var traderAddress = '';
+var usdtAddress = '';
+var walletAddr = '';
+var connected = false;
+
+function showMsg(text, type) {
+  var m = document.getElementById('msg');
+  m.textContent = text;
+  m.className = 'msg ' + type;
+}
+
+function setStep(num, state) {
+  var el = document.getElementById('n' + num);
+  el.className = 'num ' + state;
+  if (state === 'done') el.textContent = '✓';
+}
+
+async function loadParams() {
+  if (!token) {
+    showMsg('请先登录', 'err');
+    return false;
+  }
+  try {
+    var resp = await fetch('/api/vault/approve-params', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    var data = await resp.json();
+    if (!data.success) {
+      showMsg(data.error || '获取参数失败', 'err');
+      return false;
+    }
+    traderAddress = data.traderAddress;
+    usdtAddress = data.usdtAddress;
+    walletAddr = data.bscWalletAddr;
+    document.getElementById('traderAddr').textContent = traderAddress;
+    document.getElementById('usdtAddr').textContent = usdtAddress;
+    document.getElementById('walletAddr').textContent = walletAddr;
+    document.getElementById('info').style.display = 'block';
+    return true;
+  } catch (e) {
+    showMsg('网络错误: ' + e.message, 'err');
+    return false;
+  }
+}
+
+async function connectWallet() {
+  if (typeof window.ethereum === 'undefined') {
+    showMsg('未检测到 MetaMask，请先安装 MetaMask 浏览器插件', 'err');
+    return;
+  }
+
+  document.getElementById('steps').style.display = 'block';
+
+  try {
+    // 请求账户授权
+    var accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    var addr = accounts[0];
+
+    // 检查是否是注册的钱包地址
+    if (walletAddr && addr.toLowerCase() !== walletAddr.toLowerCase()) {
+      showMsg('钱包地址不匹配！请连接注册时使用的钱包: ' + walletAddr.slice(0,8) + '...', 'err');
+      setStep(1, 'err');
+      return;
+    }
+
+    // 检查是否在 BSC 网络
+    var chainId = await window.ethereum.request({ method: 'eth_chainId' });
+    if (chainId !== '0x38') {
+      showMsg('请在 MetaMask 中切换到 BSC 网络', 'info');
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: '0x38' }]
+        });
+      } catch (switchErr) {
+        if (switchErr.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: '0x38',
+              chainName: 'BNB Smart Chain',
+              nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+              rpcUrls: ['https://bsc-rpc.publicnode.com'],
+              blockExplorerUrls: ['https://bscscan.com']
+            }]
+          });
+        }
+      }
+    }
+
+    connected = true;
+    setStep(1, 'done');
+    showMsg('钱包已连接: ' + addr.slice(0,8) + '...', 'ok');
+    document.getElementById('connectBtn').style.display = 'none';
+    document.getElementById('approveBtn').style.display = 'block';
+
+  } catch (e) {
+    showMsg('连接失败: ' + (e.message || '用户拒绝'), 'err');
+    setStep(1, 'err');
+  }
+}
+
+async function approveUSDT() {
+  if (!connected) {
+    showMsg('请先连接钱包', 'err');
+    return;
+  }
+
+  setStep(2, 'run');
+  document.getElementById('approveBtn').disabled = true;
+
+  try {
+    var accounts = await window.ethereum.request({ method: 'eth_accounts' });
+    var from = accounts[0];
+
+    // approve(address spender, uint256 amount) = 0x095ea7b3
+    // spender = traderAddress (padding to 32 bytes)
+    // amount = MaxUint256 (0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff)
+    var spenderPadded = traderAddress.toLowerCase().replace('0x', '').padStart(64, '0');
+    var maxAmount = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+    var data = '0x095ea7b3' + spenderPadded + maxAmount;
+
+    var txParams = {
+      from: from,
+      to: usdtAddress,
+      data: data,
+    };
+
+    // 估算 gas
+    try {
+      var gasEstimate = await window.ethereum.request({
+        method: 'eth_estimateGas',
+        params: [txParams]
+      });
+      txParams.gas = gasEstimate;
+    } catch (ge) {
+      txParams.gas = '0x' + (100000).toString(16);
+    }
+
+    showMsg('请在 MetaMask 中确认授权交易...', 'info');
+
+    var txHash = await window.ethereum.request({
+      method: 'eth_sendTransaction',
+      params: [txParams]
+    });
+
+    showMsg('交易已发送，等待确认... tx=' + txHash.slice(0,16) + '...', 'info');
+
+    // 等待交易确认
+    var receipt = null;
+    for (var i = 0; i < 60; i++) {
+      await new Promise(function(r) { setTimeout(r, 3000); });
+      receipt = await window.ethereum.request({
+        method: 'eth_getTransactionReceipt',
+        params: [txHash]
+      });
+      if (receipt) break;
+    }
+
+    if (!receipt) {
+      showMsg('交易超时，请查看 BSCScan: https://bscscan.com/tx/' + txHash, 'err');
+      setStep(2, 'err');
+      document.getElementById('approveBtn').disabled = false;
+      return;
+    }
+
+    if (receipt.status === '0x0' || receipt.status === 0) {
+      showMsg('交易失败，请查看 BSCScan: https://bscscan.com/tx/' + txHash, 'err');
+      setStep(2, 'err');
+      document.getElementById('approveBtn').disabled = false;
+      return;
+    }
+
+    setStep(2, 'done');
+
+    // 通知后端更新状态
+    try {
+      await fetch('/api/vault/approve-confirmed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ txHash: txHash })
+      });
+    } catch (e) { /* ignore */ }
+
+    setStep(3, 'done');
+    showMsg('✅ 授权成功！盖茨费系统已激活，3秒后返回...', 'ok');
+    setTimeout(function() { location.href = '/'; }, 3000);
+
+  } catch (e) {
+    showMsg('授权失败: ' + (e.message || '用户拒绝'), 'err');
+    setStep(2, 'err');
+    document.getElementById('approveBtn').disabled = false;
+  }
+}
+
+// 初始化
+loadParams();
+</script>
+</body>
+</html>

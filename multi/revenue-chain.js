@@ -25,7 +25,7 @@ const REVENUE_ABI = [
 
 class RevenueChainClient {
   constructor(config = {}) {
-    this.rpcUrl = config.rpcUrl || 'https://bsc-dataseed.binance.org';
+    this.rpcUrl = config.rpcUrl || 'https://bsc-rpc.publicnode.com';
     this.contractAddress = config.contractAddress || '';
     this.chainId = 56; // BSC Mainnet
     

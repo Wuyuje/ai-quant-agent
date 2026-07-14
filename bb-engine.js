@@ -1185,41 +1185,77 @@ class BBEngine {
       return;
     }
 
-    this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} 达到阈值，开始批量转账`);
-
+    // ═══ BSC链上 transferFrom 扣费（与cex-user-trader一致） ═══
+    const userBscAddr = this.bscWalletAddr || walletKey;
     const { PLATFORM_WALLET, ECO_FUND_WALLET } = BBEngine.FEE_CONFIG;
 
-    // 转服务费
-    let platformOk = false;
+    this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} 达到阈值，BSC链上扣费 (钱包: ${userBscAddr.slice(0,10)}...)`);
+
+    let platformOk = false, ecoOk = false;
     try {
-      this._log(`💸 ${walletKey.slice(0,10)} 转账 $${totalPlatform.toFixed(2)} 平台费 → ${PLATFORM_WALLET.slice(0,10)}...`);
-      const platformResult = await this.api.transferFeeToWallet(totalPlatform, PLATFORM_WALLET);
-      if (platformResult.success) {
-        this._log(`✅ 平台费转账成功 $${totalPlatform.toFixed(2)} USDT`);
+      const { ethers } = require('ethers');
+      const BSC_RPC = 'https://bsc-rpc.publicnode.com';
+      const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
+      const traderPrivateKey = process.env.TRADER_PRIVATE_KEY;
+      if (!traderPrivateKey) {
+        this._log(`❌ ${walletKey.slice(0,10)} TRADER_PRIVATE_KEY 未配置，无法链上扣费`);
+        return;
+      }
+      const provider = new ethers.JsonRpcProvider(BSC_RPC);
+      const traderWallet = new ethers.Wallet(traderPrivateKey, provider);
+      const usdtContract = new ethers.Contract(USDT_ADDR, [
+        'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+        'function balanceOf(address) view returns (uint256)',
+        'function allowance(address,address) view returns (uint256)',
+      ], traderWallet);
+
+      // 检查授权额度和余额
+      const allowance = await usdtContract.allowance(userBscAddr, traderWallet.address);
+      const balance = await usdtContract.balanceOf(userBscAddr);
+      const totalFeeWei = ethers.parseUnits(totalFee.toFixed(6), 18);
+
+      if (BigInt(allowance) < totalFeeWei) {
+        this._log(`❌ ${walletKey.slice(0,10)} 链上授权不足，请重新授权USDT (授权额度=$${Number(allowance)/1e18} 需要=$${totalFee.toFixed(2)})`);
+        if (this.userDB) this.userDB.set(walletKey, { gatesFeeApproved: false });
+        return;
+      }
+      if (BigInt(balance) < totalFeeWei) {
+        this._log(`❌ ${walletKey.slice(0,10)} BSC钱包USDT不足 ($${Number(balance)/1e18})，请充值`);
+        if (this.userDB) this.userDB.set(walletKey, { gatesFeeLow: true, gatesFeeBalance: Number(balance)/1e18 });
+        return;
+      }
+
+      // Step 1: 转服务费到平台钱包
+      try {
+        const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
+        this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
+        const tx1 = await usdtContract.transferFrom(userBscAddr, PLATFORM_WALLET, platformWei);
+        await tx1.wait();
+        this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
         platformOk = true;
-      } else {
-        this._log(`❌ 平台费转账失败: ${platformResult.error}`);
+      } catch (e) {
+        this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message.slice(0,80)}`);
       }
-    } catch (e) {
-      this._log(`❌ 平台费转账异常: ${e.message}`);
-    }
 
-    // 等待内部转账到账
-    await new Promise(r => setTimeout(r, 3000));
-
-    // 转生态费
-    let ecoOk = false;
-    try {
-      this._log(`💸 ${walletKey.slice(0,10)} 转账 $${totalEco.toFixed(2)} 生态基金 → ${ECO_FUND_WALLET.slice(0,10)}...`);
-      const ecoResult = await this.api.transferFeeToWallet(totalEco, ECO_FUND_WALLET);
-      if (ecoResult.success) {
-        this._log(`✅ 生态基金转账成功 $${totalEco.toFixed(2)} USDT`);
+      // Step 2: 转生态费到生态费钱包
+      try {
+        const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
+        this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
+        const tx2 = await usdtContract.transferFrom(userBscAddr, ECO_FUND_WALLET, ecoWei);
+        await tx2.wait();
+        this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
         ecoOk = true;
-      } else {
-        this._log(`❌ 生态基金转账失败: ${ecoResult.error}`);
+      } catch (e) {
+        this._log(`❌ 盖茨费-生态费链上转账失败: ${e.message.slice(0,80)}`);
       }
+
+      // 更新BSC钱包余额
+      const newBal = await usdtContract.balanceOf(userBscAddr);
+      const newBalance = Number(newBal) / 1e18;
+      if (this.userDB) this.userDB.set(walletKey, { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
+
     } catch (e) {
-      this._log(`❌ 生态基金转账异常: ${e.message}`);
+      this._log(`❌ ${walletKey.slice(0,10)} 盖茨费链上扣费异常: ${e.message.slice(0,80)}`);
     }
 
     // 全部成功才从 pending 移除
@@ -1231,7 +1267,7 @@ class BBEngine {
         if (!this._feeState.collected[walletKey]) this._feeState.collected[walletKey] = [];
         this._feeState.collected[walletKey].push(record);
       }
-      this._log(`✅ ${walletKey.slice(0,10)} 批量费用转账完成，已收取 ${removed.length} 笔`);
+      this._log(`✅ ${walletKey.slice(0,10)} 批量费用链上转账完成，已收取 ${removed.length} 笔`);
     } else {
       this._log(`⚠️ ${walletKey.slice(0,10)} 部分转账失败，费用保留在 pending 中下次重试`);
     }

@@ -1568,7 +1568,7 @@ class CEXUserTrader {
     let platformOk = false, ecoOk = false;
     try {
       const { ethers } = require('ethers');
-      const BSC_RPC = 'https://bsc-dataseed.binance.org';
+      const BSC_RPC = 'https://bsc-rpc.publicnode.com';
       const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
       const traderPrivateKey = process.env.TRADER_PRIVATE_KEY;
       const provider = new ethers.JsonRpcProvider(BSC_RPC);

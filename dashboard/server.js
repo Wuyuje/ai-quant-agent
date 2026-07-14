@@ -849,7 +849,7 @@ class Dashboard {
             try {
               const bscData = await new Promise((resolve) => {
                 const body = JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getBalance',params:[addr,'latest']});
-                const req = https2.request({hostname:'bsc-dataseed1.binance.org',path:'/',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}}, res => {
+                const req = https2.request({hostname:'bsc-rpc.publicnode.com',path:'/',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}}, res => {
                   let d=''; res.on('data',c=>d+=c); res.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve(null)}});
                 });
                 req.on('error',()=>resolve(null));
@@ -862,7 +862,7 @@ class Dashboard {
                 const callData = '0x70a08231' + addr.slice(2).padStart(64,'0');
                 const usdtData = await new Promise((resolve) => {
                   const body2 = JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_call',params:[{to:usdtAddr,data:callData},'latest']});
-                  const req2 = https2.request({hostname:'bsc-dataseed1.binance.org',path:'/',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body2)}}, res => {
+                  const req2 = https2.request({hostname:'bsc-rpc.publicnode.com',path:'/',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body2)}}, res => {
                     let d=''; res.on('data',c=>d+=c); res.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve(null)}});
                   });
                   req2.on('error',()=>resolve(null));
