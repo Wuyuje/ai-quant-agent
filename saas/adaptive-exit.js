@@ -28,9 +28,10 @@ class AdaptiveExitManager {
     // 旧参数(3/6/2/0.5%): 盈亏比=0.80 → 55%胜率仍亏损 ❌
     // 新参数(2/8/2.5/1.5%): 盈亏比=1.24 → 50%胜率也盈利 ✅
     // 核心: 止损收紧(3→2 ATR), 止盈放大(6→8 ATR), 锁利回撤放大(0.5→1.5%)
-    this.slAtrMult = config.slAtrMult || 2.0;    // 止损 = 2 ATR (收紧, 减少单笔亏损)
-    this.tpAtrMult = config.tpAtrMult || 8.0;    // 止盈目标 = 8 ATR (放大, 让利润奔跑)
-    this.trailingAtrMult = config.trailingAtrMult || 2.5;  // 移动止损回撤 = 2.5 ATR (给回调空间)
+    // v123: 止损3 ATR(放宽), 止盈5 ATR(降低), 回撤2 ATR
+    this.slAtrMult = config.slAtrMult || 3.0;
+    this.tpAtrMult = config.tpAtrMult || 5.0;
+    this.trailingAtrMult = config.trailingAtrMult || 2.0;
 
     // ═══ 交易成本 ═══
     this.FEE_RATE = 0.0004;
@@ -39,9 +40,9 @@ class AdaptiveExitManager {
     this.SLIPPAGE_PCT = 0.0005;
     this.PLATFORM_FEE_RATE = 0.20;
 
-    // ═══ 时间衰减 ═══
-    this.timeDecayStartMin = 30;
-    this.timeDecayRate = 0.1;
+    // v123: 时间衰减从30min→120min, 衰减率从10%→3%
+    this.timeDecayStartMin = 120;
+    this.timeDecayRate = 0.03;
 
     // ═══ 连亏保护 ═══
     this.consecutiveLosses = 0;
@@ -107,11 +108,11 @@ class AdaptiveExitManager {
 
     if (atrPct > 3.0) {
       // v122.4: 高波动放宽 — 止损2+1=3 ATR, 止盈8+2=10 ATR
-      slMult = 3.0; tpMult = 10.0;
-      reasons.push('高波动: SL=4ATR TP=8ATR');
+      slMult = 4.0; tpMult = 7.0;
+      reasons.push('高波动: SL=4ATR TP=7ATR');
     } else if (atrPct < 0.5) {
       // v122.4: 低波动收紧 — 止损2-0.5=1.5 ATR, 止盈8-2=6 ATR
-      slMult = 1.5; tpMult = 6.0;
+      slMult = 2.0; tpMult = 4.0;
       reasons.push('低波动: SL=2ATR TP=4ATR');
     } else {
       reasons.push(`标准: SL=${slMult}ATR TP=${tpMult}ATR`);
@@ -259,11 +260,11 @@ class AdaptiveExitManager {
     const netSlPct = this.toNetPnl(exitCalc.slPct, leverage, holdHours);
     const dynamicHardStop = Math.max(-5.0, netSlPct * 0.8); // v122: -3.5→-5 放宽给趋势空间
     // v122.5: 硬止损也加0.10%缓冲 — 大额止损更需要确认, 避免插针误触发
-    if (netPnlPct <= dynamicHardStop - 0.10) {
+    if (netPnlPct <= dynamicHardStop - 0.3) {
       const isHard = Math.abs(dynamicHardStop - (-5.0)) < 0.01;
       return {
         shouldClose: true,
-        reason: `🔴 ${isHard ? '硬止损' : 'ATR止损'} 净=${netPnlPct.toFixed(2)}% ≤ ${(dynamicHardStop - 0.10).toFixed(2)}%`,
+        reason: `🔴 ${isHard ? '硬止损' : 'ATR止损'} 净=${netPnlPct.toFixed(2)}% ≤ ${(dynamicHardStop - 0.3).toFixed(2)}%`,
         type: 'STOP_LOSS'
       };
     }
@@ -272,10 +273,10 @@ class AdaptiveExitManager {
     // v122.5: 加入0.15%缓冲区 — 实盘数据显示37%的ATR止损是噪音/插针(差距<0.10%)
     // 止损线需要被「明确突破」才触发, 而不是触碰就触发
     // 缓冲区 = 0.15% (约1-2个跳动点), 只影响止损延迟<0.15%, 不影响止盈
-    if (netSlPct < 0 && netPnlPct <= netSlPct - 0.15) {
+    if (netSlPct < 0 && netPnlPct <= netSlPct - 0.5) {
       return {
         shouldClose: true,
-        reason: `🔴 ATR止损 净=${netPnlPct.toFixed(2)}% ≤ ${(netSlPct - 0.15).toFixed(2)}% [${exitCalc.reasons?.slice(0,2).join(',')}]`,
+        reason: `🔴 ATR止损 净=${netPnlPct.toFixed(2)}% ≤ ${(netSlPct - 0.5).toFixed(2)}% [${exitCalc.reasons?.slice(0,2).join(',')}]`,
         type: 'STOP_LOSS'
       };
     }
@@ -321,7 +322,7 @@ class AdaptiveExitManager {
     // v122.4: 回撤阈值从0.5%提高到1.5% — 让利润奔跑, 不被微小回调洗出
     if (exitCalc.trailingActive && takeHome > MIN_TAKE_HOME) {
       const drawdown = peakPnlPct - grossPnlPct;
-      if (drawdown > 1.5) {
+      if (drawdown > 0.8) {
         return {
           shouldClose: true,
           reason: `🟢 锁利止盈 到手=${takeHome.toFixed(2)}% (峰值${peakTakeHome.toFixed(2)}% 回撤${drawdown.toFixed(2)}%)`,

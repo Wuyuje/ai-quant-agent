@@ -92,9 +92,9 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
 </div>
 <div class="tabs">
   <div class="tab active" onclick="switchTab('overview',this)">总览</div>
-  <div class="tab" onclick="switchTab('positions',this)">持仓详情</div>
+  <div class="tab" onclick="switchTab('positions',this)">A策略持仓</div>
   <div class="tab" onclick="switchTab('neural',this)">神经网络</div>
-  <div class="tab" onclick="switchTab('signals',this)">策略信号</div>
+  <div class="tab" onclick="switchTab('signals',this)">A策略信号</div>
   <div class="tab" onclick="switchTab('dex',this)">DEX 报价</div>
   <div class="tab" onclick="switchTab('twap',this)">拆单引擎</div>
   <div class="tab" onclick="switchTab('market',this)">全市场</div>
@@ -108,6 +108,7 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
   <div class="tab" onclick="switchTab('evolution',this)">进化中心</div>
   <div class="tab" onclick="switchTab('agent',this)">MasterD Agent</div>
   <div class="tab" onclick="switchTab('news',this)">新闻中心</div>
+  <div class="tab" onclick="switchTab('bbstrategy',this)" style="color:#00d4ff;font-weight:bold">B策略</div>
 </div>
 
 <div id="tab-overview" class="panel active">
@@ -446,17 +447,15 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
   <div class="card" style="margin-bottom:14px">
     <h3>🧬 MasterD Agent 分身 — 交互指令台</h3>
     <div style="display:flex;gap:8px;margin:10px 0">
-      <input type="text" id="agentInput" class="arkie-input" style="flex:1;background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:8px 12px;border-radius:8px;font-size:13px" placeholder="输入指令... 例如：深度分析BTCUSDT / 写个RSI反转策略 / 新闻 / Agent状态" onkeydown="if(event.key==='Enter')agentSendCmd()">
+      <input type="text" id="agentInput" class="arkie-input" style="flex:1;background:#0d1117;border:1px solid #30363d;color:#e6edf3;padding:8px 12px;border-radius:8px;font-size:13px" placeholder="输入指令... 例如：深度分析BTCUSDT / 新闻 / Agent状态" onkeydown="if(event.key==='Enter')agentSendCmd()">
       <button onclick="agentSendCmd()" style="padding:8px 16px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">执行</button>
     </div>
     <div id="agentResponse" style="background:#0d1117;border:1px solid #161b22;border-radius:8px;padding:12px;font-size:.82em;min-height:80px;max-height:300px;overflow-y:auto;white-space:pre-wrap;color:#e6edf3">等待指令...</div>
     <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
       <div class="arkie-quick-btn" onclick="agentQuick('深度分析 BTCUSDT')">🧬 深度分析</div>
       <div class="arkie-quick-btn" onclick="agentQuick('Agent状态')">📊 状态</div>
-      <div class="arkie-quick-btn" onclick="agentQuick('写个RSI反转策略')">📝 生成策略</div>
       <div class="arkie-quick-btn" onclick="agentQuick('新闻')">📰 新闻</div>
       <div class="arkie-quick-btn" onclick="agentQuick('反思')">🤔 反思</div>
-      <div class="arkie-quick-btn" onclick="agentQuick('模型')">🤖 模型</div>
       <div class="arkie-quick-btn" onclick="agentQuick('余额')">💰 余额</div>
       <div class="arkie-quick-btn" onclick="agentQuick('持仓')">📊 持仓</div>
     </div>
@@ -468,14 +467,13 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
     <div class="card"><h3>新闻增强</h3><div id="agentNewsEnhanced" class="val yellow">--</div><div class="sub" id="agentNewsBlocked">过滤 --</div></div>
   </div>
   <div class="grid g4" style="margin-bottom:14px">
-    <div class="card"><h3>代码生成</h3><div id="agentCodeGen" class="val purple">--</div><div class="sub">策略/修复</div></div>
     <div class="card"><h3>自我反思</h3><div id="agentReflections" class="val blue">--</div><div class="sub" id="agentRiskTolerance">风险偏好 --</div></div>
     <div class="card"><h3>近期胜率</h3><div id="agentWinRate" class="val green">--</div><div class="sub" id="agentAvgPnl">平均 --</div></div>
     <div class="card"><h3>置信度门槛</h3><div id="agentConfThreshold" class="val yellow">--</div><div class="sub">自适应调整</div></div>
   </div>
   <div class="grid g2" style="margin-bottom:14px">
     <div class="card">
-      <h3>外部模型状态</h3>
+      <h3>智能决策统计</h3>
       <div id="agentModels" style="font-size:.82em;line-height:2">loading...</div>
     </div>
     <div class="card">
@@ -494,10 +492,6 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
     </div>
   </div>
   <div class="grid g2">
-    <div class="card">
-      <h3>代码生成历史</h3>
-      <div id="agentCodeGenHistory" style="max-height:250px;overflow-y:auto;font-size:.78em">loading...</div>
-    </div>
     <div class="card">
       <h3>策略调整历史</h3>
       <div id="agentAdjustments" style="max-height:250px;overflow-y:auto;font-size:.78em">loading...</div>
@@ -531,6 +525,151 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
     <div class="card">
       <h3>新闻分类统计</h3>
       <div id="newsCategories" style="max-height:250px;overflow-y:auto;font-size:.82em">loading...</div>
+    </div>
+  </div>
+</div>
+
+<div id="tab-bbstrategy" class="panel">
+  <!-- 策略切换 -->
+  <div class="card" style="border:1px solid #2a3a5c;margin-bottom:14px;padding:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <h3 style="color:#00d4ff;margin:0 0 4px 0">📌 当前运行策略</h3>
+        <div id="activeStrategyName" style="font-size:1.4em;font-weight:bold;color:#00d4ff">加载中...</div>
+        <div id="activeStrategySub" style="font-size:.82em;color:#8b949e;margin-top:2px">管理员切换策略后，管理员和所有用户统一使用该策略</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="btnStratA" onclick="switchStrategy('balanced')" style="padding:12px 24px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:1em;font-weight:600;transition:all .2s">A策略</button>
+        <button id="btnStratB" onclick="switchStrategy('bb')" style="padding:12px 24px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:1em;font-weight:600;transition:all .2s">B策略</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:14px">
+    <div class="card"><h3>B策略状态</h3><div id="bbStatus" class="val blue">--</div><div class="sub" id="bbStatusSub">--</div></div>
+    <div class="card"><h3>B策略用户</h3><div id="bbUserCount" class="val green">--</div><div class="sub">活跃用户</div></div>
+    <div class="card"><h3>B策略总持仓</h3><div id="bbTotalPos" class="val purple">--</div><div class="sub" id="bbTotalPosSub">--</div></div>
+    <div class="card"><h3>B策略总盈亏</h3><div id="bbTotalPnl" class="val green">--</div><div class="sub" id="bbTotalPnlSub">--</div></div>
+  </div>
+
+  <div class="grid g2" style="margin-bottom:14px">
+    <div class="card" style="border:1px solid #2a3a5c">
+      <h3 style="color:#58a6ff">👤 管理员资金</h3>
+      <div class="grid g4" style="margin-top:8px">
+        <div><span style="color:#8b949e;font-size:.85em">账户余额</span><br><span id="bbAdminBalance" class="val green" style="font-size:1.6em">$--</span></div>
+        <div><span style="color:#8b949e;font-size:.85em">持仓保证金</span><br><span id="bbAdminMargin" class="val orange" style="font-size:1.6em">$--</span></div>
+        <div><span style="color:#8b949e;font-size:.85em">浮动盈亏</span><br><span id="bbAdminFloatPnl" class="val" style="font-size:1.6em">$--</span></div>
+        <div><span style="color:#8b949e;font-size:.85em">已实现盈亏</span><br><span id="bbAdminRealizedPnl" class="val" style="font-size:1.6em">$--</span></div>
+      </div>
+      <div style="margin-top:8px;font-size:.82em;color:#8b949e">
+        <span>钱包: <span id="bbAdminWallet" style="color:#58a6ff">--</span></span>
+        <span style="margin-left:12px">持仓: <span id="bbAdminPosCount" style="color:#c9d1d9">0</span>/<span id="bbAdminMaxPos" style="color:#c9d1d9">5</span></span>
+        <span style="margin-left:12px">可用: <span id="bbAdminAvailable" class="val green">$--</span></span>
+      </div>
+    </div>
+
+    <div class="card" style="border:1px solid #2a3a5c">
+      <h3 style="color:#3fb950">👥 用户资金</h3>
+      <div class="grid g4" style="margin-top:8px">
+        <div><span style="color:#8b949e;font-size:.85em">用户总数</span><br><span id="bbUserTotal" class="val blue" style="font-size:1.6em">--</span></div>
+        <div><span style="color:#8b949e;font-size:.85em">用户总余额</span><br><span id="bbUserTotalBalance" class="val green" style="font-size:1.6em">$--</span></div>
+        <div><span style="color:#8b949e;font-size:.85em">用户总保证金</span><br><span id="bbUserTotalMargin" class="val orange" style="font-size:1.6em">$--</span></div>
+        <div><span style="color:#8b949e;font-size:.85em">用户浮动盈亏</span><br><span id="bbUserTotalFloatPnl" class="val" style="font-size:1.6em">$--</span></div>
+      </div>
+      <div style="margin-top:8px;font-size:.82em;color:#8b949e">
+        <span>用户持仓: <span id="bbUserPosCount" style="color:#c9d1d9">0</span></span>
+        <span style="margin-left:12px">已实现盈亏: <span id="bbUserRealizedPnl" class="val">$--</span></span>
+        <span style="margin-left:12px">待收服务费: <span id="bbUserPendingFee" class="val orange">$0.00</span></span>
+        <span style="margin-left:12px">交易中: <span id="bbActiveTradingUsers" style="color:#3fb950">0</span></span>
+        <span style="margin-left:12px">盖茨费暂停: <span id="bbPausedUsers" style="color:#f85149">0</span></span>
+      </div>
+      <div id="bbUserList" style="margin-top:10px;font-size:.82em;max-height:120px;overflow-y:auto">
+        <span style="color:#484f58">暂无B策略用户</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:14px">
+    <h3 style="color:#00d4ff">📊 管理员 B策略持仓 (A策略持仓在「持仓详情」tab)</h3>
+    <div style="overflow-x:auto">
+      <table id="bbAdminTable" style="width:100%;border-collapse:collapse;font-size:.85em">
+        <thead><tr style="border-bottom:2px solid #2a3a5c">
+          <th style="padding:8px;text-align:left">币种</th>
+          <th style="padding:8px">方向</th>
+          <th style="padding:8px">数量</th>
+          <th style="padding:8px">开仓价</th>
+          <th style="padding:8px">当前价</th>
+          <th style="padding:8px">杠杆</th>
+          <th style="padding:8px">浮盈%</th>
+          <th style="padding:8px">浮盈$</th>
+          <th style="padding:8px">补仓</th>
+          <th style="padding:8px">模式</th>
+        </tr></thead>
+        <tbody id="bbAdminRows"><tr><td colspan="10" style="padding:20px;text-align:center;color:#666">加载中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="color:#00d4ff">👥 所有用户 B策略持仓</h3>
+    <div style="overflow-x:auto">
+      <table id="bbUsersTable" style="width:100%;border-collapse:collapse;font-size:.85em">
+        <thead><tr style="border-bottom:2px solid #2a3a5c">
+          <th style="padding:8px;text-align:left">用户</th>
+          <th style="padding:8px">币种</th>
+          <th style="padding:8px">方向</th>
+          <th style="padding:8px">数量</th>
+          <th style="padding:8px">开仓价</th>
+          <th style="padding:8px">当前价</th>
+          <th style="padding:8px">浮盈%</th>
+          <th style="padding:8px">浮盈$</th>
+          <th style="padding:8px">补仓</th>
+          <th style="padding:8px">模式</th>
+        </tr></thead>
+        <tbody id="bbUsersRows"><tr><td colspan="10" style="padding:20px;text-align:center;color:#666">加载中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h3 style="color:#00d4ff">📋 B策略平仓记录（按用户）</h3>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+      <label style="color:#8b949e;font-size:.9em">选择用户：</label>
+      <select id="bbUserSelect" onchange="loadBBUserTrades()" style="background:#161b22;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:6px 12px;font-size:.9em;min-width:220px;cursor:pointer">
+        <option value="">加载中...</option>
+      </select>
+      <div id="bbUserStats" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.82em">
+        <thead><tr style="border-bottom:2px solid #2a3a5c;position:sticky;top:0;background:#0d1117">
+          <th style="padding:6px;text-align:left">交易对</th>
+          <th style="padding:6px">方向</th>
+          <th style="padding:6px">盈亏$</th>
+          <th style="padding:6px">盈亏%</th>
+          <th style="padding:6px">杠杆</th>
+          <th style="padding:6px">补仓</th>
+          <th style="padding:6px">平仓时间</th>
+          <th style="padding:6px">原因</th>
+        </tr></thead>
+        <tbody id="bbTradeHistoryRows"><tr><td colspan="8" style="padding:20px;text-align:center;color:#666">加载中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <h3 style="color:#00d4ff">💰 B策略服务费状态</h3>
+    <div id="bbFeeStatus" style="padding:10px">
+      <div class="grid g4">
+        <div class="card"><h3>累计服务费</h3><div id="bbTotalPlatformFee" class="val green">$0.00</div><div class="sub">20% 平台费</div></div>
+        <div class="card"><h3>累计生态费</h3><div id="bbTotalEcoFund" class="val purple">$0.00</div><div class="sub">10% 生态基金</div></div>
+        <div class="card"><h3>待收取</h3><div id="bbPendingFees" class="val orange">$0.00</div><div class="sub">未达阈值</div></div>
+        <div class="card"><h3>已收取</h3><div id="bbCollectedFees" class="val green">$0.00</div><div class="sub">已转至管理员</div></div>
+      </div>
+      <div id="bbFeeDetail" style="margin-top:10px;font-size:.85em;color:#8b949e">
+        <p>💡 管理员: 0%全免 | 普通用户: 20%服务费 + 10%生态费 = 实得70%（仅盈利时收取）</p>
+        <p>📊 累计费用 ≥ $5 自动从用户Binance合约账户转账到管理员钱包</p>
+      </div>
     </div>
   </div>
 </div>
@@ -706,7 +845,9 @@ async function loadUsers(){
       +'<div><span style="font-size:1.1em;font-weight:700;color:#58a6ff">'+walletShort+'</span>'
       +'<span class="'+runClass+'" style="margin-left:10px;font-size:.8em;padding:2px 8px;border-radius:4px">'+runText+'</span>'
       +'<span style="margin-left:10px;color:#8b949e;font-size:.85em">策略: <strong>'+(u.strategy||'--')+'</strong></span></div>'
-      +'<div style="display:flex;gap:16px;font-size:.85em"><span>交易: <strong>'+(u.totalTrades||0)+'</strong></span><span>胜率: <strong class="'+wrClass+'">'+wr+'</strong></span><span>周期: <strong>#'+(u.cycleCount||0)+'</strong></span></div>'
+      +'<div style="display:flex;gap:16px;font-size:.85em;align-items:center"><span>交易: <strong>'+(u.totalTrades||0)+'</strong></span><span>胜率: <strong class="'+wrClass+'">'+wr+'</strong></span><span>周期: <strong>#'+(u.cycleCount||0)+'</strong></span>'
+      +(u.walletFull&&u.walletFull!=='admin'?'<button onclick="confirmDeleteUser(\''+u.walletFull+'\',\''+walletShort+'\')" style="margin-left:8px;padding:2px 12px;font-size:.78em;border-radius:4px;background:#da3633;color:#fff;border:none;cursor:pointer;font-weight:600;transition:background .2s" onmouseover="this.style.background=\'#f85149\'" onmouseout="this.style.background=\'#da3633\'">注销用户</button>':'')
+      +'</div>'
       +'</div>'
       +'<div class="grid g4" style="margin-bottom:10px">'
       +'<div><div style="color:#8b949e;font-size:.7em;text-transform:uppercase;margin-bottom:4px">钱包余额</div><div style="font-size:1.3em;font-weight:700;color:#58a6ff">$'+(bal.balance||0).toFixed(2)+'</div></div>'
@@ -720,6 +861,59 @@ async function loadUsers(){
       +(cexTrades.length?'<div style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="var e=document.getElementById(\''+uid+'\');e.style.display=e.style.display===\'none\'?\'block\':\'none\'"><span style="color:#8b949e;font-size:.78em;font-weight:600">最近交易 ('+cexTrades.length+'笔)</span><span style="color:#58a6ff;font-size:.72em">展开 ▾</span></div><div id="'+uid+'" style="display:none"><table class="mtable" style="margin-top:6px"><thead><tr><th>时间</th><th>交易对</th><th>方向</th><th>金额</th><th>杠杆</th><th>价格</th></tr></thead><tbody>'+tradeRows+'</tbody></table></div></div>':'')
       +'</div>';
   }).join('');
+}
+
+// ═══ 注销用户功能 ═══
+function confirmDeleteUser(walletFull, walletShort) {
+  // 查找该用户的数据
+  var users = window._usersData || [];
+  var user = users.find(function(u) { return u.walletFull === walletFull; });
+  var posCount = user ? (user.positionCount || 0) : 0;
+  var bal = user ? ((user.balance||{}).balance || 0) : 0;
+  var hasPositions = posCount > 0;
+
+  var msg = '确认注销用户 ' + walletShort + ' ?\n\n';
+  msg += '钱包地址: ' + walletFull + '\n';
+  msg += 'Binance余额: $' + bal.toFixed(2) + '\n';
+  msg += '当前持仓: ' + posCount + ' 个\n';
+  if (hasPositions) {
+    msg += '\n⚠️ 注意: 该用户仍有持仓!\n';
+    msg += '注销后引擎停止监控,持仓需要用户自行在Binance平仓。\n';
+  }
+  msg += '\n注销操作将:\n';
+  msg += '• 停止该用户的交易引擎\n';
+  msg += '• 删除用户账户和所有相关数据\n';
+  msg += '• 清除该用户的登录会话\n';
+  msg += '\n此操作不可撤销,确认注销吗?';
+
+  if (!confirm(msg)) return;
+  deleteUser(walletFull, walletShort);
+}
+async function deleteUser(walletFull, walletShort) {
+  // 显示处理中状态
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = '<div style="background:#161b22;padding:30px 40px;border-radius:8px;text-align:center"><div style="color:#58a6ff;font-size:1.1em;margin-bottom:10px">正在注销用户...</div><div style="color:#8b949e;font-size:.85em">' + walletShort + '</div></div>';
+  document.body.appendChild(overlay);
+
+  try {
+    var resp = await fetch('/api/admin/delete-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: walletFull }),
+    });
+    var data = await resp.json();
+    document.body.removeChild(overlay);
+    if (data.success) {
+      alert('✅ ' + data.message);
+      loadUsers(); // 刷新用户列表
+    } else {
+      alert('❌ 注销失败: ' + (data.error || '未知错误'));
+    }
+  } catch (e) {
+    document.body.removeChild(overlay);
+    alert('❌ 网络错误: ' + e.message);
+  }
 }
 async function loadOverview(){
   const[status,balance,neural,signals,market,trainer,notif]=await Promise.all([
@@ -1092,7 +1286,6 @@ async function loadAgent(){
   document.getElementById('agentLlmConsensus').textContent='共识率 '+((data.stats?.llmConsensus||0)/((data.stats?.llmVotes||1))*100).toFixed(0)+'%';
   document.getElementById('agentNewsEnhanced').textContent=data.stats?.newsEnhanced||0;
   document.getElementById('agentNewsBlocked').textContent='过滤 '+(data.stats?.newsBlocked||0);
-  document.getElementById('agentCodeGen').textContent=(data.stats?.totalCodeGenerated||0)+'/'+(data.stats?.codeChanges||0);
   document.getElementById('agentReflections').textContent=data.stats?.selfReflections||0;
   document.getElementById('agentRiskTolerance').textContent='风险偏好 '+(data.adaptiveParams?.riskTolerance||'--');
   const perf=data.performance||{};
@@ -1101,19 +1294,17 @@ async function loadAgent(){
   document.getElementById('agentAvgPnl').textContent='平均 '+(perf.recentAvgPnl||0).toFixed(2)+'%';
   document.getElementById('agentConfThreshold').textContent=(data.adaptiveParams?.confidenceThreshold||0).toFixed(2);
 
-  // 外部模型状态
+  // 智能决策统计（不暴露模型细节）
   const llm=data.llm||{};
   const models=llm.availableModels||[];
-  let modelHtml='<table class="mtable"><thead><tr><th>模型</th><th>权重</th><th>准确率</th><th>调用</th><th>错误</th></tr></thead><tbody>';
-  models.forEach(m=>{
-    const acc=llm.modelAccuracy?.[m.name]||'N/A';
-    const stat=llm.byModel?.[m.name]||{calls:0,errors:0};
-    modelHtml+='<tr><td>'+m.name+' ('+m.model+')</td><td>'+(m.weight*100).toFixed(0)+'%</td><td style="color:'+(acc!=='N/A'&&parseFloat(acc)>=0.6?'#3fb950':acc!=='N/A'?'#d29922':'#8b949e')+'">'+acc+'</td><td>'+(stat.calls||0)+'</td><td style="color:#f85149">'+(stat.errors||0)+'</td></tr>';
-  });
-  if(!models.length)modelHtml+='<tr><td colspan="5" style="text-align:center;color:#8b949e">纯规则模式</td></tr>';
-  modelHtml+='</tbody></table>';
-  if(!models.length)modelHtml+='<div style="margin-top:8px;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);border-radius:6px;padding:8px"><div style="font-size:.82em;color:#3fb950;font-weight:bold;margin-bottom:4px">💡 免费激活27个大模型</div><div style="font-size:.72em;color:#8b949e">设置环境变量 <code style="background:#1e293b;padding:1px 4px;border-radius:3px;color:#58a6ff">OPENROUTER_API_KEY</code></div><div style="font-size:.72em;color:#8b949e;margin-top:2px">注册: <a href="https://openrouter.ai" target="_blank" style="color:#58a6ff;text-decoration:underline">openrouter.ai</a> (免费)</div><div style="font-size:.7em;color:#6b7280;margin-top:3px">免费模型: Llama 70B, Qwen3, GPT-OSS 120B, Gemma4, Nemotron 120B</div></div>';
-  modelHtml+='<div style="margin-top:8px;font-size:.78em;color:#8b949e">平均响应:'+(llm.avgResponseMs||0).toFixed(0)+'ms | 缓存:'+(llm.cacheSize||0)+'</div>';
+  let modelHtml='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.9em;padding:4px 0">';
+  modelHtml+='<div>总调用: <span class="blue">'+(llm.totalCalls||0)+'</span></div>';
+  modelHtml+='<div>共识率: <span class="green">'+(llm.consensusRate||0).toFixed(1)+'%</span></div>';
+  modelHtml+='<div>平均响应: <span class="yellow">'+(llm.avgResponseMs||0).toFixed(0)+'ms</span></div>';
+  modelHtml+='<div>缓存命中: <span class="purple">'+(llm.cacheSize||0)+'</span></div>';
+  modelHtml+='</div>';
+  if(!models.length)modelHtml+='<div style="margin-top:8px;font-size:.82em;color:#8b949e">纯规则模式（无需外部模型）</div>';
+  else modelHtml+='<div style="margin-top:8px;font-size:.82em;color:#8b949e">'+models.length+'个智能模型协同决策</div>';
   document.getElementById('agentModels').innerHTML=modelHtml;
 
   // 推理链
@@ -1141,14 +1332,6 @@ async function loadAgent(){
       '<div style="padding:8px 0;border-bottom:1px solid #161b22"><div style="color:#bc8cff">'+new Date(l.timestamp).toLocaleString('zh-CN')+' | 胜率'+(l.winRate*100).toFixed(0)+'% | 均亏'+l.avgPnl.toFixed(2)+'%</div><div style="font-size:.82em;color:#8b949e;margin:4px 0">'+(l.lessons||[]).join('<br>')+'</div></div>'
     ).join('');
   }else document.getElementById('agentLessons').innerHTML='<div style="color:#484f58;text-align:center;padding:20px">等待反思...</div>';
-
-  // 代码生成历史
-  const cg=data.recentCodeGen||[];
-  if(cg.length){
-    document.getElementById('agentCodeGenHistory').innerHTML=cg.map(c=>
-      '<div style="padding:4px 0;border-bottom:1px solid #161b22;font-size:.82em"><span style="color:#58a6ff">'+c.id+'</span> '+c.description.slice(0,50)+' <span style="color:#8b949e">'+new Date(c.timestamp).toLocaleTimeString('zh-CN')+'</span></div>'
-    ).join('');
-  }else document.getElementById('agentCodeGenHistory').innerHTML='<div style="color:#484f58;text-align:center;padding:20px">无代码生成</div>';
 
   // 策略调整历史
   const adj=data.recentAdjustments||[];
@@ -1272,6 +1455,7 @@ async function loadTabData(tab){
     case 'evolution':await loadEvolution();break;
     case 'agent':await loadAgent();break;
     case 'news':await loadNews();break;
+    case 'bbstrategy':await loadBBStrategy();break;
   }
 }
 loadOverview();
@@ -1454,9 +1638,309 @@ async function loadFees(){
   document.getElementById('feeUser').textContent='$'+(f.userShare||0).toFixed(2);
   document.getElementById('feeAdmin').textContent='$'+(f.adminShare||0).toFixed(2);
 }
+
+// ═══ 策略切换 ═══
+async function loadActiveStrategy(){
+  const data=await api('/api/strategy/active');
+  if(!data) return;
+  const isBB=data.strategy==='bb';
+  const switching=data.switching;
+  var nameEl=document.getElementById('activeStrategyName');
+  if(switching){
+    nameEl.textContent='🔄 正在切换...';
+    nameEl.style.color='#d29922';
+  }else{
+    nameEl.textContent=isBB?'B策略 (布林带)':'A策略 (均衡)';
+    nameEl.style.color=isBB?'#00d4ff':'#d29922';
+  }
+  var subEl=document.getElementById('activeStrategySub');
+  if(data.aStrategy&&data.bStrategy){
+    var aStatus=data.aStrategy.running?'✅运行(第'+data.aStrategy.cycleCount+'轮)':'❌已停止';
+    var bStatus=data.bStrategy.running?'✅运行(第'+data.bStrategy.cycleCount+'轮,'+data.bStrategy.activeUsers+'用户)':'❌已停止';
+    subEl.textContent='A策略: '+aStatus+' | B策略: '+bStatus;
+    subEl.style.color='#8b949e';
+  }
+  var a=document.getElementById('btnStratA'),b=document.getElementById('btnStratB');
+  if(switching){a.disabled=true;b.disabled=true;a.style.opacity=.5;b.style.opacity=.5;}
+  else{a.disabled=false;b.disabled=false;a.style.opacity=1;b.style.opacity=1;}
+  if(a){a.style.borderColor=isBB?'#2a3a5c':'#d29922';a.style.color=isBB?'#c9d1d9':'#d29922';a.style.background=isBB?'#0d1117':'#1a1500';}
+  if(b){b.style.borderColor=isBB?'#00d4ff':'#2a3a5c';b.style.color=isBB?'#00d4ff':'#c9d1d9';b.style.background=isBB?'#0a1f2e':'#0d1117';}
+}
+async function switchStrategy(s){
+  if(!confirm('确认切换到'+(s==='bb'?'B策略':'A策略')+'？\n\n这将停止当前策略的所有引擎，启动新策略的引擎。\n切换过程约需10-30秒，请勿重复点击。'))return;
+  var a=document.getElementById('btnStratA'),b=document.getElementById('btnStratB');
+  if(a)a.disabled=true;if(b)b.disabled=true;
+  document.getElementById('activeStrategyName').textContent='🔄 正在切换到'+(s==='bb'?'B策略':'A策略')+'...';
+  document.getElementById('activeStrategyName').style.color='#d29922';
+  try{
+    const r=await fetch('/api/strategy/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:s})});
+    const d=await r.json();
+    if(d.success){
+      document.getElementById('activeStrategyName').textContent='✅ 已切换到'+d.name;
+      setTimeout(function(){loadActiveStrategy();loadBBStrategy();},2000);
+    }else{
+      alert(d.error||'切换失败');
+      loadActiveStrategy();
+    }
+  }catch(e){
+    alert('切换请求失败: '+e.message);
+    loadActiveStrategy();
+  }
+}
+
+// ═══ B策略 (BB布林带) 加载 ═══
+async function loadBBStrategy(){
+  // 加载当前策略状态
+  loadActiveStrategy();
+  const data=await api('/api/bb-strategy/overview');
+  if(!data||data.error){
+    document.getElementById('bbStatus').textContent='未启动';
+    document.getElementById('bbStatusSub').textContent=data?.error||'--';
+    return;
+  }
+  const st=data.stats||{};
+  document.getElementById('bbStatus').textContent=st.running?'运行中':'已停止';
+  document.getElementById('bbStatusSub').textContent='第'+(st.cycleCount||0)+'轮';
+  document.getElementById('bbUserCount').textContent=st.activeUsers||0;
+  document.getElementById('bbTotalPos').textContent=st.totalPositions||0;
+  document.getElementById('bbTotalPosSub').textContent='最大'+(st.config?.maxPositions||5)+'币/人';
+  const totalPnl=st.totalPnl||0;
+  const pnlEl=document.getElementById('bbTotalPnl');
+  pnlEl.textContent='$'+totalPnl.toFixed(2);
+  pnlEl.style.color=totalPnl>=0?'#3fb950':'#f85149';
+  document.getElementById('bbTotalPnlSub').textContent='杠杆'+(st.config?.leverage||3)+'x | K线'+(st.config?.klineInterval||'5m');
+
+  // ═══ 管理员资金 ═══
+  const adminData=data.admin||{};
+  const adminBalance=adminData.balance||0;
+  const adminPositions=adminData.positions||[];
+  const adminMargin=adminPositions.reduce((s,p)=>s+(p.margin||0),0);
+  const adminFloatPnl=adminData.totalPnlUsd||0;
+  const adminAvailable=adminBalance-adminMargin;
+  document.getElementById('bbAdminBalance').textContent='$'+adminBalance.toFixed(2);
+  document.getElementById('bbAdminMargin').textContent='$'+adminMargin.toFixed(2);
+  const aFloatEl=document.getElementById('bbAdminFloatPnl');
+  aFloatEl.textContent='$'+adminFloatPnl.toFixed(2);
+  aFloatEl.style.color=adminFloatPnl>=0?'#3fb950':'#f85149';
+  const aRealEl=document.getElementById('bbAdminRealizedPnl');
+  aRealEl.textContent='$'+(st.realizedPnl||0).toFixed(2);
+  aRealEl.style.color=(st.realizedPnl||0)>=0?'#3fb950':'#f85149';
+  document.getElementById('bbAdminWallet').textContent=(adminData.wallet||'').slice(0,12)+'...';
+  document.getElementById('bbAdminPosCount').textContent=adminData.positionCount||0;
+  document.getElementById('bbAdminMaxPos').textContent=adminData.maxPositions||5;
+  const aAvailEl=document.getElementById('bbAdminAvailable');
+  aAvailEl.textContent='$'+adminAvailable.toFixed(2);
+  aAvailEl.style.color=adminAvailable>0?'#3fb950':'#f85149';
+
+  // ═══ 用户资金 ═══
+  const users=data.users||[];
+  let userTotalBalance=0,userTotalMargin=0,userTotalFloatPnl=0,userPosCount=0;
+  let userRealizedPnl=0;
+  for(const u of users){
+    userTotalBalance+=u.balance||0;
+    const uPos=u.positions||[];
+    userTotalMargin+=uPos.reduce((s,p)=>s+(p.margin||0),0);
+    userTotalFloatPnl+=u.totalPnlUsd||0;
+    userPosCount+=u.positionCount||0;
+  }
+  document.getElementById('bbUserTotal').textContent=users.length;
+  // 交易中/暂停用户数
+  const activeTrading=users.filter(u=>!u.gatesFeePaused).length;
+  const pausedCount=users.filter(u=>u.gatesFeePaused).length;
+  document.getElementById('bbActiveTradingUsers').textContent=activeTrading;
+  document.getElementById('bbPausedUsers').textContent=pausedCount;
+  document.getElementById('bbUserTotalBalance').textContent='$'+userTotalBalance.toFixed(2);
+  document.getElementById('bbUserTotalMargin').textContent='$'+userTotalMargin.toFixed(2);
+  const uFloatEl=document.getElementById('bbUserTotalFloatPnl');
+  uFloatEl.textContent='$'+userTotalFloatPnl.toFixed(2);
+  uFloatEl.style.color=userTotalFloatPnl>=0?'#3fb950':'#f85149';
+  document.getElementById('bbUserPosCount').textContent=userPosCount;
+  const uRealEl=document.getElementById('bbUserRealizedPnl');
+  uRealEl.textContent='$'+userRealizedPnl.toFixed(2);
+  uRealEl.style.color=userRealizedPnl>=0?'#3fb950':'#f85149';
+  // 用户列表
+  const userListEl=document.getElementById('bbUserList');
+  if(users.length>0){
+    userListEl.innerHTML=users.map(u=>{
+      const uBal='$'+(u.balance||0).toFixed(2);
+      const uPnl=u.totalPnlUsd||0;
+      const pnlColor=uPnl>=0?'#3fb950':'#f85149';
+      const paused=u.gatesFeePaused;
+      const pauseTag=paused?' <span style="font-size:.7em;padding:1px 6px;border-radius:4px;background:#490b0b;color:#f85149">盖茨费暂停</span>':' <span style="font-size:.7em;padding:1px 6px;border-radius:4px;background:#0d4429;color:#3fb950">交易中</span>';
+      return '<div style="padding:4px 0;border-bottom:1px solid #161b22"><span style="color:#58a6ff">'+(u.wallet||'').slice(0,12)+'...</span>'+pauseTag+'<span style="color:#8b949e;margin-left:8px">余额 '+uBal+'</span><span style="color:'+pnlColor+';margin-left:8px">浮动 $'+uPnl.toFixed(2)+'</span><span style="color:#8b949e;margin-left:8px">'+(u.positionCount||0)+'仓</span></div>';
+    }).join('');
+  } else {
+    userListEl.innerHTML='<span style="color:#484f58">暂无B策略用户</span>';
+  }
+
+  // 管理员持仓
+  const admin=data.admin;
+  const adminRows=document.getElementById('bbAdminRows');
+  if(admin&&admin.positions&&admin.positions.length>0){
+    adminRows.innerHTML=admin.positions.map(p=>{
+      const pc=p.pnlPct>=0?'#3fb950':'#f85149';
+      return '<tr style="border-bottom:1px solid #161b22">'+
+        '<td style="padding:8px;text-align:left;font-weight:600">'+p.symbol+'</td>'+
+        '<td style="padding:8px;color:'+(p.side==='LONG'?'#3fb950':'#f85149')+'">'+p.side+'</td>'+
+        '<td style="padding:8px">'+p.qty+'</td>'+
+        '<td style="padding:8px">$'+p.entryPrice+'</td>'+
+        '<td style="padding:8px">$'+(p.currentPrice||0)+'</td>'+
+        '<td style="padding:8px">'+(p.leverage||3)+'x</td>'+
+        '<td style="padding:8px;color:'+pc+'">'+p.pnlPct.toFixed(2)+'%</td>'+
+        '<td style="padding:8px;color:'+pc+'">$'+p.pnlUsd.toFixed(2)+'</td>'+
+        '<td style="padding:8px">'+p.replenishCount+'/3</td>'+
+        '<td style="padding:8px">'+(p.mode||'轨道')+'</td>'+
+        '</tr>';
+    }).join('');
+  } else {
+    adminRows.innerHTML='<tr><td colspan="10" style="padding:20px;text-align:center;color:#666">管理员无B策略持仓</td></tr>';
+  }
+
+  // 所有用户持仓
+  const userRows=document.getElementById('bbUsersRows');
+  let allRows=[];
+  for(const u of users){
+    if(!u.positions||u.positions.length===0) continue;
+    for(const p of u.positions){
+      const pc=p.pnlPct>=0?'#3fb950':'#f85149';
+      const pauseTag=u.gatesFeePaused?' <span style="font-size:.6em;padding:1px 4px;border-radius:3px;background:#490b0b;color:#f85149">暂停</span>':'';
+      allRows.push('<tr style="border-bottom:1px solid #161b22">'+
+        '<td style="padding:8px;text-align:left;font-size:.8em;color:#8b949e">'+u.wallet.slice(0,8)+'...'+pauseTag+'</td>'+
+        '<td style="padding:8px;text-align:left;font-weight:600">'+p.symbol+'</td>'+
+        '<td style="padding:8px;color:'+(p.side==='LONG'?'#3fb950':'#f85149')+'">'+p.side+'</td>'+
+        '<td style="padding:8px">'+p.qty+'</td>'+
+        '<td style="padding:8px">$'+p.entryPrice+'</td>'+
+        '<td style="padding:8px">$'+(p.currentPrice||0)+'</td>'+
+        '<td style="padding:8px;color:'+pc+'">'+p.pnlPct.toFixed(2)+'%</td>'+
+        '<td style="padding:8px;color:'+pc+'">$'+p.pnlUsd.toFixed(2)+'</td>'+
+        '<td style="padding:8px">'+p.replenishCount+'/3</td>'+
+        '<td style="padding:8px">'+(p.mode||'轨道')+'</td>'+
+        '</tr>');
+    }
+  }
+  if(allRows.length>0){
+    userRows.innerHTML=allRows.join('');
+  } else {
+    userRows.innerHTML='<tr><td colspan="10" style="padding:20px;text-align:center;color:#666">无用户B策略持仓</td></tr>';
+  }
+  
+  // 加载B策略按用户分类的交易历史
+  try{
+    const data=await api('/api/bb-strategy/trades-by-user');
+    const select=document.getElementById('bbUserSelect');
+    if(data&&!data.error){
+      const wallets=Object.keys(data);
+      // 填充下拉菜单：管理员在前
+      wallets.sort((a,b)=>{
+        if(data[a].isAdmin&&!data[b].isAdmin) return -1;
+        if(!data[a].isAdmin&&data[b].isAdmin) return 1;
+        return 0;
+      });
+      select.innerHTML=wallets.map(w=>{
+        const u=data[w];
+        const label=u.isAdmin?'👑 管理员 '+w.slice(0,8)+'...':'👤 用户 '+w.slice(0,8)+'...';
+        return '<option value="'+w+'">'+label+' ('+u.stats.total+'笔)</option>';
+      }).join('');
+      // 存储数据供下拉切换使用
+      window._bbTradesByUser=data;
+      // 默认显示管理员（第一个）
+      if(wallets.length>0){
+        select.value=wallets[0];
+        renderBBUserTrades(wallets[0]);
+      }
+    } else {
+      select.innerHTML='<option value="">暂无数据</option>';
+      document.getElementById('bbTradeHistoryRows').innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:#666">暂无交易历史</td></tr>';
+    }
+  }catch(e){
+    document.getElementById('bbUserSelect').innerHTML='<option value="">加载失败</option>';
+    document.getElementById('bbTradeHistoryRows').innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:#666">加载失败</td></tr>';
+  }
+  
+  // 加载B策略服务费状态
+  try{
+    const fees=await api('/api/bb-strategy/fees');
+    if(fees&&!fees.error){
+      document.getElementById('bbTotalPlatformFee').textContent='$'+(fees.totalPlatformFee||0).toFixed(2);
+      document.getElementById('bbTotalEcoFund').textContent='$'+(fees.totalEcoFund||0).toFixed(2);
+      // 计算待收取和已收取
+      let pendingTotal=0,collectedTotal=0;
+      if(fees.pending){
+        for(const w in fees.pending){
+          for(const r of fees.pending[w]){
+            pendingTotal+=parseFloat(r.platformFee||0)+parseFloat(r.ecoFund||0);
+          }
+        }
+      }
+      if(fees.collected){
+        for(const w in fees.collected){
+          for(const r of fees.collected[w]){
+            collectedTotal+=parseFloat(r.platformFee||0)+parseFloat(r.ecoFund||0);
+          }
+        }
+      }
+      document.getElementById('bbPendingFees').textContent='$'+pendingTotal.toFixed(2);
+      document.getElementById('bbCollectedFees').textContent='$'+collectedTotal.toFixed(2);
+      // 同步到用户资金区的待收服务费
+      const uepf=document.getElementById('bbUserPendingFee');
+      if(uepf){uepf.textContent='$'+pendingTotal.toFixed(2);}
+    }
+  }catch(e){/* ignore */}
+}
+
+// 下拉菜单切换用户交易历史
+function loadBBUserTrades(){
+  const select=document.getElementById('bbUserSelect');
+  const wallet=select.value;
+  if(wallet) renderBBUserTrades(wallet);
+}
+
+// 渲染指定用户的交易历史
+function renderBBUserTrades(wallet){
+  const data=window._bbTradesByUser;
+  if(!data||!data[wallet]) return;
+  const u=data[wallet];
+  const trades=u.trades||[];
+  const stats=u.stats||{};
+  
+  // 渲染统计标签
+  const statsDiv=document.getElementById('bbUserStats');
+  const winRate=stats.total>0?((stats.wins/stats.total)*100).toFixed(1):0;
+  const pnlColor=stats.totalPnl>=0?'#3fb950':'#f85149';
+  statsDiv.innerHTML=`
+    <span style="background:#1c2128;border:1px solid #30363d;border-radius:6px;padding:4px 10px;font-size:.82em;color:#8b949e">交易: <b style="color:#c9d1d9">${stats.total}</b> 笔</span>
+    <span style="background:#1c2128;border:1px solid #30363d;border-radius:6px;padding:4px 10px;font-size:.82em;color:#8b949e">胜率: <b style="color:${winRate>=60?'#3fb950':winRate>=40?'#d29922':'#f85149'}">${winRate}%</b> (${stats.wins}胜${stats.losses}负)</span>
+    <span style="background:#1c2128;border:1px solid #30363d;border-radius:6px;padding:4px 10px;font-size:.82em;color:#8b949e">盈亏: <b style="color:${pnlColor}">$${stats.totalPnl.toFixed(4)}</b></span>
+    <span style="background:#1c2128;border:1px solid #30363d;border-radius:6px;padding:4px 10px;font-size:.82em;color:#8b949e">平均: <b style="color:${stats.avgPnlPct>=0?'#3fb950':'#f85149'}">${stats.avgPnlPct}%</b></span>
+  `;
+  
+  // 渲染交易表格
+  const tradeRows=document.getElementById('bbTradeHistoryRows');
+  if(trades&&trades.length>0){
+    tradeRows.innerHTML=trades.map(t=>{
+      const dt=new Date(t.closeTime||0);
+      const ts=dt.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      const color=t.pnlUsd>=0?'#3fb950':'#f85149';
+      const icon=t.pnlUsd>=0?'🟢':'🔴';
+      const side=t.side==='LONG'?'<span style="color:#3fb950">多</span>':'<span style="color:#f85149">空</span>';
+      const replenish=t.replenishCount>0?`<span style="color:#d29922">${t.replenishCount}次</span>`:'-';
+      return '<tr style="border-bottom:1px solid #161b22">'+
+        '<td style="padding:6px;text-align:left;font-weight:600">'+icon+' '+t.symbol+'</td>'+
+        '<td style="padding:6px;text-align:center">'+side+'</td>'+
+        '<td style="padding:6px;color:'+color+';font-weight:600">$'+(t.pnlUsd||0).toFixed(4)+'</td>'+
+        '<td style="padding:6px;color:'+color+'">'+(t.pnlPct||0).toFixed(2)+'%</td>'+
+        '<td style="padding:6px;color:#8b949e">'+(t.leverage||3)+'x</td>'+
+        '<td style="padding:6px;text-align:center">'+replenish+'</td>'+
+        '<td style="padding:6px;color:#8b949e">'+ts+'</td>'+
+        '<td style="padding:6px;color:#8b949e;font-size:.85em;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(t.reason||'')+'">'+(t.reason||'').slice(0,30)+'</td>'+
+        '</tr>';
+    }).join('');
+  } else {
+    tradeRows.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:#666">该用户暂无平仓记录</td></tr>';
+  }
+}
 </script>
 <script>
-/* Arkie Chat Widget — injected into dashboards */
 (function() {
   if (window.__arkieLoaded) return;
   window.__arkieLoaded = true;

@@ -671,22 +671,60 @@ class Dashboard {
         let cexTrades = [];
         try { cexTrades = JSON.parse(fs.readFileSync(cexTradesFile, 'utf8')); } catch(e) {}
 
+        // 管理员钱包地址
+        const bbMgr = this.bbStrategyManager || this.engine?._bbStrategyManager;
+        const adminWallet = bbMgr?.ADMIN_WALLETS?.[0] || '0xfa3b90c574469909d20848273c06752a22fde74a';
+
         // 管理员引擎数据（当前运行中的 Engine）
         const adminStatus = this.engine.getStatus();
-        const adminBalance = await this.engine.trader.getBalance().catch(() => null);
+        // B策略模式下engine是dummy，trader可能为null
+        let adminBalance = null;
+        let bbRunning = false, bbCycle = 0, bbAdminPositions = null, bbAdminPnl = 0;
+        if (bbMgr) {
+          const adminBb = bbMgr.getAdminStatus?.();
+          if (adminBb) {
+            adminBalance = { balance: adminBb.balance || 0, available: 0, unrealizedPnl: 0 };
+            bbRunning = bbMgr.running || false;
+            bbCycle = bbMgr._cycleCount || 0;
+            bbAdminPositions = adminBb.positions || null;
+            bbAdminPnl = adminBb.totalPnlUsd || 0;
+          }
+        }
+        if (!adminBalance && this.engine.trader && typeof this.engine.trader.getBalance === 'function') {
+          try { adminBalance = await this.engine.trader.getBalance(); } catch(e) {}
+        }
 
         const userList = [];
+
+        // BB策略返回的positions是数组，前端需要字典格式
+        let adminPosDict = {};
+        if (Array.isArray(bbAdminPositions)) {
+          for (const p of bbAdminPositions) {
+            adminPosDict[p.symbol] = {
+              side: p.side,
+              entryPrice: p.entryPrice,
+              amount: p.qty,
+              qty: p.qty,
+              leverage: p.leverage,
+              pnl: p.pnlUsd,
+              markPrice: p.currentPrice,
+              openTime: p.openTime,
+              _source: 'bb-realtime',
+            };
+          }
+        }
 
         // 添加管理员自己
         userList.push({
           userId: 'admin',
           wallet: '管理员',
-          running: this.engine.running || false,
-          cycleCount: this.engine.cycleCount || 0,
-          positions: adminStatus.positions || {},
-          positionCount: adminStatus.positionCount || 0,
+          walletFull: adminWallet,
+          running: (this.engine.running || false) || (bbRunning),
+          cycleCount: bbCycle || this.engine.cycleCount || 0,
+          positions: Object.keys(adminPosDict).length > 0 ? adminPosDict : (adminStatus.positions || {}),
+          positionCount: Object.keys(adminPosDict).length || adminStatus.positionCount || 0,
           balance: adminBalance || { balance: 0, available: 0, unrealizedPnl: 0 },
-          totalPnl: adminStatus.state?.totalPnl || 0,
+          totalPnl: bbAdminPnl || adminStatus.state?.totalPnl || 0,
           wins: adminStatus.state?.wins || 0,
           losses: adminStatus.state?.losses || 0,
           totalTrades: adminStatus.state?.totalTrades || 0,
@@ -836,11 +874,35 @@ class Dashboard {
             } catch(e) {}
           }
 
+          // 从BB策略管理器获取该用户的实时持仓
+          const bbUserStatus = bbMgr?.getAllUsersStatus?.()?.find(s => s.wallet?.toLowerCase() === addr.toLowerCase());
+          if (bbUserStatus) {
+            // BB策略持仓覆盖静态持仓
+            if (bbUserStatus.positions && bbUserStatus.positions.length > 0) {
+              realPositions = {};
+              for (const p of bbUserStatus.positions) {
+                realPositions[p.symbol] = {
+                  side: p.side,
+                  entryPrice: p.entryPrice,
+                  amount: p.qty,
+                  qty: p.qty,
+                  leverage: p.leverage,
+                  pnl: p.pnlUsd,
+                  markPrice: p.currentPrice,
+                  openTime: p.openTime,
+                  _source: 'bb-realtime',
+                };
+              }
+              positionCount = Object.keys(realPositions).length;
+            }
+            unrealizedPnl = bbUserStatus.totalPnlUsd || unrealizedPnl;
+          }
+
           userList.push({
             userId: addr,
             wallet: addr.slice(0, 6) + '...' + addr.slice(-4),
             walletFull: addr,
-            running: u.tradingEnabled || false && cexApiKeyValid,
+            running: (u.tradingEnabled && cexApiKeyValid) || !!bbUserStatus,
             cycleCount: userState.lastCycle || 0,
             positions: realPositions,
             positionCount: positionCount,
@@ -857,6 +919,11 @@ class Dashboard {
             recentTrades: userCexTrades.slice(-5).reverse(),
             hasApiKey: !!u.binanceApiKey,
             cexApiKeyValid: cexApiKeyValid,
+            // 盖茨费状态
+            bscWalletAddr: u.bscWalletAddr || null,
+            gatesFeeBalance: u.gatesFeeBalance || 0,
+            gatesFeeApproved: u.gatesFeeApproved || false,
+            gatesFeeLow: u.gatesFeeLow || false,
             uptime: u.lastActive ? Math.floor((Date.now() - u.lastActive) / 1000) : 0,
           });
         }
@@ -875,6 +942,91 @@ class Dashboard {
     // ═══════════════════════════════
     // v65 新增：回测+网格搜索+资金费率套利 API
     // ═══════════════════════════════
+
+    // ═══ 注销/删除普通用户 (管理员专用) ═══
+    this.app.post('/api/admin/delete-user', async (req, res) => {
+      try {
+        const { wallet } = req.body;
+        if (!wallet) return res.status(400).json({ error: '缺少钱包地址' });
+
+        const fs = require('fs');
+        const pathMod = require('path');
+        const usersFile = pathMod.join(__dirname, '..', 'data', 'saas-users.json');
+
+        // 管理员钱包不可注销
+        const ADMIN_WALLETS = [
+          '0xfa3b90c574469909d20848273c06752a22fde74a',
+          '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
+        ];
+        if (ADMIN_WALLETS.some(w => w.toLowerCase() === wallet.toLowerCase())) {
+          return res.status(403).json({ error: '不能注销管理员账户' });
+        }
+
+        // 读取用户数据
+        let saasUsers = {};
+        try { saasUsers = JSON.parse(fs.readFileSync(usersFile, 'utf8')); } catch(e) {}
+        if (!saasUsers[wallet.toLowerCase()] && !saasUsers[wallet]) {
+          return res.status(404).json({ error: '用户不存在' });
+        }
+        const userKey = saasUsers[wallet.toLowerCase()] ? wallet.toLowerCase() : wallet;
+        const userInfo = saasUsers[userKey];
+
+        // 停止该用户的BB引擎
+        const bbMgr = this.bbStrategyManager || this.engine?._bbStrategyManager;
+        if (bbMgr && bbMgr._engines && bbMgr._engines[userKey]) {
+          try {
+            bbMgr._engines[userKey].stop();
+            delete bbMgr._engines[userKey];
+            console.log(`[Dashboard] 已停止用户 ${userKey.slice(0,10)}... 的BB引擎`);
+          } catch(e) { console.log(`[Dashboard] 停止引擎失败: ${e.message}`); }
+        }
+
+        // 从saas-users.json删除用户
+        delete saasUsers[userKey];
+        fs.writeFileSync(usersFile, JSON.stringify(saasUsers, null, 2));
+
+        // 清除该用户的session
+        try {
+          const sessionsFile = pathMod.join(__dirname, '..', 'data', 'saas-sessions.json');
+          if (fs.existsSync(sessionsFile)) {
+            const sessions = JSON.parse(fs.readFileSync(sessionsFile, 'utf8'));
+            let removed = 0;
+            for (const [token, sess] of Object.entries(sessions)) {
+              if (sess.walletAddress && sess.walletAddress.toLowerCase() === userKey.toLowerCase()) {
+                delete sessions[token];
+                removed++;
+              }
+            }
+            if (removed > 0) {
+              fs.writeFileSync(sessionsFile, JSON.stringify(sessions, null, 2));
+              console.log(`[Dashboard] 清除 ${removed} 个session`);
+            }
+          }
+        } catch(e) { console.log(`[Dashboard] 清除session失败: ${e.message}`); }
+
+        // 清除该用户的交易状态
+        try {
+          const cexStateFile = pathMod.join(__dirname, '..', 'data', 'cex-user-trader-state.json');
+          if (fs.existsSync(cexStateFile)) {
+            const cexState = JSON.parse(fs.readFileSync(cexStateFile, 'utf8'));
+            if (cexState.states) delete cexState.states[userKey];
+            if (cexState.stats) delete cexState.stats[userKey];
+            fs.writeFileSync(cexStateFile, JSON.stringify(cexState, null, 2));
+          }
+        } catch(e) { console.log(`[Dashboard] 清除CEX状态失败: ${e.message}`); }
+
+        console.log(`[Dashboard] ✅ 用户 ${userKey.slice(0,10)}... 已注销`);
+        res.json({
+          success: true,
+          message: `用户 ${userKey.slice(0,6)}...${userKey.slice(-4)} 已注销`,
+          deletedWallet: userKey,
+          userInfo: { strategy: userInfo.strategy, tradeAmount: userInfo.tradeAmount },
+        });
+      } catch (e) {
+        console.error('[Dashboard] 注销用户失败:', e);
+        res.status(500).json({ error: '注销失败: ' + e.message });
+      }
+    });
 
     const _fs = require('fs');
     const _backtestDataDir = path.join(__dirname, '..', 'data');
@@ -2016,6 +2168,219 @@ class Dashboard {
       } catch (e) {
         res.json({ error: e.message });
       }
+    });
+
+    // ═══════════════════════════════════════════
+    // BB策略 (B策略) — 多用户布林带策略 API
+    // ═══════════════════════════════════════════
+
+    // B策略总览（管理员+所有用户）
+    app.get('/api/bb-strategy/overview', (req, res) => {
+      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      if (!bb) return res.json({ error: 'BB策略未启动' });
+      const adminStatus = bb.getAdminStatus();
+      const allUsers = bb.getAllUsersStatus();
+      const stats = bb.getStats();
+      res.json({
+        stats,
+        admin: adminStatus,
+        users: allUsers.filter(u => u.wallet !== (adminStatus?.wallet)),
+      });
+    });
+
+    // B策略管理员持仓
+    app.get('/api/bb-strategy/admin', (req, res) => {
+      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      if (!bb) return res.json({ error: 'BB策略未启动' });
+      res.json(bb.getAdminStatus() || { positions: [], positionCount: 0 });
+    });
+
+    // B策略所有用户持仓
+    app.get('/api/bb-strategy/users', (req, res) => {
+      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      if (!bb) return res.json({ error: 'BB策略未启动' });
+      res.json(bb.getAllUsersStatus());
+    });
+
+    // B策略单个用户持仓
+    app.get('/api/bb-strategy/user/:wallet', (req, res) => {
+      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      if (!bb) return res.json({ error: 'BB策略未启动' });
+      const status = bb.getUserStatus(req.params.wallet);
+      res.json(status || { positions: [], positionCount: 0 });
+    });
+
+    // B策略交易历史
+    app.get('/api/bb-strategy/trades', (req, res) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const tradeFile = path.join(__dirname, '..', 'data', 'bb-trade-history.json');
+        let history = [];
+        if (fs.existsSync(tradeFile)) {
+          history = JSON.parse(fs.readFileSync(tradeFile, 'utf8'));
+        }
+        // 按时间倒序，最新的在前
+        history.sort((a, b) => (b.closeTime || 0) - (a.closeTime || 0));
+        // 返回最近100条
+        res.json(history.slice(0, 100));
+      } catch (e) {
+        res.json([]);
+      }
+    });
+
+
+    // B策略 按用户分类交易历史（最近10笔）
+    app.get('/api/bb-strategy/trades-by-user', (req, res) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const dataDir = path.join(__dirname, '..', 'data');
+        const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+        
+        // 获取所有用户wallet
+        const adminWallet = bb?.ADMIN_WALLETS?.[0] || '0xfa3b90c574469909d20848273c06752a22fde74a';
+        const allUsers = bb?.getAllUsersStatus?.() || [];
+        const userWallets = allUsers.map(u => u.wallet).filter(Boolean);
+        const allWallets = [adminWallet, ...userWallets.filter(w => w !== adminWallet)];
+        
+        const result = {};
+        for (const wallet of allWallets) {
+          const walletKey = wallet.toLowerCase();
+          const tradeFile = path.join(dataDir, `bb-trades-${walletKey}.json`);
+          let trades = [];
+          if (fs.existsSync(tradeFile)) {
+            trades = JSON.parse(fs.readFileSync(tradeFile, 'utf8'));
+          } else {
+            // 兼容旧数据：从全局历史中按wallet过滤
+            const globalFile = path.join(dataDir, 'bb-trade-history.json');
+            if (fs.existsSync(globalFile)) {
+              const allTrades = JSON.parse(fs.readFileSync(globalFile, 'utf8'));
+              trades = allTrades.filter(t => t.wallet && t.wallet.toLowerCase() === walletKey);
+            }
+          }
+          // 按时间倒序
+          trades.sort((a, b) => (b.closeTime || 0) - (a.closeTime || 0));
+          const recent10 = trades.slice(0, 10);
+          
+          // 统计最近10笔
+          const stats = {
+            total: recent10.length,
+            wins: recent10.filter(t => t.pnlUsd > 0).length,
+            losses: recent10.filter(t => t.pnlUsd <= 0).length,
+            totalPnl: parseFloat(recent10.reduce((s, t) => s + (t.pnlUsd || 0), 0).toFixed(4)),
+            totalMargin: parseFloat(recent10.reduce((s, t) => s + (t.margin || 0), 0).toFixed(4)),
+            avgPnlPct: recent10.length > 0 ? parseFloat((recent10.reduce((s, t) => s + (t.pnlPct || 0), 0) / recent10.length).toFixed(2)) : 0,
+          };
+          
+          const isAdmin = wallet.toLowerCase() === adminWallet.toLowerCase();
+          result[wallet] = {
+            wallet,
+            isAdmin,
+            label: isAdmin ? '管理员' : `用户 ${wallet.slice(0, 8)}...`,
+            stats,
+            trades: recent10,
+          };
+        }
+        res.json(result);
+      } catch (e) {
+        res.json({ error: e.message });
+      }
+    });
+
+    // B策略 单用户交易历史
+    app.get('/api/bb-strategy/user-trades/:wallet', (req, res) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const walletKey = req.params.wallet.toLowerCase();
+        const tradeFile = path.join(__dirname, '..', 'data', `bb-trades-${walletKey}.json`);
+        let trades = [];
+        if (fs.existsSync(tradeFile)) {
+          trades = JSON.parse(fs.readFileSync(tradeFile, 'utf8'));
+        } else {
+          // 兼容旧数据
+          const globalFile = path.join(__dirname, '..', 'data', 'bb-trade-history.json');
+          if (fs.existsSync(globalFile)) {
+            const allTrades = JSON.parse(fs.readFileSync(globalFile, 'utf8'));
+            trades = allTrades.filter(t => t.wallet && t.wallet.toLowerCase() === walletKey);
+          }
+        }
+        trades.sort((a, b) => (b.closeTime || 0) - (a.closeTime || 0));
+        const limit = parseInt(req.query.limit) || 50;
+        res.json(trades.slice(0, limit));
+      } catch (e) {
+        res.json([]);
+      }
+    });
+    // B策略服务费状态
+    app.get('/api/bb-strategy/fees', (req, res) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const feeFile = path.join(__dirname, '..', 'data', 'bb-fee-state.json');
+        if (fs.existsSync(feeFile)) {
+          const feeState = JSON.parse(fs.readFileSync(feeFile, 'utf8'));
+          res.json(feeState);
+        } else {
+          res.json({ pending: {}, collected: {}, totalPlatformFee: 0, totalEcoFund: 0 });
+        }
+      } catch (e) {
+        res.json({ error: e.message });
+      }
+    });
+
+    // ═══ 全局策略切换 (管理员专用) ═══
+    app.get('/api/strategy/active', (req, res) => {
+      // 优先使用统一策略管理器
+      const um = global.unifiedManager;
+      if (um) {
+        const st = um.getStatus();
+        return res.json({
+          strategy: st.activeStrategy,
+          isBB: st.activeStrategy === 'bb',
+          switching: st.switching,
+          aStrategy: st.aStrategy,
+          bStrategy: st.bStrategy,
+        });
+      }
+      // 兼容旧模式
+      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      const strategy = bb ? bb.getActiveStrategy() : 'bb';
+      res.json({ strategy, isBB: strategy === 'bb' });
+    });
+
+    app.post('/api/strategy/switch', async (req, res) => {
+      const { strategy } = req.body;
+      if (strategy !== 'bb' && strategy !== 'balanced') {
+        return res.status(400).json({ error: '无效策略，只支持 bb 或 balanced' });
+      }
+
+      // 优先使用统一策略管理器（真正启停引擎）
+      const um = global.unifiedManager;
+      if (um) {
+        if (um.switching) {
+          return res.json({ success: false, error: '正在切换中，请等待10秒' });
+        }
+        const result = await um.switchStrategy(strategy);
+        return res.json(result);
+      }
+
+      // 兼容旧模式：只改文件标记
+      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      if (!bb) return res.status(500).json({ error: '策略管理器未启动' });
+      const cfg = bb.setActiveStrategy(strategy);
+      const name = strategy === 'bb' ? 'B策略 (布林带)' : 'A策略 (均衡)';
+      res.json({ success: true, strategy, name, ...cfg });
+    });
+
+    // 统一策略状态API
+    app.get('/api/strategy/status', (req, res) => {
+      const um = global.unifiedManager;
+      if (um) {
+        return res.json(um.getStatus());
+      }
+      res.json({ error: '统一策略管理器未启动' });
     });
   }
 

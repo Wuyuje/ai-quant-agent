@@ -386,8 +386,11 @@ class UserDB {
       passwordHash: hash,
       authToken: token,
       walletAddress: addr,
-      strategy: 'balanced',
+      // 注册的钱包地址自动作为BSC钱包地址（用于盖茨费）
+      bscWalletAddr: addr,
+      strategy: 'bb',
       tradingEnabled: false,
+      withdrawConsent: false,
     };
     this._save();
     return this.users[addr];
@@ -1055,8 +1058,8 @@ class SaasServer {
       if (!session) return res.status(401).json({ error: '未登录' });
 
       const { strategy } = req.body;
-      if (!['conservative', 'balanced', 'aggressive'].includes(strategy)) {
-        return res.status(400).json({ error: '策略必须是 conservative/balanced/aggressive' });
+      if (!['conservative', 'balanced', 'aggressive', 'bb', 'bollinger'].includes(strategy)) {
+        return res.status(400).json({ error: '策略必须是 conservative/balanced/aggressive/bb' });
       }
       this.userDB.set(session.wallet, { strategy });
       res.json({ success: true, strategy });
@@ -1586,6 +1589,14 @@ class SaasServer {
           // v121: 提现权限 + 费用转账状态
           canWithdraw,
           feeTransferStatus,
+          // 盖茨费状态
+          gatesFee: {
+            bscWalletAddr: user?.bscWalletAddr || walletAddr,
+            balance: user?.gatesFeeBalance ?? 0,
+            low: user?.gatesFeeLow ?? false,
+            approved: user?.gatesFeeApproved ?? false,
+            threshold: 5,
+          },
           // 1️⃣ Vault合约余额
           vault: {
             usdt: vaultUsdt,
@@ -1622,6 +1633,8 @@ class SaasServer {
           recentTrades: userTrades,
           cycleCount: this.userTrader?._cycleCount || this.cexUserTrader?._cycleCount || 0,
         },
+        // B策略 (BB布林带) 持仓
+        bbStrategy: this.bbStrategyManager?.getUserStatus?.(session.wallet) || null,
         platform: {
           wallet: PLATFORM_WALLET,
           feePercent: PLATFORM_FEE_BPS / 100,
@@ -1674,6 +1687,84 @@ class SaasServer {
     });
 
     // ═══════ 用户 CEX API Key 绑定（v121: 强制检查提现权限）═══════
+    // ═══ 盖茨费：绑定BSC钱包地址（在绑定API Key之前）═══
+    this.app.post('/api/vault/bsc-wallet', async (req, res) => {
+      const session = this._auth(req);
+      if (!session) return res.status(401).json({ error: '未登录' });
+      const { bscWalletAddr } = req.body;
+      if (!bscWalletAddr || !/^0x[a-fA-F0-9]{40}$/.test(bscWalletAddr)) {
+        return res.json({ success: false, error: '请输入有效的BSC钱包地址' });
+      }
+      // 查询BSC钱包USDT余额
+      let gatesFeeBalance = 0;
+      try {
+        const rawBal = await erc20Balance(USDT_ADDRESS, bscWalletAddr);
+        gatesFeeBalance = Number(rawBal) / 1e18;
+      } catch (e) { /* ignore */ }
+      // 查询链上Approve授权
+      let gatesFeeApproved = false;
+      try {
+        const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+        const allowanceData = '0xdd62ed3e'
+          + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
+          + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
+        const allowanceResult = await bscRpc('eth_call', [{ to: USDT_ADDRESS, data: allowanceData }, 'latest']);
+        const allowance = BigInt(allowanceResult || '0');
+        gatesFeeApproved = allowance > BigInt(1000 * 1e18);
+      } catch (e) { /* ignore */ }
+      // 保存到用户数据
+      this.userDB.set(session.wallet, {
+        bscWalletAddr: bscWalletAddr.toLowerCase(),
+        gatesFeeBalance,
+        gatesFeeApproved,
+        gatesFeeLow: gatesFeeBalance < 5,
+      });
+      this.log(`✅ ${session.wallet.slice(0,10)}... 绑定BSC钱包: ${bscWalletAddr.slice(0,10)}... USDT余额: $${gatesFeeBalance.toFixed(2)} 授权: ${gatesFeeApproved}`);
+      res.json({
+        success: true,
+        bscWalletAddr: bscWalletAddr.slice(0, 10) + '...',
+        gatesFeeBalance: gatesFeeBalance.toFixed(2),
+        gatesFeeApproved,
+        gatesFeeLow: gatesFeeBalance < 5,
+      });
+    });
+
+    // ═══ 盖茨费：查询链上Approve授权状态 ═══
+    this.app.get('/api/vault/gates-fee-status', async (req, res) => {
+      const session = this._auth(req);
+      if (!session) return res.status(401).json({ error: '未登录' });
+      const user = this.userDB.get(session.wallet);
+      if (!user || !user.bscWalletAddr) {
+        return res.json({ success: true, bound: false, message: '请先绑定BSC钱包地址' });
+      }
+      let gatesFeeBalance = 0;
+      let gatesFeeApproved = false;
+      try {
+        const rawBal = await erc20Balance(USDT_ADDRESS, user.bscWalletAddr);
+        gatesFeeBalance = Number(rawBal) / 1e18;
+      } catch (e) { /* ignore */ }
+      try {
+        const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+        const allowanceData = '0xdd62ed3e'
+          + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
+          + user.bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
+        const allowanceResult = await bscRpc('eth_call', [{ to: USDT_ADDRESS, data: allowanceData }, 'latest']);
+        const allowance = BigInt(allowanceResult || '0');
+        gatesFeeApproved = allowance > BigInt(1000 * 1e18);
+      } catch (e) { /* ignore */ }
+      // 更新用户数据
+      this.userDB.set(session.wallet, { gatesFeeBalance, gatesFeeApproved, gatesFeeLow: gatesFeeBalance < 5 });
+      res.json({
+        success: true,
+        bound: true,
+        bscWalletAddr: user.bscWalletAddr.slice(0, 10) + '...',
+        gatesFeeBalance: gatesFeeBalance.toFixed(2),
+        gatesFeeApproved,
+        gatesFeeLow: gatesFeeBalance < 5,
+        traderWalletAddr: new ethers.Wallet(TRADER_PRIVATE_KEY).address,
+      });
+    });
+
     this.app.post('/api/vault/cex-key', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1708,55 +1799,84 @@ class SaasServer {
         return res.json({ success: false, error: 'API Key 没有合约交易权限或验证失败: ' + (e.message || '') });
       }
 
-      // v121: 验证 Withdraw 提现权限
-      const ts2 = Date.now();
-      const qs2 = `timestamp=${ts2}`;
-      const sig2 = crypto.createHmac('sha256', secretKey).update(qs2).digest('hex');
-      const withdrawUrl = `https://api.binance.com/sapi/v1/capital/config/getall?${qs2}&signature=${sig2}`;
+      // ═══ 盖茨费模式：不再要求币安提现权限 ═══
+      // 只需要合约+现货交易权限即可
+      // 盖茨费通过BSC钱包链上授权自动扣除
 
-      let hasWithdraw = false;
-      try {
-        hasWithdraw = await new Promise((resolve, reject) => {
-          const r = https.get(withdrawUrl, { headers: { 'X-MBX-APIKEY': apiKey }, timeout: 10000 }, (resp) => {
-            let d = '';
-            resp.on('data', c => d += c);
-            resp.on('end', () => {
-              try { const j = JSON.parse(d); if (j.code && j.code === -1002) resolve(false); else if (Array.isArray(j)) resolve(true); else resolve(false); }
-              catch(e) { resolve(false); }
-            });
-          });
-          r.on('error', reject);
-          r.setTimeout(10000, () => { r.destroy(); resolve(false); });
-        });
-      } catch (e) { hasWithdraw = false; }
+      // 获取用户已绑定的BSC钱包地址，如果没有则自动使用注册钱包地址
+      let bscWalletAddr = '';
+      const existingUser = this.userDB.get(session.wallet);
+      if (existingUser && existingUser.bscWalletAddr) {
+        bscWalletAddr = existingUser.bscWalletAddr;
+      } else {
+        // 注册钱包地址就是BSC钱包地址
+        bscWalletAddr = session.wallet.toLowerCase();
+      }
+      // 如果请求中带了BSC钱包地址，使用请求中的
+      if (req.body.bscWalletAddr) {
+        bscWalletAddr = req.body.bscWalletAddr;
+      }
 
-      if (!hasWithdraw) {
-        this.log(`🚫 ${session.wallet.slice(0,10)}... API Key 缺少提现权限，拒绝绑定`);
+      // 验证BSC钱包地址格式
+      if (!bscWalletAddr || !/^0x[a-fA-F0-9]{40}$/.test(bscWalletAddr)) {
         return res.json({
           success: false,
-          error: 'API Key 缺少「提现」权限！请在 Binance API 管理页面开启「允许提现」后重新创建。没有提现权限无法自动转账服务费和生态费，不能使用量化机器人。',
-          needWithdraw: true,
+          error: '请先绑定BSC钱包地址（用于支付盖茨费），再绑定币安API Key。',
+          needBscWallet: true,
         });
       }
 
-      // 加密存储 API Key
+      // 检查BSC钱包USDT余额（盖茨费储备）
+      let gatesFeeBalance = 0;
+      try {
+        const rawBal = await erc20Balance(USDT_ADDRESS, bscWalletAddr);
+        gatesFeeBalance = Number(rawBal) / 1e18;
+      } catch (e) {
+        this.log(`⚠️ 查询BSC钱包USDT余额失败: ${e.message}`);
+      }
+
+      // 检查链上Approve授权 — TRADER_WALLET 是否被授权从用户BSC钱包提取USDT
+      let gatesFeeApproved = false;
+      try {
+        const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+        const allowanceData = '0xdd62ed3e' // allowance(address,address)
+          + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
+          + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
+        const allowanceResult = await bscRpc('eth_call', [{ to: USDT_ADDRESS, data: allowanceData }, 'latest']);
+        const allowance = BigInt(allowanceResult || '0');
+        // 授权额度 > 1000 USDT 视为已授权
+        gatesFeeApproved = allowance > BigInt(1000 * 1e18);
+      } catch (e) {
+        this.log(`⚠️ 查询链上Approve授权失败: ${e.message}`);
+      }
+
+      // 加密存储 API Key，自动设为B策略
       this.userDB.set(session.wallet, {
         binanceApiKey: encryptText(apiKey),
         binanceSecret: encryptText(secretKey),
         cexMode: true,
         tradingEnabled: true,
-        canWithdraw: true,
+        canWithdraw: false, // 不再需要币安提现权限
+        withdrawConsent: true, // 同意盖茨费模式
+        bscWalletAddr: bscWalletAddr, // BSC钱包地址（用于支付盖茨费）
+        gatesFeeBalance: gatesFeeBalance, // BSC钱包USDT余额
+        gatesFeeApproved: gatesFeeApproved, // 链上Approve授权状态
+        gatesFeeLow: gatesFeeBalance < 5, // 盖茨费余额不足标志
+        strategy: 'bb',
         usdtBalance: usdtBalance,
         verifiedAt: Date.now(),
       });
-      this.log(`✅ ${session.wallet.slice(0,10)}... CEX API Key 已绑定 (含提现权限)`);
+      this.log(`✅ ${session.wallet.slice(0,10)}... CEX API Key 已绑定 (盖茨费模式) BSC钱包: ${bscWalletAddr.slice(0,10)}... USDT余额: $${gatesFeeBalance.toFixed(2)}`);
 
-      // v121: 重置转账冷却（用户重新绑定了带提现权限的 API Key）
-      if (this.cexUserTrader) {
-        this.cexUserTrader.resetTransferCooldown?.(session.wallet);
-      }
-
-      res.json({ success: true, cexMode: true, canWithdraw: true, balance: usdtBalance.toFixed(2) });
+      res.json({
+        success: true,
+        cexMode: true,
+        canWithdraw: false, // 不再需要提现权限
+        gatesFeeBalance: gatesFeeBalance.toFixed(2),
+        gatesFeeApproved: gatesFeeApproved,
+        bscWalletAddr: bscWalletAddr.slice(0, 10) + '...',
+        balance: usdtBalance.toFixed(2),
+      });
     });
 
     this.app.delete('/api/vault/cex-key', async (req, res) => {

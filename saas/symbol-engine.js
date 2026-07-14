@@ -462,6 +462,12 @@ class SymbolEngine {
         delete this.positions[symbol];
         return;
       }
+      // v123: insufficient balance(-2010) 说明现货没有足够的币卖出, 仓位是虚假的, 清除
+      if (e.message && (e.message.includes('-2010') || e.message.includes('insufficient balance'))) {
+        this._log(`✅ ${symbol} 平仓完成 — 余额不足说明仓位已不存在, 清除本地状态`);
+        delete this.positions[symbol];
+        return;
+      }
       this._log(`❌ ${symbol} 平仓失败: ${e.message}, 保留持仓继续监控`);
       // v113.59: 平仓失败不删除持仓, 下次继续尝试
     }

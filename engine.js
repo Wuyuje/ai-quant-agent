@@ -205,8 +205,9 @@ class Engine {
   async _mainLoop() {
     // v113.30: 启动冲刺快速止盈检查 — 每5秒检查一次，毫秒级反应
     // v113.31: 趋势冲刺检查已移至独立引擎
-    while (true) {
+    while (this.running) {
       try {
+        if (!this.running) break;
         this.cycleCount++;
         if (this.paused) { await new Promise(r => setTimeout(r, 5000)); continue; }
         this._checkDailyPnlReset();
@@ -739,18 +740,15 @@ class Engine {
         const last3Up = recentCloses[2] < recentCloses[1] && recentCloses[1] < recentCloses[0];
 
         if (dir === 'SHORT') {
-          // v120: 追跌做空(bounce<15%) → 直接拦截, 不只减分
-          // 旧逻辑: bounce<20% → strength×0.4 但仍能开仓
-          // 新逻辑: bounce<15% → 直接continue拦截
-          if (bouncePct < 15) {
-            this._log(`⛔ ${symbol} 追跌做空(位置${bouncePct.toFixed(0)}%<15%) — 直接拦截`);
+          // v123: 追跌做空(bounce<5%)才拦截 — 之前15%太严
+          if (bouncePct < 5) {
+            this._log(`⛔ ${symbol} 追跌做空(位置${bouncePct.toFixed(0)}%<5%) — 直接拦截`);
             if (!this._lastSignals) this._lastSignals = [];
             this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_CHASE_DROP', score:signal.score, timestamp:Date.now()});
             continue;
           }
-          // v120: 连续3根上涨且bounce>50% → 反弹中做空, 直接拦截
-          // 旧逻辑: 连续3根上涨 → strength×0.7 但仍能开仓
-          if (last3Up && bouncePct > 50) {
+          // v123: 放宽到80%
+          if (last3Up && bouncePct > 80) {
             this._log(`⛔ ${symbol} 反弹中做空(连续3根上涨+位置${bouncePct.toFixed(0)}%) — 直接拦截`);
             if (!this._lastSignals) this._lastSignals = [];
             this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_REBOUND_SHORT', score:signal.score, timestamp:Date.now()});
@@ -775,16 +773,16 @@ class Engine {
         }
 
         if (dir === 'LONG') {
-          // v120: 追涨做多(bounce>85%) → 直接拦截
-          if (bouncePct > 85) {
-            this._log(`⛔ ${symbol} 追涨做多(位置${bouncePct.toFixed(0)}%>85%) — 直接拦截`);
+          // v123: 放宽到95%
+          if (bouncePct > 95) {
+            this._log(`⛔ ${symbol} 追涨做多(位置${bouncePct.toFixed(0)}%>95%) — 直接拦截`);
             if (!this._lastSignals) this._lastSignals = [];
             this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_CHASE_LONG', score:signal.score, timestamp:Date.now()});
             continue;
           }
-          // v120: 连续3根下跌且bounce<50% → 下跌中做多, 直接拦截
+          // v123: 放宽 — 连续3跌+bounce<20%才拦截
           const last3Down = recentCloses[2] > recentCloses[1] && recentCloses[1] > recentCloses[0];
-          if (last3Down && bouncePct < 50) {
+          if (last3Down && bouncePct < 20) {
             this._log(`⛔ ${symbol} 下跌中做多(连续3根下跌+位置${bouncePct.toFixed(0)}%) — 直接拦截`);
             if (!this._lastSignals) this._lastSignals = [];
             this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_DROP_LONG', score:signal.score, timestamp:Date.now()});
@@ -868,10 +866,11 @@ class Engine {
         // v113.48: 降低开仓门槛 — 神经网络权重已提高+止盈止损已修复
         const isBTC = symbol === 'BTCUSDT';
         const _isTrendAligned = (dir === 'LONG' && price > ma99) || (dir === 'SHORT' && price < ma99);
-        const minStrength = _isTrendAligned ? (isBTC ? 3.0 : 2.5) : (isBTC ? 5.0 : 4.0);
+        const minStrength = _isTrendAligned ? (isBTC ? 2.0 : 1.5) : (isBTC ? 3.5 : 2.5);
         // v113.48: 趋势偏离门槛从1.0%降到0.5%
-        if (_isTrendAligned && ma99Distance < 0.5 && !isBTC) {
-          this._log(`⚪ ${symbol} 趋势太弱 偏离MA99仅${ma99Distance.toFixed(2)}% < 0.5% — 跳过`);
+        // v123: 门槛从0.5%降到0.1%
+        if (_isTrendAligned && ma99Distance < 0.1 && !isBTC) {
+          this._log(`⚪ ${symbol} 趋势太弱 偏离MA99仅${ma99Distance.toFixed(2)}% < 0.1% — 跳过`);
           if (!this._lastSignals) this._lastSignals = [];
           this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'WEAK_TREND', score:signal.score, timestamp:Date.now()});
           continue;
@@ -882,24 +881,22 @@ class Engine {
           this._lastSignals.push({symbol, dir, strength, confidence: signal.confidence, signal: 'WEAK', score: signal.score, timestamp: Date.now()});
           continue;
         }
-        // v120: 置信度门槛从0.40提高到0.45
-        // 旧逻辑: 0.40 → 时间框架不一致0.85×0.5=0.42 > 0.40 → 全部通过
-        // 新逻辑: 0.45 → 时间框架不一致0.85×0.35=0.30 < 0.45 → 自动拦截
-        if (signal.confidence < 0.45) {
+        // v123: 置信度门槛从0.45降到0.25
+        if (signal.confidence < 0.25) {
           this._log(`⚪ ${symbol} ${tf} 置信度太低 conf=${signal.confidence.toFixed(2)} < 0.45 — 尝试下一个级别`);
           if (!this._lastSignals) this._lastSignals = [];
           this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'LOW_CONF', score:signal.score, timestamp:Date.now()});
           continue;
         }
 
-        // v113.15: 反弹过滤放松 — 顺势做空不受反弹限制
-        if (dir === 'SHORT' && price > ma99 && bouncePct > 65) {
+        // v123: 放宽反弹过滤 — 之前65%太严
+        if (dir === 'SHORT' && price > ma99 && bouncePct > 90) {
           this._log(`⛔ ${symbol} 反弹中(${bouncePct.toFixed(0)}%)跳过做空`);
           if (!this._lastSignals) this._lastSignals = [];
           this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_REBOUND', score:signal.score, timestamp:Date.now()});
           continue;
         }
-        if (dir === 'LONG' && price < ma99 && bouncePct < 35) {
+        if (dir === 'LONG' && price < ma99 && bouncePct < 10) {
           this._log(`⛔ ${symbol} 下跌中(${bouncePct.toFixed(0)}%)跳过做多`);
           if (!this._lastSignals) this._lastSignals = [];
           this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:signal.confidence, signal:'BLOCKED_DROP', score:signal.score, timestamp:Date.now()});

@@ -342,9 +342,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="s-item">
         <label data-i18n="settings.strategy">交易策略</label>
         <select id="setStrategy">
-          <option value="conservative" data-i18n="settings.conservative">保守 (低风险)</option>
-          <option value="balanced" data-i18n="settings.balanced">平衡 (推荐)</option>
-          <option value="aggressive" data-i18n="settings.aggressive">激进 (高收益)</option>
+          <option value="conservative" data-i18n="settings.conservative">A策略-保守 (低风险)</option>
+          <option value="balanced" data-i18n="settings.balanced">A策略-平衡 (推荐)</option>
+          <option value="aggressive" data-i18n="settings.aggressive">A策略-激进 (高收益)</option>
+          <option value="bb">B策略-布林带 (孙总策略)</option>
         </select>
       </div>
       <div class="s-item">
@@ -379,8 +380,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   <div style="padding:0 24px 18px">
     <div class="card">
-      <h3 data-i18n="dash.posDetail">持仓详情</h3>
+      <h3 data-i18n="dash.posDetail">A策略持仓</h3>
       <div id="posBox" class="pos-grid"><div class="empty" data-i18n="dash.empty">空仓</div></div>
+    </div>
+  </div>
+
+  <!-- B策略 (BB布林带) 持仓 -->
+  <div style="padding:0 24px 18px">
+    <div class="card">
+      <h3 style="color:#00d4ff">📊 B策略持仓 (布林带策略)</h3>
+      <div id="bbPosBox" class="pos-grid"><div class="empty">无B策略持仓</div></div>
     </div>
   </div>
 
@@ -497,7 +506,7 @@ const I18N = {
     },
     settings: {
       title: '交易设置', strategy: '交易策略',
-      conservative: '保守 (低风险)', balanced: '平衡 (推荐)', aggressive: '激进 (高收益)',
+      conservative: 'A策略-保守 (低风险)', balanced: 'A策略-平衡 (推荐)', aggressive: 'A策略-激进 (高收益)', bb: 'B策略-布林带',
       maxSingle: '单笔最大交易 (USDT)', dailyLimit: '每日交易限额 (USDT)',
       save: '保存', cancel: '取消', saved: '设置已保存'
     },
@@ -571,7 +580,7 @@ const I18N = {
     },
     settings: {
       title: 'Trading Settings', strategy: 'Strategy',
-      conservative: 'Conservative (Low Risk)', balanced: 'Balanced (Recommended)', aggressive: 'Aggressive (High Return)',
+      conservative: 'A-Conservative (Low Risk)', balanced: 'A-Balanced (Recommended)', aggressive: 'A-Aggressive (High Return)', bb: 'B-Bollinger',
       maxSingle: 'Max Single Trade (USDT)', dailyLimit: 'Daily Limit (USDT)',
       save: 'Save', cancel: 'Cancel', saved: 'Settings saved'
     },
@@ -1163,6 +1172,7 @@ function applyLang(lang) {
     stratSel.options[0].text = t('settings.conservative');
     stratSel.options[1].text = t('settings.balanced');
     stratSel.options[2].text = t('settings.aggressive');
+    if(stratSel.options[3]) stratSel.options[3].text = t('settings.bb') || 'B策略-布林带';
   }
 
   // 重建语言栏
@@ -1464,6 +1474,31 @@ function renderDashboard(data, vault) {
   const totalTrades = (vault && vault.totalTrades) || u.totalTrades || 0;
   const pnlDet = t('dash.pnlDetail').replace('{0}', totalTrades);
   show('pnlDetail', pnlDet);
+
+  // ═══ B策略 (BB布林带) 持仓渲染 ═══
+  const bbData = data.bbStrategy;
+  const bbBox = document.getElementById('bbPosBox');
+  if (bbBox) {
+    if (!bbData || !bbData.positions || bbData.positions.length === 0) {
+      bbBox.innerHTML = '<div class="empty">无B策略持仓</div>';
+    } else {
+      let h = '';
+      bbData.positions.forEach(p => {
+        const isL = p.side === 'LONG';
+        const pc = p.pnlUsd >= 0 ? 'green' : 'red';
+        h += '<div class="pos-card ' + (isL ? 'long' : 'short') + '">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center">'
+          + '<span class="pos-sym">' + p.symbol.replace('USDT','') + '</span>'
+          + '<span class="pos-side ' + (isL ? 'long' : 'short') + '">' + p.side + ' ' + (p.leverage||3) + 'x</span>'
+          + '</div>'
+          + '<div class="pos-det">Entry: $' + (p.entryPrice?.toFixed(4)||'--') + ' | Now: $' + (p.currentPrice?.toFixed(4)||'--') + '</div>'
+          + '<div class="pos-pnl ' + pc + '">' + p.pnlPct.toFixed(2) + '% | $' + p.pnlUsd.toFixed(2) + '</div>'
+          + '<div style="font-size:.75em;color:#8b949e;margin-top:4px">补仓 ' + p.replenishCount + '/3 | ' + (p.mode||'轨道') + '</div>'
+          + '</div>';
+      });
+      bbBox.innerHTML = h;
+    }
+  }
 
   // 交易记录
   const trades = eng.recentTrades || [];

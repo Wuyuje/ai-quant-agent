@@ -93,8 +93,55 @@ h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
     <div class="dash-row"><span class="label" data-t="labelAddr">地址</span><span class="value" id="dAddr">--</span></div>
     <div class="dash-row"><span class="label">USDT</span><span class="value" id="dUsdt">--</span></div>
     <div class="dash-row"><span class="label">BNB</span><span class="value" id="dBnb">--</span></div>
-    <div class="dash-row"><span class="label" data-t="labelStrategy">策略</span><span class="value" id="dStrategy">--</span></div>
     <div class="dash-row"><span class="label" data-t="labelTrading">自动交易</span><span class="value" id="dTrading">--</span></div>
+  </div>
+
+  <div class="dash-card">
+    <h3 style="color:#00d4ff">💰 盖茨费钱包</h3>
+    <div style="margin-bottom:10px;font-size:.82em;color:#8b949e;line-height:1.6">
+      <div style="padding:8px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.2);border-radius:6px;margin-bottom:8px;color:#3fb950">
+        ✅ <b>盖茨费只在盈利后收取</b>，没有盈利不收取任何费用。盈利时自动从BSC钱包扣除。
+      </div>
+      <div style="padding:8px;background:rgba(136,192,208,.08);border:1px solid rgba(136,192,208,.2);border-radius:6px;margin-bottom:8px;color:#88c0d0">
+        盖茨费 = 盈利金额 × 30%（20%服务费 + 10%生态费）<br>实得70%，只在盈利时收取，亏损不收费。
+      </div>
+      <div id="gatesFeeInfo" style="padding:10px;background:#161b22;border:1px solid #2a3a5c;border-radius:6px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>BSC钱包地址</span><span class="value" id="dGatesWallet">未绑定</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>盖茨费余额</span><span class="value" id="dGatesBalance">--</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>链上授权</span><span class="value" id="dGatesApproved">--</span></div>
+        <div style="display:flex;justify-content:space-between"><span>状态</span><span class="value" id="dGatesStatus">--</span></div>
+      </div>
+    </div>
+    <div style="margin-bottom:8px">
+      <input id="bscWalletInput" type="text" placeholder="BSC钱包地址 (0x...)" style="width:100%;padding:8px;margin-bottom:6px;background:#161b22;border:1px solid #2a3a5c;border-radius:4px;color:#c9d1d9;font-size:.85em;box-sizing:border-box">
+      <button onclick="bindBscWallet()" id="bscBindBtn" style="width:100%;padding:10px;border:none;border-radius:6px;background:#1f6feb;color:#fff;cursor:pointer;font-size:.9em">绑定BSC钱包</button>
+      <div id="bscBindStatus" style="margin-top:8px;font-size:.82em;text-align:center"></div>
+    </div>
+    <div style="margin-top:10px;padding:10px;background:rgba(136,192,208,.08);border:1px solid rgba(136,192,208,.2);border-radius:6px;font-size:.82em;color:#88c0d0;line-height:1.6">
+      <div style="margin-bottom:6px"><b>链上授权步骤：</b></div>
+      <div style="margin-bottom:4px">1. 绑定BSC钱包地址后，在TokenPocket/MetaMask中对USDT合约调用 <code style="color:#58a6ff">approve</code></div>
+      <div style="margin-bottom:4px">2. 授权地址填写：<code style="color:#58a6ff" id="traderWalletAddr">--</code></div>
+      <div style="margin-bottom:4px">3. 授权金额 ≥ 1000 USDT（足够多笔盖茨费）</div>
+      <div>4. 授权后系统自动检测，检测到后即可使用量化交易</div>
+    </div>
+    <div id="gatesFeeWarning" style="display:none;margin-top:10px;padding:10px;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:6px;color:#f85149;font-size:.85em;text-align:center">
+      ⚠️ 盖茨费余额不足！请在BSC钱包充值USDT，否则量化机器人将暂停交易。充值后自动恢复。
+    </div>
+  </div>
+
+  <div class="dash-card">
+    <h3 style="color:#00d4ff">⚙️ 币安API绑定</h3>
+    <div style="margin-bottom:8px;font-size:.82em;color:#8b949e">绑定币安API Key（只需合约交易+现货交易权限，不需要提现权限）</div>
+    <div style="margin-bottom:14px">
+      <input id="apiKeyInput" type="text" placeholder="API Key" style="width:100%;padding:8px;margin-bottom:6px;background:#161b22;border:1px solid #2a3a5c;border-radius:4px;color:#c9d1d9;font-size:.85em;box-sizing:border-box">
+      <input id="apiSecretInput" type="password" placeholder="API Secret" style="width:100%;padding:8px;margin-bottom:6px;background:#161b22;border:1px solid #2a3a5c;border-radius:4px;color:#c9d1d9;font-size:.85em;box-sizing:border-box">
+      <label style="display:flex;align-items:flex-start;gap:8px;margin:10px 0;padding:10px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.25);border-radius:6px;cursor:pointer;font-size:.82em;color:#c9d1d9">
+        <input type="checkbox" id="withdrawConsent" onchange="onConsentChange()" style="margin-top:3px;flex-shrink:0">
+        <span>我已知晓：<b>盖茨费只在盈利后收取</b>（盈利×30%），没有盈利不收取任何费用。我已在BSC钱包放置足额USDT并完成链上授权，同意系统自动扣除盖茨费。</span>
+      </label>
+      <button onclick="bindApiKey()" id="bindBtn" disabled style="width:100%;padding:10px;border:none;border-radius:6px;background:#21262d;color:#484f58;cursor:not-allowed;font-size:.9em">绑定API Key</button>
+      <div id="apiKeyStatus" style="margin-top:8px;font-size:.82em;text-align:center"></div>
+    </div>
   </div>
   <div class="dash-card">
     <h3 data-t="dashPositions">📊 多市场持仓</h3>
@@ -120,10 +167,10 @@ h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
       <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 1:</b> <span data-t="g1">安装 TokenPocket 钱包</span> <a href="https://www.tokenpocket.pro" target="_blank" style="color:#58a6ff;text-decoration:underline">tokenpocket.pro</a></div>
       <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 2:</b> <span data-t="g2">创建BSC钱包，备份助记词（12个英文单词，写在纸上）</span></div>
       <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 3:</b> <span data-t="g3">确保钱包有0.01+ BNB（gas费）和USDT</span></div>
-      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 4:</b> <span data-t="g4">获取币安API Key</span> → <a href="https://www.binance.com/zh-CN/my/settings/api-management" target="_blank" style="color:#58a6ff;text-decoration:underline">币安API管理页面</a> <span data-t="g4b">→ 创建API → 必须勾选：合约交易 + 现货交易 + 提现（提现只用于提现盈利收益的服务费）</span></div>
-      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 5:</b> <span data-t="g5">在本页注册钱包地址+密码 → 登录</span></div>
+      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 4:</b> <span data-t="g4">获取币安API Key → API管理 → 创建 → 勾选：合约交易+现货交易（不需要提现权限，盖茨费通过BSC钱包链上授权扣除）</span> <a href="https://www.binance.com/zh-CN/my/settings/api-management" target="_blank" style="color:#58a6ff;text-decoration:underline">币安API管理页面</a> <span data-t="g4b">→ 创建API → 勾选：合约交易 + 现货交易（不需要提现权限）</span></div>
+      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 5:</b> <span data-t="g5">在本页注册钱包地址+密码 → 登录 → 绑定BSC钱包 → 链上授权USDT</span></div>
       <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 6:</b> <span data-t="g6">转入USDT到合约钱包 → 开启交易</span></div>
-      <div style="padding:8px;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);border-radius:6px;color:#3fb950" data-t="warn">⚠️ 助记词绝不截图、不发给任何人。创建API Key时必须勾选「允许提现」权限，提现功能只用于提现盈利收益的服务费到管理员钱包。</div>
+      <div style="padding:8px;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);border-radius:6px;color:#3fb950" data-t="warn">⚠️ 助记词绝不截图、不发给任何人。币安API Key只需合约+现货交易权限，不需要提现权限。盖茨费只在盈利后收取，通过BSC钱包链上授权自动扣除，没有盈利不收取任何费用。</div>
     </div>
   </div>
   <div style="text-align:center">
@@ -138,8 +185,8 @@ var API=location.origin;
 
 // ===== i18n =====
 var I18N={
-zh:{step1:'连接钱包签名登录',step2:'一键部署合约钱包',step3:'转入USDT到合约',step4:'开启全自动交易',connectBtn:'🔗 连接 TokenPocket 钱包',orManual:'— 或手动输入地址登录 —',walletLabel:'钱包地址 (0x...)',passLabel:'密码',loginBtn:'登 录',newUser:'还没有账号？',regBtn:'注册新账号',inviteLabel:'邀请码（联系管理员获取）',feeInfo:'💰 管理员0%服务费，普通用户10%生态费+20%服务费=实得70%（仅盈利时收取）',dashAccount:'📊 账户信息',labelAddr:'地址',labelStrategy:'策略',labelTrading:'自动交易',dashPositions:'📊 多市场持仓',dashMarketPnl:'📈 各市场盈亏',dashRecent:'📈 最近交易',noPos:'暂无持仓',guideTitle:'使用教程',g1:'安装 TokenPocket 钱包（tokenpocket.pro）',g2:'创建BSC钱包，备份助记词（12个英文单词，写在纸上）',g3:'确保钱包有0.01+ BNB（gas费）和USDT',g4:'获取币安API Key → 用户中心 → API管理 → 创建API → 必须勾选：合约交易+现货交易+提现（提现只用于提现盈利收益的服务费）',g5:'在本页注册钱包地址+密码 → 登录',g6:'转入USDT到合约钱包 → 开启交易',warn:'⚠️ 助记词绝不截图、不发给任何人。创建API Key时必须勾选「允许提现」权限，提现功能只用于提现盈利收益的服务费到管理员钱包。',logoutBtn:'退出登录',noTrade:'暂无交易记录',loginSuccess:'✅ 登录成功',registerSuccess:'✅ 注册成功'},
-en:{step1:'Connect wallet to sign in',step2:'Deploy contract wallet',step3:'Transfer USDT to contract',step4:'Start auto trading',connectBtn:'🔗 Connect TokenPocket Wallet',orManual:'— Or login manually —',walletLabel:'Wallet Address (0x...)',passLabel:'Password',loginBtn:'LOGIN',newUser:'New user?',regBtn:'Register Account',inviteLabel:'Invite Code (from admin)',feeInfo:'💰 Admin: 0% fee. Users: 10% eco + 20% service = keep 70% (profits only)',dashAccount:'📊 Account',labelAddr:'Address',labelStrategy:'Strategy',labelTrading:'Auto Trading',dashPositions:'📊 Multi-Market Positions',dashMarketPnl:'📈 Market P&L',dashRecent:'📈 Recent Trades',noPos:'No positions',guideTitle:'User Guide',g1:'Install TokenPocket (tokenpocket.pro)',g2:'Create BSC wallet, backup seed phrase (12 words on paper)',g3:'Ensure 0.01+ BNB (gas) and USDT in wallet',g4:'Get Binance API Key → API Management → Create → Must enable: Futures + Spot + Withdraw (withdrawal is only for withdrawing service fees from profits)',g5:'Register with wallet + password → Login',g6:'Deposit USDT to contract wallet → Start trading',warn:'⚠️ Never screenshot seed phrase. You MUST enable withdrawal permission on your Binance API Key — it is only used to withdraw service fees from your profits to admin wallet.',logoutBtn:'Logout',noTrade:'No trades yet',loginSuccess:'✅ Login OK',registerSuccess:'✅ Registered'},
+zh:{step1:'连接钱包签名登录',step2:'一键部署合约钱包',step3:'转入USDT到合约',step4:'开启全自动交易',connectBtn:'🔗 连接 TokenPocket 钱包',orManual:'— 或手动输入地址登录 —',walletLabel:'钱包地址 (0x...)',passLabel:'密码',loginBtn:'登 录',newUser:'还没有账号？',regBtn:'注册新账号',inviteLabel:'邀请码（联系管理员获取）',feeInfo:'💰 盖茨费只在盈利后收取：盈利×30%（20%服务费+10%生态费），实得70%，没有盈利不收取任何费用。通过BSC钱包链上授权自动扣除。',dashAccount:'📊 账户信息',labelAddr:'地址',labelStrategy:'策略',labelTrading:'自动交易',dashPositions:'📊 多市场持仓',dashMarketPnl:'📈 各市场盈亏',dashRecent:'📈 最近交易',noPos:'暂无持仓',guideTitle:'使用教程',g1:'安装 TokenPocket 钱包（tokenpocket.pro）',g2:'创建BSC钱包，备份助记词（12个英文单词，写在纸上）',g3:'确保钱包有0.01+ BNB（gas费）和USDT',g4:'获取币安API Key → API管理 → 创建 → 勾选：合约交易+现货交易（不需要提现权限，盖茨费通过BSC钱包链上授权扣除）',g5:'在本页注册钱包地址+密码 → 登录 → 绑定BSC钱包 → 链上授权USDT',g6:'转入USDT到合约钱包 → 开启交易',warn:'⚠️ 助记词绝不截图、不发给任何人。币安API Key只需合约+现货交易权限，不需要提现权限。盖茨费只在盈利后收取，通过BSC钱包链上授权自动扣除，没有盈利不收取任何费用。',logoutBtn:'退出登录',noTrade:'暂无交易记录',loginSuccess:'✅ 登录成功',registerSuccess:'✅ 注册成功'},
+en:{step1:'Connect wallet to sign in',step2:'Deploy contract wallet',step3:'Transfer USDT to contract',step4:'Start auto trading',connectBtn:'🔗 Connect TokenPocket Wallet',orManual:'— Or login manually —',walletLabel:'Wallet Address (0x...)',passLabel:'Password',loginBtn:'LOGIN',newUser:'New user?',regBtn:'Register Account',inviteLabel:'Invite Code (from admin)',feeInfo:'💰 Gates fee is only charged on profits: profit × 30% (20% service + 10% eco), you keep 70%. No profit = no fee. Auto-collected via BSC wallet on-chain approval.',dashAccount:'📊 Account',labelAddr:'Address',labelStrategy:'Strategy',labelTrading:'Auto Trading',dashPositions:'📊 Multi-Market Positions',dashMarketPnl:'📈 Market P&L',dashRecent:'📈 Recent Trades',noPos:'No positions',guideTitle:'User Guide',g1:'Install TokenPocket (tokenpocket.pro)',g2:'Create BSC wallet, backup seed phrase (12 words on paper)',g3:'Ensure 0.01+ BNB (gas) and USDT in wallet',g4:'Get Binance API Key → API Management → Create → Enable: Futures + Spot (no withdrawal permission needed. Gates fee is collected via BSC wallet on-chain approval)',g5:'Register with wallet + password → Login → Bind BSC wallet → On-chain approve USDT',g6:'Deposit USDT to contract wallet → Start trading',warn:'⚠️ Never screenshot seed phrase. Binance API only needs Futures + Spot trading permission (no withdrawal permission needed). Gates fee is only charged on profits via BSC wallet on-chain approval. No profit = no fee.',logoutBtn:'Logout',noTrade:'No trades yet',loginSuccess:'✅ Login OK',registerSuccess:'✅ Registered'},
 ja:{step1:'ウォレットでサインイン',step2:'コントラクトウォレットをデプロイ',step3:'USDTをコントラクトに転送',step4:'自動取引を開始',connectBtn:'🔗 TPウォレットを接続',orManual:'— または手動ログイン —',walletLabel:'ウォレットアドレス',passLabel:'パスワード',loginBtn:'ログイン',newUser:'初めての方？',regBtn:'新規登録',feeInfo:'💰 管理者0%, ユーザー10%+20%=70%（利益時のみ）',dashAccount:'📊 アカウント',labelAddr:'アドレス',labelStrategy:'戦略',labelTrading:'自動取引',dashPositions:'📊 ポジション',dashMarketPnl:'📈 損益',dashRecent:'📈 最近の取引',noPos:'ポジションなし',guideTitle:'ガイド',logoutBtn:'ログアウト',noTrade:'取引なし',loginSuccess:'✅ OK',registerSuccess:'✅ 登録成功'},
 ko:{step1:'월렛으로 로그인',step2:'컨트랙트 월렛 배포',step3:'USDT 입금',step4:'자동거래 시작',connectBtn:'🔗 TP 월렛 연결',orManual:'— 또는 수동 로그인 —',walletLabel:'지갑 주소',passLabel:'비밀번호',loginBtn:'로그인',newUser:'처음이신가요?',regBtn:'회원가입',feeInfo:'💰 관리자 0%, 사용자 10%+20%=70% (수익 시만)',dashAccount:'📊 계정',labelAddr:'주소',labelStrategy:'전략',labelTrading:'자동거래',dashPositions:'📊 포지션',dashMarketPnl:'📈 손익',dashRecent:'📈 최근 거래',noPos:'포지션 없음',guideTitle:'가이드',logoutBtn:'로그아웃',noTrade:'거래 없음',loginSuccess:'✅ 성공',registerSuccess:'✅ 등록 성공'},
 vi:{step1:'Đăng nhập bằng ví',step2:'Triển khai ví hợp đồng',step3:'Chuyển USDT vào hợp đồng',step4:'Bắt đầu giao dịch',connectBtn:'🔗 Kết nối TP Wallet',orManual:'— Hoặc đăng nhập thủ công —',walletLabel:'Địa chỉ ví',passLabel:'Mật khẩu',loginBtn:'Đăng nhập',newUser:'Lần đầu?',regBtn:'Đăng ký',feeInfo:'💰 Admin 0%, User 10%+20%=70% (chỉ khi lãi)',dashAccount:'📊 Tài khoản',labelAddr:'Địa chỉ',labelStrategy:'Chiến lược',labelTrading:'Tự động',dashPositions:'📊 Vị thế',dashMarketPnl:'📈 L/N',dashRecent:'📈 Giao dịch',noPos:'Không có vị thế',guideTitle:'Hướng dẫn',logoutBtn:'Đăng xuất',noTrade:'Chưa có giao dịch',loginSuccess:'✅ OK',registerSuccess:'✅ OK'},
@@ -212,8 +259,106 @@ function showDashboard(data){
   if(!trades.length){dt.innerHTML='<div style="color:#8b949e;font-size:.8em">'+((I18N[lang]||I18N.zh).noTrade||'暂无')+'</div>'}
   else{dt.innerHTML=trades.slice().reverse().slice(0,5).map(function(t){var pc=(t.pnl||0)>=0?'pnl-pos':'pnl-neg';var pt=t.pnl!==undefined?((t.pnl>=0?'+':'')+t.pnl.toFixed(4)):t.action;var tm=new Date(t.timestamp).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});return '<div class="trade-item"><span class="sym">'+t.symbol+'</span> '+t.action+' <span class="'+pc+'">'+pt+'</span><div style="color:#484f58;margin-top:2px">'+tm+'</div></div>'}).join('')}
   if(window._dashTimer)clearInterval(window._dashTimer);window._dashTimer=setInterval(refreshDashboard,5000)
+  // API Key状态
+  var aks=document.getElementById('apiKeyStatus');
+  if(aks){
+    if(u.binanceApiKey){
+      aks.innerHTML='<span style="color:#3fb950">✓ API Key已绑定（盖茨费模式）</span>';
+      document.getElementById('apiKeyInput').placeholder='已绑定 (重新输入可更新)';
+      document.getElementById('apiSecretInput').placeholder='已绑定 (重新输入可更新)';
+    } else {
+      aks.innerHTML='<span style="color:#d29922">未绑定API Key</span>';
+    }
+  }
+  // 盖茨费状态显示
+  if(u.bscWalletAddr){
+    document.getElementById('dGatesWallet').textContent=u.bscWalletAddr.slice(0,10)+'...';
+    document.getElementById('dGatesBalance').textContent='$'+((u.gatesFeeBalance||0).toFixed(2));
+    document.getElementById('dGatesApproved').innerHTML=u.gatesFeeApproved?'<span style="color:#3fb950">✓ 已授权</span>':'<span style="color:#d29922">未授权</span>';
+    var low=u.gatesFeeLow||parseFloat(u.gatesFeeBalance||0)<5;
+    document.getElementById('dGatesStatus').innerHTML=low?'<span style="color:#f85149">余额不足</span>':'<span style="color:#3fb950">正常</span>';
+    document.getElementById('gatesFeeWarning').style.display=low?'block':'none';
+  }
 }
-function refreshDashboard(){var tk=localStorage.getItem('ark_token');if(!tk)return;var x=new XMLHttpRequest();x.open('POST',API+'/api/dashboard',true);x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-API-Key',tk);x.timeout=10000;x.onload=function(){try{var d=JSON.parse(x.responseText);if(d.user)showDashboard(d)}catch(e){}};x.send(JSON.stringify({}))}
+function onConsentChange(){
+  var ck=document.getElementById('withdrawConsent');
+  var btn=document.getElementById('bindBtn');
+  if(ck.checked){btn.disabled=false;btn.style.background='#238636';btn.style.color='#fff';btn.style.cursor='pointer';}
+  else{btn.disabled=true;btn.style.background='#21262d';btn.style.color='#484f58';btn.style.cursor='not-allowed';}
+}
+function bindApiKey(){
+  var tk=localStorage.getItem('ark_token');if(!tk)return;
+  var ck=document.getElementById('withdrawConsent');
+  if(!ck||!ck.checked){alert('请先勾选同意盖茨费收取');return;}
+  var ak=document.getElementById('apiKeyInput').value.trim();
+  var sk=document.getElementById('apiSecretInput').value.trim();
+  if(!ak||!sk){alert('请输入API Key和Secret');return;}
+  var btn=document.getElementById('bindBtn');btn.textContent='验证中...';btn.disabled=true;
+  var x=new XMLHttpRequest();x.open('POST',API+'/api/vault/cex-key',true);x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-API-Key',tk);x.timeout=15000;
+  x.onload=function(){
+    btn.textContent='绑定API Key';btn.disabled=false;
+    try{var d=JSON.parse(x.responseText);
+      if(d.success){
+        var msg='<span style="color:#3fb950">✓ 绑定成功! 币安余额: $'+(d.balance||0);
+        if(d.gatesFeeBalance!==undefined)msg+='<br>✓ 盖茨费余额: $'+d.gatesFeeBalance;
+        if(d.gatesFeeApproved)msg+='<br>✓ 链上授权已确认';
+        else msg+='<br>⚠️ 请完成BSC钱包链上授权';
+        msg+='</span>';
+        document.getElementById('apiKeyStatus').innerHTML=msg;
+        document.getElementById('apiKeyInput').value='';document.getElementById('apiSecretInput').value='';
+        refreshDashboard();
+      } else if(d.needBscWallet){
+        document.getElementById('apiKeyStatus').innerHTML='<span style="color:#f85149">'+(d.error||'请先绑定BSC钱包')+'</span>';
+      } else {
+        document.getElementById('apiKeyStatus').innerHTML='<span style="color:#f85149">'+(d.error||'绑定失败')+'</span>';
+      }
+    }catch(e){document.getElementById('apiKeyStatus').innerHTML='<span style="color:#f85149">网络错误</span>';}
+  };
+  x.onerror=function(){btn.textContent='绑定API Key';btn.disabled=false;document.getElementById('apiKeyStatus').innerHTML='<span style="color:#f85149">网络错误</span>';};
+  x.send(JSON.stringify({apiKey:ak,secretKey:sk}));
+}
+// ═══ 盖茨费：绑定BSC钱包 ═══
+function bindBscWallet(){
+  var tk=localStorage.getItem('ark_token');if(!tk)return;
+  var addr=document.getElementById('bscWalletInput').value.trim();
+  if(!addr||!addr.match(/^0x[a-fA-F0-9]{40}$/)){alert('请输入有效的BSC钱包地址');return;}
+  var btn=document.getElementById('bscBindBtn');btn.textContent='验证中...';btn.disabled=true;
+  var x=new XMLHttpRequest();x.open('POST',API+'/api/vault/bsc-wallet',true);x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-API-Key',tk);x.timeout=15000;
+  x.onload=function(){
+    btn.textContent='绑定BSC钱包';btn.disabled=false;
+    try{var d=JSON.parse(x.responseText);
+      if(d.success){
+        document.getElementById('bscBindStatus').innerHTML='<span style="color:#3fb950">✓ 绑定成功! 盖茨费余额: $'+d.gatesFeeBalance+'</span>';
+        updateGatesFeeDisplay(d);
+        refreshDashboard();
+      } else {
+        document.getElementById('bscBindStatus').innerHTML='<span style="color:#f85149">'+(d.error||'绑定失败')+'</span>';
+      }
+    }catch(e){document.getElementById('bscBindStatus').innerHTML='<span style="color:#f85149">网络错误</span>';}
+  };
+  x.onerror=function(){btn.textContent='绑定BSC钱包';btn.disabled=false;document.getElementById('bscBindStatus').innerHTML='<span style="color:#f85149">网络错误</span>';};
+  x.send(JSON.stringify({bscWalletAddr:addr}));
+}
+// ═══ 盖茨费：更新显示 ═══
+function updateGatesFeeDisplay(d){
+  if(d.bscWalletAddr)document.getElementById('dGatesWallet').textContent=d.bscWalletAddr+'...';
+  if(d.gatesFeeBalance!==undefined)document.getElementById('dGatesBalance').textContent='$'+d.gatesFeeBalance;
+  if(d.gatesFeeApproved!==undefined)document.getElementById('dGatesApproved').innerHTML=d.gatesFeeApproved?'<span style="color:#3fb950">✓ 已授权</span>':'<span style="color:#d29922">未授权</span>';
+  if(d.gatesFeeLow!==undefined||d.gatesFeeBalance!==undefined){
+    var low=d.gatesFeeLow||parseFloat(d.gatesFeeBalance||0)<5;
+    document.getElementById('dGatesStatus').innerHTML=low?'<span style="color:#f85149">余额不足</span>':'<span style="color:#3fb950">正常</span>';
+    document.getElementById('gatesFeeWarning').style.display=low?'block':'none';
+  }
+  if(d.traderWalletAddr)document.getElementById('traderWalletAddr').textContent=d.traderWalletAddr;
+}
+// ═══ 盖茨费：加载状态 ═══
+function loadGatesFeeStatus(){
+  var tk=localStorage.getItem('ark_token');if(!tk)return;
+  var x=new XMLHttpRequest();x.open('GET',API+'/api/vault/gates-fee-status',true);x.setRequestHeader('X-API-Key',tk);x.timeout=10000;
+  x.onload=function(){try{var d=JSON.parse(x.responseText);if(d.success&&d.bound)updateGatesFeeDisplay(d);}catch(e){}};
+  x.send();
+}
+function refreshDashboard(){var tk=localStorage.getItem('ark_token');if(!tk)return;var x=new XMLHttpRequest();x.open('POST',API+'/api/dashboard',true);x.setRequestHeader('Content-Type','application/json');x.setRequestHeader('X-API-Key',tk);x.timeout=10000;x.onload=function(){try{var d=JSON.parse(x.responseText);if(d.user)showDashboard(d)}catch(e){}};x.send(JSON.stringify({}));loadGatesFeeStatus();}
 function logout(){localStorage.removeItem('ark_token');localStorage.removeItem('ark_user');if(window._dashTimer)clearInterval(window._dashTimer);document.getElementById('loginCard').style.display='block';document.getElementById('dash').style.display='none';logEl.innerHTML='';logEl.style.display='none'}
 function showMsg(text,color){var m=document.getElementById('msg');m.style.display='block';m.textContent=text;m.style.color=color;setTimeout(function(){m.style.display='none'},3000)}
 applyLang();

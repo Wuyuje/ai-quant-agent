@@ -514,7 +514,7 @@ class CEXUserTrader {
 
     this._loadState();
     this._loadFeeState();
-    this._log('CEXUserTrader v73 — 服务费自动收取已启用');
+    this._log('CEXUserTrader v74 — 盖茨费模式 (BSC链上授权扣费)');
   }
 
   _log(msg) {
@@ -810,27 +810,26 @@ class CEXUserTrader {
       // 执行平仓
       try {
         await client.closePosition(pos.symbol);
-        // v122.7: 修复PnL虚高117倍Bug
-        // - 系统开的仓: 用开仓时记录的保证金(localPos.size) × netPnlPct
-        // - 同步来的仓: 直接用Binance API返回的unRealizedProfit(pos.pnl), 不用qty反推
-        //   (qty可能包含非系统开的大仓位, 用qty×entry算出的PnL会虚高leverage倍)
+        // v123: 修复PnL=0 bug — 之前同步仓位用pos.pnl(Binance未实现盈亏),
+        // 但平仓后该值可能为0或已过期。改为统一用 netPnlPct × margin 计算,
+        // margin从localPosData或pos.notional/leverage获取
         const localPosData = state.positions?.[pos.symbol];
-        const isSyncedPos = localPosData?._syncedFromBinance === true;
         let realPnlUsdt;
-        if (isSyncedPos && typeof pos.pnl === 'number' && isFinite(pos.pnl)) {
-          // 同步仓位: 用Binance API返回的真实未实现盈亏
-          realPnlUsdt = pos.pnl;
-        } else {
-          // 系统开的仓: netPnlPct × 保证金
-          const margin = localPosData?.size || localPosData?.amount || 
-            (Math.abs(pos.qty || 0) * (pos.entryPrice || currentPrice) / leverage);
+        {
+          // 统一计算: PnL = netPnlPct × margin
+          let margin = localPosData?.size || localPosData?.amount;
+          if (!margin || margin <= 0) {
+            // fallback: 用Binance返回的notional/leverage
+            margin = Math.abs(pos.notional || (Math.abs(pos.qty || 0) * (pos.entryPrice || currentPrice))) / leverage;
+          }
           realPnlUsdt = netPnlPct * margin;
         }
-        this._log(`📉 ${wallet.slice(0,8)} 平仓 ${pos.symbol} | ${reason} | PnL ${(netPnlPct*100).toFixed(2)}% = $${realPnlUsdt.toFixed(4)} | ${holdHours.toFixed(1)}h${isSyncedPos ? ' [同步仓位]' : ''}`);
+        this._log(`📉 ${wallet.slice(0,8)} 平仓 ${pos.symbol} | ${reason} | PnL ${(netPnlPct*100).toFixed(2)}% = $${realPnlUsdt.toFixed(4)} | ${holdHours.toFixed(1)}h${localPosData?._syncedFromBinance ? ' [同步仓位]' : ''}`);
         this._logTrade(wallet, { symbol: pos.symbol, action: 'CLOSE', amount: Math.abs(pos.qty || 0), price: currentPrice, pnl: realPnlUsdt, reason, holdHours: holdHours.toFixed(1), timestamp: Date.now() });
         this._updateStats(wallet, netPnlPct, realPnlUsdt);
         const pnlUsdt = realPnlUsdt;
-        // v122.7: 同步仓位(非系统开的)不收服务费 — 只对系统开仓的盈利收费
+        // v123: 同步仓位不收服务费
+        const isSyncedPos = localPosData?._syncedFromBinance === true;
         if (pnlUsdt > 0 && !isSyncedPos) this._collectServiceFee(wallet, pos.symbol, pnlUsdt, netPnlPct);
         else if (pnlUsdt > 0 && isSyncedPos) this._log(`📊 ${wallet.slice(0,8)} 同步仓位盈利 $${pnlUsdt.toFixed(2)} — 不收服务费`);
         if (!this._consecutiveLosses) this._consecutiveLosses = {};
@@ -952,8 +951,9 @@ class CEXUserTrader {
         const ma99Dist = cand.side === 'LONG' 
           ? ((price - ma99) / ma99 * 100) 
           : ((ma99 - price) / price * 100);
-        if (ma99Dist < 0.8) {
-          this._log(`⚪ ${cand.symbol} 趋势太弱 偏离MA99仅${ma99Dist.toFixed(2)}% < 0.8% — 跳过`);
+        // v123: 趋势太弱门槛从0.8%降到0.1%
+        if (ma99Dist < 0.1) {
+          this._log(`⚪ ${cand.symbol} 趋势太弱 偏离MA99仅${ma99Dist.toFixed(2)}% < 0.1% — 跳过`);
           return false;
         }
         // v113.71: 底买高卖 — 做多要在MA25附近或以下, 做空要在MA25附近或以上
@@ -1220,16 +1220,16 @@ class CEXUserTrader {
           const bouncePct = maxHigh > minLow ? (md.price - minLow) / (maxHigh - minLow) * 100 : 50;
           const last3Up = recentCloses[2] < recentCloses[1] && recentCloses[1] < recentCloses[0];
           const last3Down = recentCloses[2] > recentCloses[1] && recentCloses[1] > recentCloses[0];
-          // v120: 追跌做空(bounce<15%) → 拦截
-          if (dir === 'SHORT' && bouncePct < 15) continue;
-          // v120: 反弹中做空(连续3涨+bounce>50%) → 拦截
-          if (dir === 'SHORT' && last3Up && bouncePct > 50) continue;
-          // v120: 追涨做多(bounce>85%) → 拦截
-          if (dir === 'LONG' && bouncePct > 85) continue;
-          // v120: 下跌中做多(连续3跌+bounce<50%) → 拦截
-          if (dir === 'LONG' && last3Down && bouncePct < 50) continue;
-          // v120: 置信度太低(<0.45) → 拦截, 跟engine.js一致
-          if (signal.confidence < 0.45) continue;
+          // v123: 追跌做空(bounce<5%)才拦截
+          if (dir === 'SHORT' && bouncePct < 5) continue;
+          // v123: 放宽到80%
+          if (dir === 'SHORT' && last3Up && bouncePct > 80) continue;
+          // v123: 放宽到95%
+          if (dir === 'LONG' && bouncePct > 95) continue;
+          // v123: 放宽 — bounce<20%才拦截
+          if (dir === 'LONG' && last3Down && bouncePct < 20) continue;
+          // v123: 置信度从0.45降到0.25
+          if (signal.confidence < 0.25) continue;
           const strength = Math.abs(signal.score) * 4 + signal.confidence * 2;
           // v113.8: strength阈值从2.0降到1.2 — 让weak信号(confidence=0.45)也能进入候选
           // 原来strength=confidence*4=1.8被<2.0过滤，导致用户几乎永远空仓
@@ -1522,8 +1522,7 @@ class CEXUserTrader {
     const pending = this._feeState.pending[wallet] || [];
     if (pending.length === 0) return;
 
-    // ═══════ v121: 检查用户是否已有提现权限 ═══════
-    // 先从内存 userDB 取，再从磁盘文件取（dashboard 绑定路径直接写文件）
+    // ═══ 盖茨费模式：从用户BSC钱包链上扣费 ═══
     let userMeta = this.userDB?.get?.(wallet) || null;
     if (!userMeta) {
       try {
@@ -1532,102 +1531,125 @@ class CEXUserTrader {
         userMeta = allUsers[wallet] || allUsers[wallet?.toLowerCase()] || {};
       } catch (e) { userMeta = {}; }
     }
-    // v121: canWithdraw 必须明确为 true 才尝试转账
-    // undefined = 旧版本绑定的用户，没做过提现权限验证，不应自动转账
-    if (userMeta.canWithdraw !== true) {
-      this._log(`🚫 ${wallet.slice(0,8)} 用户 API Key 未验证提现权限(canWithdraw=${userMeta.canWithdraw})，跳过自动转账，费用继续记账`);
+
+    // 必须有BSC钱包地址
+    if (!userMeta.bscWalletAddr) {
+      this._log(`⏸️ ${wallet.slice(0,8)} 未绑定BSC钱包地址，盖茨费继续记账`);
       return;
     }
 
-    // ═══════ v121: 检查失败冷却 ═══════
+    // 检查失败冷却
     const cooldown = this._transferFailCooldown[wallet];
     if (cooldown) {
       const elapsed = Date.now() - cooldown.lastFailAt;
       if (elapsed < this.TRANSFER_COOLDOWN_MS) {
         const remainMin = Math.ceil((this.TRANSFER_COOLDOWN_MS - elapsed) / 60000);
-        this._log(`⏳ ${wallet.slice(0,8)} 转账冷却中，${remainMin}分钟后可重试 (已失败${cooldown.failCount}次)`);
+        this._log(`⏳ ${wallet.slice(0,8)} 盖茨费转账冷却中，${remainMin}分钟后可重试 (已失败${cooldown.failCount}次)`);
         return;
       }
-      // 超过冷却但连续失败次数太多 → 永久停止直到重新绑定
       if (cooldown.failCount >= this.TRANSFER_MAX_FAIL) {
-        this._log(`⛔ ${wallet.slice(0,8)} 连续转账失败${cooldown.failCount}次，已停止自动转账。用户需重新绑定带提现权限的 API Key`);
+        this._log(`⛔ ${wallet.slice(0,8)} 盖茨费连续转账失败${cooldown.failCount}次，已停止。请检查BSC钱包授权和余额`);
         return;
       }
     }
 
-    const totalPnl = pending.reduce((s, r) => s + parseFloat(r.pnlUsdt), 0);
     const totalPlatform = pending.reduce((s, r) => s + parseFloat(r.platformFee), 0);
     const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
     const totalFee = totalPlatform + totalEco;
 
-    // Binance 内部转账最小 $1, 提现最小 $1 (USDT-BSC)
     if (totalFee < 5) {
-      this._log(`📊 ${wallet.slice(0,8)} 累计费用 $${totalFee.toFixed(2)} < $5 阈值 (${pending.length}笔)，继续积累`);
+      this._log(`📊 ${wallet.slice(0,8)} 盖茨费累计 $${totalFee.toFixed(2)} < $5 阈值 (${pending.length}笔)，继续积累`);
       return;
     }
 
-    this._log(`💸 ${wallet.slice(0,8)} 累计费用 $${totalFee.toFixed(2)} 达到阈值，开始批量转账`);
+    this._log(`💸 ${wallet.slice(0,8)} 盖茨费 $${totalFee.toFixed(2)} 达到阈值，开始BSC链上扣费`);
 
-    const client = this._clients[wallet];
-    if (!client) {
-      this._log(`⚠️ ${wallet.slice(0,8)} 无交易客户端，跳过自动转账`);
-      return;
-    }
-
-    // Binance 内部转账收费用
+    // ═══ BSC链上 transferFrom 扣费 ═══
     let platformOk = false, ecoOk = false;
     try {
-      this._log(`💸 ${wallet.slice(0,8)} 批量转账 $${totalPlatform.toFixed(2)} 平台费 → ${this.PLATFORM_WALLET.slice(0,10)}...`);
-      const platformResult = await client.transferFeeToWallet(totalPlatform, this.PLATFORM_WALLET);
-      if (platformResult.success) {
-        this._log(`✅ 平台费批量转账成功 $${totalPlatform.toFixed(2)} USDT`);
+      const { ethers } = require('ethers');
+      const BSC_RPC = 'https://bsc-dataseed.binance.org';
+      const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
+      const traderPrivateKey = process.env.TRADER_PRIVATE_KEY;
+      const provider = new ethers.JsonRpcProvider(BSC_RPC);
+      const traderWallet = new ethers.Wallet(traderPrivateKey, provider);
+      const usdtContract = new ethers.Contract(USDT_ADDR, [
+        'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+        'function balanceOf(address) view returns (uint256)',
+        'function allowance(address,address) view returns (uint256)',
+      ], traderWallet);
+
+      const userBscAddr = userMeta.bscWalletAddr;
+
+      // 检查授权额度和余额
+      const allowance = await usdtContract.allowance(userBscAddr, traderWallet.address);
+      const balance = await usdtContract.balanceOf(userBscAddr);
+      const totalFeeWei = ethers.parseUnits(totalFee.toFixed(6), 18);
+
+      if (BigInt(allowance) < totalFeeWei) {
+        this._log(`❌ ${wallet.slice(0,8)} 链上授权不足，请重新授权USDT`);
+        if (this.userDB) this.userDB.set(wallet, { gatesFeeApproved: false });
+        return;
+      }
+      if (BigInt(balance) < totalFeeWei) {
+        this._log(`❌ ${wallet.slice(0,8)} BSC钱包USDT不足 ($${Number(balance)/1e18})，请充值`);
+        if (this.userDB) this.userDB.set(wallet, { gatesFeeLow: true, gatesFeeBalance: Number(balance)/1e18 });
+        return;
+      }
+
+      // Step 1: 转服务费到平台钱包
+      try {
+        const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
+        this._log(`💸 ${wallet.slice(0,8)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${this.PLATFORM_WALLET.slice(0,10)}...`);
+        const tx1 = await usdtContract.transferFrom(userBscAddr, this.PLATFORM_WALLET, platformWei);
+        await tx1.wait();
+        this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
         platformOk = true;
-      } else {
-        this._log(`❌ 平台费批量转账失败: ${platformResult.error}`);
+      } catch (e) {
+        this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message.slice(0,80)}`);
       }
-    } catch (e) {
-      this._log(`❌ 平台费转账异常: ${e.message}`);
-    }
 
-    // 等待内部转账到账
-    await new Promise(r => setTimeout(r, 3000));
-
-    // 生态基金转到生态基金钱包
-    try {
-      this._log(`💸 ${wallet.slice(0,8)} 批量转账 $${totalEco.toFixed(2)} 生态基金 → ${this.ECO_FUND_WALLET.slice(0,10)}...`);
-      const ecoResult = await client.transferFeeToWallet(totalEco, this.ECO_FUND_WALLET);
-      if (ecoResult.success) {
-        this._log(`✅ 生态基金批量转账成功 $${totalEco.toFixed(2)} USDT`);
+      // Step 2: 转生态费到生态费钱包
+      try {
+        const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
+        this._log(`💸 ${wallet.slice(0,8)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${this.ECO_FUND_WALLET.slice(0,10)}...`);
+        const tx2 = await usdtContract.transferFrom(userBscAddr, this.ECO_FUND_WALLET, ecoWei);
+        await tx2.wait();
+        this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
         ecoOk = true;
-      } else {
-        this._log(`❌ 生态基金批量转账失败: ${ecoResult.error}`);
+      } catch (e) {
+        this._log(`❌ 盖茨费-生态费链上转账失败: ${e.message.slice(0,80)}`);
       }
+
+      // 更新BSC钱包余额
+      const newBal = await usdtContract.balanceOf(userBscAddr);
+      const newBalance = Number(newBal) / 1e18;
+      if (this.userDB) this.userDB.set(wallet, { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
+
     } catch (e) {
-      this._log(`❌ 生态基金转账异常: ${e.message}`);
+      this._log(`❌ ${wallet.slice(0,8)} 盖茨费链上扣费异常: ${e.message.slice(0,80)}`);
     }
 
     // 全部成功才从 pending 移除
     if (platformOk && ecoOk) {
       const removed = pending.splice(0, pending.length);
       for (const record of removed) {
-        record.status = 'auto-collected';
+        record.status = 'gates-collected';
         record.collectedAt = Date.now();
         if (!this._feeState.collected[wallet]) this._feeState.collected[wallet] = [];
         this._feeState.collected[wallet].push(record);
       }
-      // v121: 转账成功，重置失败计数
       delete this._transferFailCooldown[wallet];
-      this._log(`✅ ${wallet.slice(0,8)} 批量收取完成: ${removed.length}笔, 平台费 $${totalPlatform.toFixed(2)}, 生态费 $${totalEco.toFixed(2)}`);
+      this._log(`✅ ${wallet.slice(0,8)} 盖茨费收取完成: ${removed.length}笔, 服务费 $${totalPlatform.toFixed(2)}, 生态费 $${totalEco.toFixed(2)}`);
     } else {
-      // v121: 记录失败，进入冷却
       if (!this._transferFailCooldown[wallet]) this._transferFailCooldown[wallet] = { lastFailAt: 0, failCount: 0 };
       this._transferFailCooldown[wallet].lastFailAt = Date.now();
       this._transferFailCooldown[wallet].failCount++;
       const fc = this._transferFailCooldown[wallet].failCount;
       if (fc >= this.TRANSFER_MAX_FAIL) {
-        this._log(`⛔ ${wallet.slice(0,8)} 连续转账失败${fc}次，已停止自动转账。用户需重新绑定带提现权限的 API Key`);
+        this._log(`⛔ ${wallet.slice(0,8)} 盖茨费连续失败${fc}次，已停止。请检查BSC钱包授权和余额`);
       } else {
-        this._log(`⚠️ ${wallet.slice(0,8)} 转账部分失败（平台=${platformOk}, 生态=${ecoOk}），保留 pending。30分钟内不再重试 (失败${fc}/${this.TRANSFER_MAX_FAIL})`);
+        this._log(`⚠️ ${wallet.slice(0,8)} 盖茨费部分失败（服务费=${platformOk}, 生态费=${ecoOk}），保留 pending。30分钟后再试 (失败${fc}/${this.TRANSFER_MAX_FAIL})`);
       }
     }
 

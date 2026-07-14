@@ -32,6 +32,7 @@ const Engine = require('../engine');
 const SaasServer = require('./server');
 const UserTrader = require('./user-trader');
 const { CEXUserTrader } = require('./cex-user-trader'); // v110: 普通用户全品种交易
+const { BBStrategyManager } = require('./bb-strategy-manager'); // BB多用户布林带策略
 
 // v108: 多市场引擎
 const GoldEngine = require('./gold-engine');
@@ -392,6 +393,20 @@ async function main() {
     engine._cexUserTrader = cexTrader; // v113.68: 让 AutoFixer 能访问用户交易器
     console.log('[启动] 🤖 CEXUserTrader 全品种自动交易已启动 (Gold/Forex/Stock/Commodity/Bond/Crypto)');
   } catch (e) { console.log('[启动] ⚠️ CEXUserTrader 启动失败:', e.message); }
+
+  // ═══ 10c. BBStrategyManager — 多用户布林带策略 ═══
+  let bbStrategyManager = null;
+  try {
+    bbStrategyManager = new BBStrategyManager({
+      userDB: server.userDB,
+      intervalMs: 30000,
+    });
+    bbStrategyManager.start();
+    server.bbStrategyManager = bbStrategyManager;
+    engine._bbStrategyManager = bbStrategyManager;
+    dashboard.bbStrategyManager = bbStrategyManager; // 注入仪表盘
+    console.log('[启动] 📊 BBStrategyManager 多用户布林带策略已启动');
+  } catch (e) { console.log('[启动] ⚠️ BBStrategyManager 启动失败:', e.message); }
 
   // ═══ 11. v108: MultiEngine v3 — 百万用户框架 ═══
   let multiEngine = null;
