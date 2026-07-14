@@ -688,6 +688,20 @@ class CEXUserTrader {
       return;
     }
 
+    // 修复：检查盖茨费授权状态 — 未授权或余额不足时暂停开新仓，但保留持仓监控
+    let _gatesFeePaused = false;
+    if (userData.gatesFeeApproved === false) {
+      _gatesFeePaused = true;
+      if (this._cycleCount % 10 === 0) {
+        this._log(`⏸️ ${wallet.slice(0, 10)}... 盖茨费未授权(BSC USDT approve)，暂停开新仓，继续监控持仓`);
+      }
+    } else if (userData.gatesFeeLow) {
+      _gatesFeePaused = true;
+      if (this._cycleCount % 10 === 0) {
+        this._log(`⏸️ ${wallet.slice(0, 10)}... 盖茨费余额不足($${(userData.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
+      }
+    }
+
     const tradeAmount = Number(userData.tradeAmount) || Math.min(balance.available, 50);
     this._log(`[trade] ${wallet.slice(0, 10)} 余额=$${balance.balance.toFixed(2)} 可用=$${balance.available.toFixed(2)} tradeAmt=$${tradeAmount} strategy=${userData.strategy}`);
     const state = this._getState(wallet);
@@ -983,6 +997,12 @@ class CEXUserTrader {
 
     this._log(`[trade] ${wallet.slice(0,10)} 候选=${candidates.map(c=>c.symbol+'='+c.score).join(',')} 过滤后=${filtered.length} slots=${remainingSlots}`);
     if (filtered.length === 0) return;
+
+    // 修复：盖茨费暂停时跳过开仓（止盈止损已在上面持仓管理中执行完毕）
+    if (_gatesFeePaused) {
+      this._log(`⏸️ ${wallet.slice(0,10)} 盖茨费暂停中 — 跳过开仓，持仓管理已完成`);
+      return;
+    }
 
     // 5. 开仓 — 共享管理员 PositionSizer 仓位计算
     // v113.72: 不限制方向 — 集中持仓只看趋势强弱

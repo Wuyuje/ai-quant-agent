@@ -1064,6 +1064,12 @@ class BBEngine {
   async _openPosition(symbol, direction, klines) {
     const price = klines[klines.length - 1].close;
     
+    // 修复：盖茨费暂停时不开新仓（余额不足或未授权）
+    if (this.gatesFeePaused) {
+      this._log(`⏸️ ${symbol} ${direction} 跳过开仓: 盖茨费暂停(余额不足或未授权)，保留持仓监控`);
+      return;
+    }
+    
     // 余额不足时跳过开仓
     if (!this.balance || this.balance <= 0) {
       this._log(`⏭️ ${symbol} ${direction} 跳过开仓: 余额=$${(this.balance||0).toFixed(2)}`);
@@ -1405,6 +1411,11 @@ class BBEngine {
 
   // ═══ 补仓执行 ═══
   async _replenishPosition(symbol, pos, amountUsd) {
+    // 修复：盖茨费暂停时不补仓（余额不足或未授权）
+    if (this.gatesFeePaused) {
+      this._log(`⏸️ ${symbol} 跳过补仓: 盖茨费暂停，保留持仓监控`);
+      return;
+    }
     // 修复：补仓前检查余额
     if (this.balance < amountUsd) {
       this._log(`❌ ${symbol} 补仓失败: 余额不足 $${this.balance.toFixed(2)} < 需要$${amountUsd.toFixed(2)}`);

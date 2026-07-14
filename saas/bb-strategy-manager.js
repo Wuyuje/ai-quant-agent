@@ -611,9 +611,17 @@ class BBStrategyManager {
       if (!u.binanceApiKey || !u.binanceSecret) continue;
       // 必须同意盖茨费模式
       if (!u.withdrawConsent) continue;
+      // 修复：必须已授权盖茨费(gatesFeeApproved)才能开新仓
+      // 未授权时仍然加入引擎列表（保持持仓监控），但标记暂停开新仓
+      if (!u.gatesFeeApproved) {
+        if (this._cycleCount % 10 === 0) {
+          this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费未授权(BSC USDT approve)，暂停开新仓，继续监控持仓`);
+        }
+        u._gatesFeePaused = true;
+      }
       // ═══ 盖茨费模式：检查BSC钱包USDT余额 ═══
       // 余额不足时仍然加入引擎列表（保持持仓监控），但标记暂停开新仓
-      if (u.gatesFeeLow) {
+      else if (u.gatesFeeLow) {
         if (this._cycleCount % 10 === 0) {
           this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费余额不足($${(u.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓，请充值BSC钱包`);
         }
