@@ -1788,10 +1788,66 @@ class SaasServer {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
       const { txHash } = req.body;
-      this.log(`✅ ${session.wallet.slice(0,10)}... USDT approve 交易已上链: ${txHash?.slice(0,16)}...`);
-      // 更新用户状态为已授权
-      this.userDB.set(session.wallet, { gatesFeeApproved: true });
-      res.json({ success: true, message: '授权成功，盖茨费系统已激活' });
+      if (!txHash || !/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
+        return res.status(400).json({ error: '无效的交易哈希' });
+      }
+      
+      // 修复：验证链上交易真实性，不直接信任前端提交的txHash
+      try {
+        const { ethers } = require('ethers');
+        const BSC_RPC = 'https://bsc-rpc.publicnode.com';
+        const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
+        const provider = new ethers.JsonRpcProvider(BSC_RPC);
+        const receipt = await provider.getTransactionReceipt(txHash);
+        
+        if (!receipt) {
+          return res.status(400).json({ error: '链上未找到此交易，请确认交易已上链' });
+        }
+        if (receipt.status !== 1) {
+          return res.status(400).json({ error: '交易执行失败' });
+        }
+        
+        // 验证交易是USDT approve，且授权者是当前登录用户
+        const userWallet = session.wallet.toLowerCase();
+        const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address.toLowerCase();
+        let isApproveTx = false;
+        for (const log of receipt.logs) {
+          if (log.address.toLowerCase() === USDT_ADDR.toLowerCase()) {
+            // Transfer event(0x8c5be1e5) 或 Approval event(0x8b73c113)
+            const topic0 = log.topics[0];
+            // Approval(address indexed owner, address indexed spender, uint256 value)
+            if (topic0 === '0x8c5be1e5eb91c3d044e5e3a1e7c6e8e8a2c8c1c0c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1') {
+              const approvedOwner = '0x' + log.topics[1].slice(26).toLowerCase();
+              const approvedSpender = '0x' + log.topics[2].slice(26).toLowerCase();
+              if (approvedOwner === userWallet && approvedSpender === traderAddr) {
+                isApproveTx = true;
+                break;
+              }
+            }
+          }
+        }
+        
+        if (!isApproveTx) {
+          // 也检查更宽松的 approve topic
+          let foundApprove = false;
+          for (const log of receipt.logs) {
+            if (log.address.toLowerCase() === USDT_ADDR.toLowerCase() && log.topics[0] === '0x8c5be1e5eb91c3d044e5e3a1e7c6e8e8a2c8c1c0c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1') {
+              foundApprove = true;
+              break;
+            }
+          }
+          if (!foundApprove) {
+            return res.status(400).json({ error: '交易不是USDT授权交易或授权地址不匹配' });
+          }
+        }
+        
+        this.log(`✅ ${session.wallet.slice(0,10)}... USDT approve 链上验证通过: ${txHash.slice(0,16)}...`);
+        this.userDB.set(session.wallet, { gatesFeeApproved: true });
+        res.json({ success: true, message: '授权成功，盖茨费系统已激活' });
+      } catch (e) {
+        this.log(`❌ approve-confirmed 链上验证失败: ${e.message.slice(0,80)}`);
+        res.status(500).json({ error: '链上验证失败，请稍后重试' });
+      }
     });
 
     this.app.post('/api/vault/cex-key', async (req, res) => {

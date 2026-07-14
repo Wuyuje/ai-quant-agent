@@ -107,11 +107,12 @@ class Dashboard {
         } catch(e) { /* session验证失败 */ }
       }
       
-      // 方式3: 本地无ADMIN_KEY时允许（开发模式，但生产环境必须设置ADMIN_KEY）
+      // 方式3: 本地无ADMIN_KEY时拒绝（生产环境必须设置ADMIN_KEY）
       if (!ADMIN_KEY) {
-        return next();
+        console.error('[Dashboard] ❌ ADMIN_KEY 未设置！管理员API拒绝访问。请设置环境变量 ADMIN_KEY。');
+        return res.status(503).json({ error: 'Server not configured: ADMIN_KEY required' });
       }
-      
+
       return res.status(401).json({ error: 'Unauthorized: admin access required' });
     };
 

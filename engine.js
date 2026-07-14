@@ -241,6 +241,10 @@ class Engine {
   async _managePositions() {
     const allPositions = this.guardian.getAllPositions();
 
+    // 修复：获取余额供加仓计算使用（之前未定义导致ReferenceError）
+    const _bal = this._cachedBalance || { balance: 0, available: 0 };
+    const balanceUsd = _bal.balance || 0;
+
     // 总PnL保护 -10%（容忍更大波动，避免噪音触发全平）
     let totalPnlPct = 0;
     let totalNotional = 0;
@@ -1346,6 +1350,16 @@ class Engine {
       _closeEntryPrice = _posBefore.entryPrice || 0;
       _closeLeverage = _posBefore.leverage || 1;
       const result = await this.guardian.executeDecision({ action: 'CLOSE', leverage: 0, positionSize: 0 }, symbol);
+      // 修复：平仓失败时保留本地仓位，等下一轮sync确认后重试
+      // 之前不检查result.success直接删除 → 远程仓位失去监控
+      if (result.success === false || result.executed === false && result.noPosition !== true) {
+        this._log(`⚠️ ${symbol} 平仓失败: ${result.error || result.reason || 'unknown'} — 保留本地仓位，下一轮重试`);
+        // 清除平仓锁，允许下一轮重试
+        this._closingLock[symbol] = false;
+        // 清除已平仓标记，允许重试
+        if (this._closedSymbols) delete this._closedSymbols[symbol];
+        return;
+      }
       const pnl = result.pnl || 0;
       if (!this._lastCloseTime) this._lastCloseTime = {};
       this._lastCloseTime[symbol] = Date.now();

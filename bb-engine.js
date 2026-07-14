@@ -124,14 +124,20 @@ class BinanceAPI {
   _get(endpoint) {
     return new Promise((resolve, reject) => {
       const url = `${this.baseURL}${endpoint}`;
-      https.get(url, { timeout: 10000 }, (res) => {
+      const req = https.get(url, { timeout: 10000 }, (res) => {
         let data = '';
         res.on('data', c => data += c);
         res.on('end', () => {
           try { resolve(JSON.parse(data)); }
           catch (e) { reject(new Error(`Parse error: ${data.substring(0, 100)}`)); }
         });
-      }).on('error', reject);
+      });
+      // 修复：处理 timeout 事件，超时后中断请求
+      req.on('timeout', () => {
+        req.destroy();
+        reject(new Error('Request timeout'));
+      });
+      req.on('error', reject);
     });
   }
 
@@ -916,6 +922,17 @@ class BBEngine {
     const { top50 } = await this.selectSymbols();
     const candidateSymbols = top50.map(t => t.symbol);
 
+    // 修复：每10轮重新获取精度，防止精度表为空或新币种上线
+    this._cycleCount = (this._cycleCount || 0) + 1;
+    if (this._cycleCount % 10 === 0 || Object.keys(this.precisionMap || {}).length === 0) {
+      try {
+        this.precisionMap = await this.api.getExchangeInfo();
+        this._log(`✅ 重新获取交易对精度: ${Object.keys(this.precisionMap).length}个`);
+      } catch (e) {
+        this._log(`⚠️ 重新获取精度失败: ${e.message}`);
+      }
+    }
+
     // ── 2. 同步已有持仓 ──
     await this._syncPositions();
 
@@ -1204,13 +1221,21 @@ class BBEngine {
     const pending = this._feeState.pending[walletKey] || [];
     if (pending.length === 0) return;
 
-    const totalPlatform = pending.reduce((s, r) => s + parseFloat(r.platformFee), 0);
+    // 修复：跳过已收服务费的记录，避免重复扣取
+    const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
     const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
     const totalFee = totalPlatform + totalEco;
 
     if (totalFee < BBEngine.FEE_CONFIG.FEE_THRESHOLD) {
       this._log(`📊 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} < $${BBEngine.FEE_CONFIG.FEE_THRESHOLD} 阈值，继续积累`);
       return;
+    }
+
+    // 如果服务费已全部收过，只收生态费
+    if (totalPlatform === 0 && totalEco > 0) {
+      this._log(`💸 ${walletKey.slice(0,10)} 仅收生态费 $${totalEco.toFixed(2)} (服务费已收过)`);
+    } else {
+      this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，BSC链上扣费`);
     }
 
     // ═══ BSC链上 transferFrom 扣费（与cex-user-trader一致） ═══
@@ -1253,16 +1278,21 @@ class BBEngine {
         return;
       }
 
-      // Step 1: 转服务费到平台钱包
-      try {
-        const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
-        this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
-        const tx1 = await usdtContract.transferFrom(userBscAddr, PLATFORM_WALLET, platformWei);
-        await tx1.wait();
-        this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+      // Step 1: 转服务费到平台钱包（跳过已收服务费=0的情况）
+      if (totalPlatform > 0) {
+        try {
+          const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
+          this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
+          const tx1 = await usdtContract.transferFrom(userBscAddr, PLATFORM_WALLET, platformWei);
+          await tx1.wait();
+          this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+          platformOk = true;
+        } catch (e) {
+          this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message.slice(0,80)}`);
+        }
+      } else {
+        // 服务费已收过，直接标记为true，只收生态费
         platformOk = true;
-      } catch (e) {
-        this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message.slice(0,80)}`);
       }
 
       // Step 2: 转生态费到生态费钱包（仅当服务费已成功，避免部分成功后重复扣服务费）
@@ -1367,12 +1397,19 @@ class BBEngine {
       // 修复：平仓失败时保留本地仓位，等下一轮同步后重试
       // 之前直接删除本地仓位 → 远程仓位失去监控 → 持续亏损
       this._log(`⚠️ ${symbol} 平仓失败: ${result.error} — 保留本地仓位，下一轮重试`);
+      // 修复：记录平仓尝试时间，供 _syncPositions 判断是否是刚失败的平仓
+      if (this.positions[symbol]) this.positions[symbol].lastCloseAttempt = Date.now();
       // 不删除 this.positions[symbol]，让 _syncPositions 下一轮确认远程状态
     }
   }
 
   // ═══ 补仓执行 ═══
   async _replenishPosition(symbol, pos, amountUsd) {
+    // 修复：补仓前检查余额
+    if (this.balance < amountUsd) {
+      this._log(`❌ ${symbol} 补仓失败: 余额不足 $${this.balance.toFixed(2)} < 需要$${amountUsd.toFixed(2)}`);
+      return;
+    }
     const price = pos.currentPrice || pos.entryPrice;
     const addNotional = amountUsd * pos.leverage;
     const addQty = addNotional / price;
@@ -1425,9 +1462,15 @@ class BBEngine {
       }
 
       // 清除远程已不存在的本地持仓
+      // 修复：如果刚平仓失败（本地保留了仓位），给60秒宽限期再清除，避免与平仓重试矛盾
+      const now = Date.now();
       for (const symbol of Object.keys(this.positions)) {
         const exists = remotePositions.some(rp => rp.symbol === symbol && Math.abs(parseFloat(rp.positionAmt)) > 0);
         if (!exists) {
+          const lastCloseAttempt = this.positions[symbol]?.lastCloseAttempt || 0;
+          if (lastCloseAttempt && now - lastCloseAttempt < 60 * 1000) {
+            this._log(`⏳ ${symbol} 远程已无持仓，但平仓刚尝试过(<60秒)，可能是平仓成功了，清除本地状态`);
+          }
           this._log(`🧹 ${symbol} 远程已无持仓，清除本地状态`);
           delete this.positions[symbol];
         }

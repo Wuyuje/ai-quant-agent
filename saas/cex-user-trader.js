@@ -1553,7 +1553,8 @@ class CEXUserTrader {
       }
     }
 
-    const totalPlatform = pending.reduce((s, r) => s + parseFloat(r.platformFee), 0);
+    // 修复：跳过已收服务费的记录，避免重复扣取
+    const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
     const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
     const totalFee = totalPlatform + totalEco;
 
@@ -1562,7 +1563,12 @@ class CEXUserTrader {
       return;
     }
 
-    this._log(`💸 ${wallet.slice(0,8)} 盖茨费 $${totalFee.toFixed(2)} 达到阈值，开始BSC链上扣费`);
+    // 如果服务费已全部收过，只收生态费
+    if (totalPlatform === 0 && totalEco > 0) {
+      this._log(`💸 ${wallet.slice(0,8)} 仅收生态费 $${totalEco.toFixed(2)} (服务费已收过)`);
+    } else {
+      this._log(`💸 ${wallet.slice(0,8)} 盖茨费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，开始BSC链上扣费`);
+    }
 
     // ═══ BSC链上 transferFrom 扣费 ═══
     let platformOk = false, ecoOk = false;
@@ -1597,16 +1603,21 @@ class CEXUserTrader {
         return;
       }
 
-      // Step 1: 转服务费到平台钱包
-      try {
-        const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
-        this._log(`💸 ${wallet.slice(0,8)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${this.PLATFORM_WALLET.slice(0,10)}...`);
-        const tx1 = await usdtContract.transferFrom(userBscAddr, this.PLATFORM_WALLET, platformWei);
-        await tx1.wait();
-        this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+      // Step 1: 转服务费到平台钱包（跳过已收服务费=0的情况）
+      if (totalPlatform > 0) {
+        try {
+          const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
+          this._log(`💸 ${wallet.slice(0,8)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${this.PLATFORM_WALLET.slice(0,10)}...`);
+          const tx1 = await usdtContract.transferFrom(userBscAddr, this.PLATFORM_WALLET, platformWei);
+          await tx1.wait();
+          this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+          platformOk = true;
+        } catch (e) {
+          this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message.slice(0,80)}`);
+        }
+      } else {
+        // 服务费已收过，直接标记为true，只收生态费
         platformOk = true;
-      } catch (e) {
-        this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message.slice(0,80)}`);
       }
 
       // Step 2: 转生态费到生态费钱包（仅当服务费已成功，避免部分成功后重复扣服务费）
