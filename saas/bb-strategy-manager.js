@@ -635,13 +635,12 @@ class BBStrategyManager {
       bbUsers.push([wallet, u]);
     }
 
-    // 管理员每轮都加入BB策略
+    // 管理员每轮都加入BB策略（用 .env 的 Binance API Key）
     const adminWallet = this.ADMIN_WALLETS[0];
-    const adminUser = users[adminWallet] || users[adminWallet.toLowerCase()];
-    if (adminUser && (!adminUser.strategy || adminUser.strategy === 'bb' || adminUser.strategy === 'bollinger')) {
-      // 管理员已在用户列表中，已被上面循环收集
-    } else if (!bbUsers.find(([w]) => w.toLowerCase() === adminWallet.toLowerCase())) {
-      // 管理员不在用户列表中，每轮都加入
+    // 检查管理员是否已被上面的循环收集（需要 tradingEnabled + API Key + withdrawConsent）
+    const adminInList = bbUsers.find(([w]) => w.toLowerCase() === adminWallet.toLowerCase());
+    if (!adminInList && this.adminApiKey && this.adminApiSecret) {
+      // 管理员不在用户列表中（tradingEnabled=false 或没有 withdrawConsent），用 .env API Key 加入
       bbUsers.push([adminWallet, {
         binanceApiKey: this.adminApiKey,
         binanceSecret: this.adminApiSecret,
