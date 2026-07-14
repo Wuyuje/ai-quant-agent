@@ -581,9 +581,52 @@ class Engine {
           const klines = this.dataBus.klines?.[symbol];
           if (!klines || klines.length < 60) continue;
 
+          // ═══ v124: B策略优点融入 — 插针过滤 ═══
+          // 单K线涨跌幅>3%判定为毛刺K线，跳过防止插针扫止损
+          const _lastK = klines[klines.length - 1];
+          const _kChangePct = Math.abs((_lastK.close - _lastK.open) / _lastK.open * 100);
+          if (_kChangePct > 3) {
+            this._log(`📌 ${symbol} ${tf} 插针过滤: 单K涨跌${_kChangePct.toFixed(1)}%>3% — 跳过`);
+            if (!this._lastSignals) this._lastSignals = [];
+            this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:0, signal:'PIN_BAR', score:0, timestamp:Date.now()});
+            continue;
+          }
+
+          // ═══ v124: B策略优点融入 — 波动率禁令 ═══
+          // 布林带带宽在最近100根K线中的历史分位>90%时禁开仓，避免在极端波动中入场
+          const _bwLookback = Math.min(100, klines.length - 20);
+          if (_bwLookback >= 20) {
+            const _bandwidths = [];
+            for (let i = klines.length - _bwLookback; i < klines.length; i++) {
+              const _slice = klines.slice(Math.max(0, i - 19), i + 1);
+              if (_slice.length >= 20) {
+                const _closes = _slice.map(k => k.close);
+                const _mean = _closes.reduce((a, b) => a + b, 0) / _closes.length;
+                const _std = Math.sqrt(_closes.reduce((s, c) => s + (c - _mean) ** 2, 0) / _closes.length);
+                const _bw = _std > 0 ? (4 * _std) / _mean * 100 : 0; // (upper-lower)/mid = 4*std/mean
+                _bandwidths.push(_bw);
+              }
+            }
+            if (_bandwidths.length >= 20) {
+              const _currentBW = _bandwidths[_bandwidths.length - 1];
+              let _countAbove = 0;
+              for (const _bw of _bandwidths) { if (_bw >= _currentBW) _countAbove++; }
+              const _bwPercentile = (_countAbove / _bandwidths.length) * 100;
+              if (_bwPercentile > 90) {
+                this._log(`🚫 ${symbol} ${tf} 波动率禁令: 布林带宽分位${_bwPercentile.toFixed(0)}%>90% — 禁开仓`);
+                if (!this._lastSignals) this._lastSignals = [];
+                this._lastSignals.push({symbol, dir:'NEUTRAL', strength:0, confidence:0, signal:'HIGH_VOLATILITY', score:0, timestamp:Date.now()});
+                continue;
+              }
+            }
+          }
+
           const ind = this.dataBus.calculateIndicators(symbol);
           if (!ind) continue;
-          const price = ind.price || klines[klines.length - 1]?.close || 0;
+          // v124: B策略优点融入 — 收盘价确认
+          // 优先使用最近K线收盘价做信号判定，而非实时 ticker 价格，避免影线误导
+          const _closePrice = klines[klines.length - 1]?.close || 0;
+          const price = _closePrice || ind.price || 0;
           if (!price || price <= 0) continue;
 
           // ═══ v67: 调用StrategyManager全策略融合分析 ═══
