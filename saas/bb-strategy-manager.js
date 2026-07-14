@@ -608,6 +608,8 @@ class BBStrategyManager {
     
     for (const [wallet, u] of Object.entries(users)) {
       if (!u.tradingEnabled) continue;
+      // DEX 模式用户不走 BB 引擎（由 DexTrader 管理）
+      if (u.exchangeMode === 'dex') continue;
       if (!u.binanceApiKey || !u.binanceSecret) continue;
       // 必须同意盖茨费模式
       if (!u.withdrawConsent) continue;

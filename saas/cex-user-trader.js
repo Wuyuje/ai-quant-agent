@@ -573,10 +573,10 @@ class CEXUserTrader {
         this.userDB.users = fresh.users || fresh;
       }
     } catch (e) { /* ignore */ }
-    // 找出有 Binance API Key 的活跃用户
+    // 找出有 Binance API Key 的活跃用户（排除DEX模式用户）
     const users = this.userDB.users || {};
     const cexUsers = Object.entries(users).filter(([_, u]) =>
-      u.tradingEnabled && u.binanceApiKey && u.binanceSecret
+      u.tradingEnabled && u.binanceApiKey && u.binanceSecret && u.exchangeMode !== 'dex'
     );
 
     if (cexUsers.length === 0) {

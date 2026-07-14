@@ -2045,6 +2045,28 @@ class SaasServer {
         }
       }
 
+      // 3. DEX 持仓（PancakeSwap BSC链上）
+      if (this.dexTrader) {
+        const dexPositions = this.dexTrader.getUserPositions?.(wallet) || {};
+        if (Object.keys(dexPositions).length > 0) {
+          if (!positions['dex']) positions['dex'] = [];
+          for (const [sym, pos] of Object.entries(dexPositions)) {
+            positions['dex'].push({
+              symbol: sym,
+              side: pos.side || 'LONG',
+              leverage: 1, // DEX 无杠杆
+              size: pos.amountUsdt || 0,
+              entryPrice: pos.entryPrice || 0,
+              markPrice: 0, // 需要实时价格
+              pnlPct: 0,
+              pnlUsdt: 0,
+              openTime: pos.openTime,
+              _source: pos._source || 'dex',
+            });
+          }
+        }
+      }
+
       res.json({
         success: true, wallet,
         markets: {
@@ -2054,6 +2076,7 @@ class SaasServer {
           commodities: positions['commodities'] || [],
           bonds: positions['bonds'] || [],
           stocks: positions['stocks'] || [],
+          dex: positions['dex'] || [],
         },
         totalPnl, totalUnrealized,
         activeMarkets: Object.keys(positions).filter(k => positions[k].length > 0),

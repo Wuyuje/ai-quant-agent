@@ -2277,6 +2277,52 @@ class Dashboard {
     });
 
 
+    // ═══ DEX 交易引擎 API ═══
+    app.get('/api/dex/overview', (req, res) => {
+      try {
+        const dt = this.dexTrader;
+        if (!dt || !dt.running) return res.json({ running: false, users: 0, positions: 0, totalUsdt: 0 });
+        const allStatus = dt.getAllUsersStatus();
+        const totalPositions = allStatus.reduce((a, s) => a + s.positionCount, 0);
+        const totalUsdt = allStatus.reduce((a, s) => a + s.totalUsdt, 0);
+        res.json({
+          running: true,
+          users: allStatus.length,
+          positions: totalPositions,
+          totalUsdt: totalUsdt.toFixed(2),
+          cycleCount: dt._cycleCount || 0,
+        });
+      } catch (e) {
+        res.json({ error: e.message });
+      }
+    });
+
+    app.get('/api/dex/users', (req, res) => {
+      try {
+        const dt = this.dexTrader;
+        if (!dt) return res.json({ users: [] });
+        res.json({ users: dt.getAllUsersStatus() });
+      } catch (e) {
+        res.json({ error: e.message });
+      }
+    });
+
+    app.get('/api/dex/trades', (req, res) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const tradeFile = path.join(__dirname, '..', 'data', 'dex-trades.json');
+        let trades = [];
+        if (fs.existsSync(tradeFile)) {
+          trades = JSON.parse(fs.readFileSync(tradeFile, 'utf8'));
+        }
+        trades.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        res.json(trades.slice(0, 100));
+      } catch (e) {
+        res.json([]);
+      }
+    });
+
     // B策略 按用户分类交易历史（最近10笔）
     app.get('/api/bb-strategy/trades-by-user', (req, res) => {
       try {

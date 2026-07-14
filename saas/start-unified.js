@@ -24,6 +24,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const SaasServer = require('./server');
 const { BBStrategyManager } = require('./bb-strategy-manager');
+const { DexTrader } = require('./dex-trader');
 const Dashboard = require('../dashboard/server');
 
 // A策略组件（延迟加载，节省内存）
@@ -131,6 +132,9 @@ class UnifiedStrategyManager {
     
     // B策略组件
     this.bbManager = null;
+    
+    // DEX 交易器（始终运行，独立于A/B策略）
+    this.dexTrader = null;
     
     // 读取当前策略
     this._strategyFile = path.join(__dirname, '..', 'data', 'active-strategy.json');
@@ -514,6 +518,20 @@ async function main() {
     if (unifiedManager.bbManager) {
       unifiedManager.bbManager._locked = false;
     }
+  }
+
+  // ═══ 4.5 启动 DEX 交易器（独立于A/B策略，始终运行）═══
+  try {
+    unifiedManager.dexTrader = new DexTrader({
+      userDB: server.userDB,
+      intervalMs: 60000,
+    });
+    unifiedManager.dexTrader.start();
+    server.dexTrader = unifiedManager.dexTrader;
+    dashboard.dexTrader = unifiedManager.dexTrader;
+    console.log('[Unified] ✅ DEX Trader 已启动 (独立于A/B策略)');
+  } catch (e) {
+    console.error('[Unified] ❌ DEX Trader 启动失败:', e.message);
   }
 
   // ═══ 状态汇总 ═══

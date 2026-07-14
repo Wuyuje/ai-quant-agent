@@ -567,6 +567,13 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
     <div class="card"><h3>B策略总盈亏</h3><div id="bbTotalPnl" class="val green">--</div><div class="sub" id="bbTotalPnlSub">--</div></div>
   </div>
 
+  <!-- DEX 交易引擎状态 -->
+  <div class="grid g4" style="margin-bottom:14px">
+    <div class="card" style="border:1px solid #1f6feb"><h3 style="color:#58a6ff">DEX 状态</h3><div id="dexStatus" class="val blue">--</div><div class="sub" id="dexStatusSub">PancakeSwap BSC</div></div>
+    <div class="card"><h3>DEX 用户</h3><div id="dexUserCount" class="val green">--</div><div class="sub">DEX模式用户</div></div>
+    <div class="card"><h3>DEX 持仓</h3><div id="dexTotalPos" class="val purple">--</div><div class="sub" id="dexTotalPosSub">--</div></div>
+    <div class="card"><h3>DEX 资金</h3><div id="dexTotalUsdt" class="val green">$--</div><div class="sub">总持仓USDT</div></div>
+
   <div class="grid g2" style="margin-bottom:14px">
     <div class="card" style="border:1px solid #2a3a5c">
       <h3 style="color:#58a6ff">👤 管理员资金</h3>
@@ -1929,9 +1936,33 @@ async function loadBBStrategy(){
       if(uepf){uepf.textContent='$'+pendingTotal.toFixed(2);}
     }
   }catch(e){/* ignore */}
+
+  // 加载 DEX 交易引擎状态
+  loadDexStatus();
 }
 
-// 下拉菜单切换用户交易历史
+// ═══ DEX 交易引擎状态加载 ═══
+async function loadDexStatus(){
+  try{
+    const data=await api('/api/dex/overview');
+    if(!data||data.error){
+      document.getElementById('dexStatus').textContent='未启动';
+      document.getElementById('dexStatusSub').textContent=data?.error||'--';
+      return;
+    }
+    const statusEl=document.getElementById('dexStatus');
+    statusEl.textContent=data.running?'运行中':'已停止';
+    statusEl.style.color=data.running?'#3fb950':'#f85149';
+    document.getElementById('dexStatusSub').textContent='第'+(data.cycleCount||0)+'轮';
+    document.getElementById('dexUserCount').textContent=data.users||0;
+    document.getElementById('dexTotalPos').textContent=data.positions||0;
+    document.getElementById('dexTotalPosSub').textContent='最多3币/人';
+    document.getElementById('dexTotalUsdt').textContent='$'+(data.totalUsdt||0);
+  }catch(e){
+    document.getElementById('dexStatus').textContent='加载失败';
+  }
+}
+
 function loadBBUserTrades(){
   const select=document.getElementById('bbUserSelect');
   const wallet=select.value;
