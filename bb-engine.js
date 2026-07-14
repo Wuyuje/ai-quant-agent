@@ -1454,12 +1454,13 @@ class BBEngine {
       const remotePositions = await this.api.getPositions();
       this.balance = await this.api.getBalance();
 
-      // 同步远程持仓的当前价格
+      // 同步远程持仓的当前价格 + 接管孤儿仓位
       for (const rp of remotePositions) {
         const symbol = rp.symbol;
         const amt = parseFloat(rp.positionAmt);
         const entry = parseFloat(rp.entryPrice);
         const markPrice = parseFloat(rp.markPrice);
+        const leverage = parseInt(rp.leverage) || CONFIG.leverage;
         
         if (this.positions[symbol]) {
           // 更新当前价格
@@ -1469,6 +1470,26 @@ class BBEngine {
             this._log(`🔄 ${symbol} 同步qty: 本地${this.positions[symbol].qty} → 远程${Math.abs(amt)}`);
             this.positions[symbol].qty = Math.abs(amt);
           }
+        } else {
+          // 远程有但本地没有 → 孤儿仓位（可能是另一策略开的仓，或手动开的仓）→ 接管
+          this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${leverage}x`);
+          this.positions[symbol] = {
+            symbol,
+            side: amt > 0 ? 'LONG' : 'SHORT',
+            qty: Math.abs(amt),
+            entryPrice: entry,
+            margin: Math.abs(amt) * entry / leverage,
+            leverage,
+            openTime: 0,
+            replenishCount: 0,
+            lastNarrowTime: null,
+            klinesSinceNarrow: 0,
+            mode: '轨道',
+            atrTrailPrice: null,
+            currentPrice: markPrice,
+            _orphan: true,
+          };
+          this._saveState();
         }
       }
 
