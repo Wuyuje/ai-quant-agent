@@ -71,6 +71,50 @@ class Dashboard {
       } else { next(); }
     });
 
+    // ═══════════════════════════════════════════
+    // v120: 管理员认证中间件 — 保护所有非代理API
+    // ═══════════════════════════════════════════
+    const ADMIN_KEY = process.env.ADMIN_KEY || '';
+    const ADMIN_WALLETS = [
+      '0xfa3b90c574469909d20848273c06752a22fde74a',
+      '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
+    ];
+    // 仪表盘前端通过 header 传递 admin-key 或 Bearer token
+    this._adminAuth = (req, res, next) => {
+      // 允许通过 ADMIN_KEY 或 session token 认证
+      const headerKey = (req.headers['x-admin-key'] || '').trim();
+      const bearerToken = (req.headers.authorization || '').replace('Bearer ', '').trim();
+      
+      // 方式1: ADMIN_KEY 直接认证
+      if (ADMIN_KEY && headerKey === ADMIN_KEY) {
+        return next();
+      }
+      
+      // 方式2: SaaS session token 认证（验证是否为管理员session）
+      if (bearerToken) {
+        try {
+          const sessionsFile = path.join(__dirname, '..', 'data', 'saas-sessions.json');
+          if (fs.existsSync(sessionsFile)) {
+            const sessions = JSON.parse(fs.readFileSync(sessionsFile, 'utf8'));
+            const sess = sessions[bearerToken];
+            if (sess && sess.walletAddress) {
+              const isWalletAdmin = ADMIN_WALLETS.some(w => w.toLowerCase() === sess.walletAddress.toLowerCase());
+              if (isWalletAdmin || sess.isAdmin) {
+                return next();
+              }
+            }
+          }
+        } catch(e) { /* session验证失败 */ }
+      }
+      
+      // 方式3: 本地无ADMIN_KEY时允许（开发模式，但生产环境必须设置ADMIN_KEY）
+      if (!ADMIN_KEY) {
+        return next();
+      }
+      
+      return res.status(401).json({ error: 'Unauthorized: admin access required' });
+    };
+
     // API: 综合状态
     this.app.get('/api/status', async (req, res) => {
       try {
@@ -116,13 +160,13 @@ class Dashboard {
     });
 
     // API: 暂停/恢复
-    this.app.post('/api/toggle', (req, res) => {
+    this.app.post('/api/toggle', this._adminAuth, (req, res) => {
       const paused = this.engine.togglePause();
       res.json({ paused });
     });
 
     // API: 手动平仓
-    this.app.post('/api/close/:symbol', async (req, res) => {
+    this.app.post('/api/close/:symbol', this._adminAuth, async (req, res) => {
       try {
         const sym = req.params.symbol;
         const result = await this.engine.trader.closePosition(sym);
@@ -145,7 +189,7 @@ class Dashboard {
     });
 
     // API: 引擎启动
-    this.app.post('/api/engine/start', (req, res) => {
+    this.app.post('/api/engine/start', this._adminAuth, (req, res) => {
       try {
         const result = this.engine.startEngine();
         res.json(result);
@@ -155,7 +199,7 @@ class Dashboard {
     });
 
     // API: 引擎停止
-    this.app.post('/api/engine/stop', (req, res) => {
+    this.app.post('/api/engine/stop', this._adminAuth, (req, res) => {
       try {
         const result = this.engine.stopEngine();
         res.json(result);
@@ -170,7 +214,7 @@ class Dashboard {
     });
 
     // API: 更新配置
-    this.app.post('/api/config', (req, res) => {
+    this.app.post('/api/config', this._adminAuth, (req, res) => {
       try {
         let body = '';
         req.on('data', c => body += c);
@@ -413,7 +457,7 @@ class Dashboard {
     });
 
     // API: 手动触发链上备份
-    this.app.post('/api/backup/trigger', async (req, res) => {
+    this.app.post('/api/backup/trigger', this._adminAuth, async (req, res) => {
       try {
         const result = await this.engine.backupManager.backupNow();
         res.json({ success: true, result });
@@ -619,7 +663,7 @@ class Dashboard {
     });
 
     // API: 多用户全局状态（如果有多用户系统）
-    this.app.get('/api/admin/users', async (req, res) => {
+    this.app.get('/api/admin/users', this._adminAuth, async (req, res) => {
       try {
         // 优先尝试 MultiEngine（多用户模式）
         const multiEngine = this.engine.multiEngine || this.engine._multiEngine;
@@ -944,7 +988,7 @@ class Dashboard {
     // ═══════════════════════════════
 
     // ═══ 注销/删除普通用户 (管理员专用) ═══
-    this.app.post('/api/admin/delete-user', async (req, res) => {
+    this.app.post('/api/admin/delete-user', this._adminAuth, async (req, res) => {
       try {
         const { wallet } = req.body;
         if (!wallet) return res.status(400).json({ error: '缺少钱包地址' });
@@ -1105,7 +1149,7 @@ class Dashboard {
     });
 
     // API: 触发网格搜索（异步执行）
-    this.app.post('/api/run-grid-search', (req, res) => {
+    this.app.post('/api/run-grid-search', this._adminAuth, (req, res) => {
       try {
         const { execFile } = require('child_process');
         const scriptPath = path.join(__dirname, '..', 'backtest', 'grid-search.js');
@@ -1120,7 +1164,7 @@ class Dashboard {
     });
 
     // API: 触发资金费率套利扫描（异步执行）
-    this.app.post('/api/run-funding-arb', (req, res) => {
+    this.app.post('/api/run-funding-arb', this._adminAuth, (req, res) => {
       try {
         const { execFile } = require('child_process');
         const scriptPath = path.join(__dirname, '..', 'backtest', 'funding-arb.js');
@@ -1148,7 +1192,7 @@ class Dashboard {
     this.app.get('/api/options-greeks', (req, res) => res.json({ enabled: false }));
 
     // API: 期权定价计算
-    this.app.post('/api/options-price', (req, res) => {
+    this.app.post('/api/options-price', this._adminAuth, (req, res) => {
       try {
         let body = '';
         req.on('data', c => body += c);
@@ -1175,7 +1219,7 @@ class Dashboard {
     });
 
     // API: MEV三明治开关
-    this.app.post('/api/mev/toggle-sandwich', (req, res) => {
+    this.app.post('/api/mev/toggle-sandwich', this._adminAuth, (req, res) => {
       try {
         const sm = this.engine?.strategyManager;
         // v73: mev-bot已禁用
@@ -1195,7 +1239,7 @@ class Dashboard {
     });
 
     // API: 添加服务器
-    this.app.post('/api/multi-server/add', (req, res) => {
+    this.app.post('/api/multi-server/add', this._adminAuth, (req, res) => {
       try {
         let body = '';
         req.on('data', c => body += c);
@@ -1210,7 +1254,7 @@ class Dashboard {
     });
 
     // API: 手动健康检查
-    this.app.post('/api/multi-server/health-check', async (req, res) => {
+    this.app.post('/api/multi-server/health-check', this._adminAuth, async (req, res) => {
       try {
         const sm = this.engine?.strategyManager;
         // v73: multi-server已禁用
@@ -1232,7 +1276,7 @@ class Dashboard {
       } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
-    this.app.post('/api/strategy-config/weight', (req, res) => {
+    this.app.post('/api/strategy-config/weight', this._adminAuth, (req, res) => {
       try {
         const sm = this.engine?.strategyManager;
         if (!sm) return res.status(500).json({ error: 'StrategyManager not initialized' });
@@ -1242,7 +1286,7 @@ class Dashboard {
       } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
-    this.app.post('/api/strategy-config/toggle', (req, res) => {
+    this.app.post('/api/strategy-config/toggle', this._adminAuth, (req, res) => {
       try {
         const sm = this.engine?.strategyManager;
         if (!sm) return res.status(500).json({ error: 'StrategyManager not initialized' });
@@ -1506,7 +1550,7 @@ class Dashboard {
     });
 
     // 触发回测
-    this.app.post('/api/backtest/run', async (req, res) => {
+    this.app.post('/api/backtest/run', this._adminAuth, async (req, res) => {
       try {
         const { strategy } = req.body;
         const scripts = {
@@ -1850,7 +1894,7 @@ class Dashboard {
       } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
-    this.app.post('/api/masterd-agent/optimize', async (req, res) => {
+    this.app.post('/api/masterd-agent/optimize', this._adminAuth, async (req, res) => {
       try {
         if (!this.masterdAgent) return res.json({ enabled: false });
         const { strategyName, currentParams, performanceData } = req.body;
@@ -1859,7 +1903,7 @@ class Dashboard {
       } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
-    this.app.post('/api/masterd-agent/generate', async (req, res) => {
+    this.app.post('/api/masterd-agent/generate', this._adminAuth, async (req, res) => {
       try {
         if (!this.masterdAgent) return res.json({ enabled: false });
         const { description, context } = req.body;
@@ -2350,7 +2394,7 @@ class Dashboard {
       res.json({ strategy, isBB: strategy === 'bb' });
     });
 
-    app.post('/api/strategy/switch', async (req, res) => {
+    app.post('/api/strategy/switch', this._adminAuth, async (req, res) => {
       const { strategy } = req.body;
       if (strategy !== 'bb' && strategy !== 'balanced') {
         return res.status(400).json({ error: '无效策略，只支持 bb 或 balanced' });

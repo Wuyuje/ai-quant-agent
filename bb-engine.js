@@ -1126,7 +1126,35 @@ class BBEngine {
     try {
       const dir = path.dirname(BBEngine.FEE_CONFIG.FEE_STATE_FILE);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(BBEngine.FEE_CONFIG.FEE_STATE_FILE, JSON.stringify(this._feeState, null, 2));
+      // 修复并发写入覆盖：先读取最新文件内容，合并后写入
+      let latest = { pending: {}, collected: {}, totalPlatformFee: 0, totalEcoFund: 0 };
+      try {
+        if (fs.existsSync(BBEngine.FEE_CONFIG.FEE_STATE_FILE)) {
+          latest = JSON.parse(fs.readFileSync(BBEngine.FEE_CONFIG.FEE_STATE_FILE, 'utf8'));
+        }
+      } catch(e) { /* 文件损坏，用默认值 */ }
+      // 合并：以磁盘上的collected为准，以内存中的pending为准（因为pending可能刚被修改）
+      // 但只合并本用户的wallet key，不覆盖其他用户的数据
+      const myWalletKey = this.wallet || 'admin';
+      // 保留磁盘上其他用户的数据，用内存中本用户的数据覆盖
+      if (!latest.pending) latest.pending = {};
+      if (!latest.collected) latest.collected = {};
+      // 用内存中本用户的pending覆盖磁盘上的
+      if (this._feeState.pending[myWalletKey] !== undefined) {
+        latest.pending[myWalletKey] = this._feeState.pending[myWalletKey];
+      }
+      if (this._feeState.collected[myWalletKey] !== undefined) {
+        latest.collected[myWalletKey] = this._feeState.collected[myWalletKey];
+      }
+      // 全局统计重新计算
+      latest.totalPlatformFee = this._feeState.totalPlatformFee || 0;
+      latest.totalEcoFund = this._feeState.totalEcoFund || 0;
+      // 原子写入：先写临时文件再 rename
+      const tmpFile = BBEngine.FEE_CONFIG.FEE_STATE_FILE + '.tmp';
+      fs.writeFileSync(tmpFile, JSON.stringify(latest, null, 2));
+      fs.renameSync(tmpFile, BBEngine.FEE_CONFIG.FEE_STATE_FILE);
+      // 同步内存状态
+      this._feeState = latest;
     } catch (e) { /* ignore */ }
   }
 
@@ -1237,28 +1265,36 @@ class BBEngine {
         this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message.slice(0,80)}`);
       }
 
-      // Step 2: 转生态费到生态费钱包
-      try {
-        const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
-        this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
-        const tx2 = await usdtContract.transferFrom(userBscAddr, ECO_FUND_WALLET, ecoWei);
-        await tx2.wait();
-        this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
-        ecoOk = true;
-      } catch (e) {
-        this._log(`❌ 盖茨费-生态费链上转账失败: ${e.message.slice(0,80)}`);
+      // Step 2: 转生态费到生态费钱包（仅当服务费已成功，避免部分成功后重复扣服务费）
+      if (platformOk) {
+        try {
+          const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
+          this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
+          const tx2 = await usdtContract.transferFrom(userBscAddr, ECO_FUND_WALLET, ecoWei);
+          await tx2.wait();
+          this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
+          ecoOk = true;
+        } catch (e) {
+          this._log(`❌ 盖茨费-生态费链上转账失败: ${e.message.slice(0,80)}`);
+        }
       }
 
       // 更新BSC钱包余额
-      const newBal = await usdtContract.balanceOf(userBscAddr);
-      const newBalance = Number(newBal) / 1e18;
-      if (this.userDB) this.userDB.set(walletKey, { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
+      try {
+        const newBal = await usdtContract.balanceOf(userBscAddr);
+        const newBalance = Number(newBal) / 1e18;
+        if (this.userDB) this.userDB.set(walletKey, { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
+      } catch(e) { /* 余额查询失败不影响扣费结果 */ }
 
     } catch (e) {
       this._log(`❌ ${walletKey.slice(0,10)} 盖茨费链上扣费异常: ${e.message.slice(0,80)}`);
     }
 
-    // 全部成功才从 pending 移除
+    // ═══ 按实际成功情况从 pending 移除已完成的记录 ═══
+    // 修复：之前部分成功也保留全部pending → 重复扣费
+    // 现在：服务费+生态费都成功 → 移除全部
+    //       只有服务费成功 → 从pending记录中减去已收的服务费，保留生态费部分
+    //       都失败 → 保留全部pending
     if (platformOk && ecoOk) {
       const removed = pending.splice(0, pending.length);
       for (const record of removed) {
@@ -1268,8 +1304,15 @@ class BBEngine {
         this._feeState.collected[walletKey].push(record);
       }
       this._log(`✅ ${walletKey.slice(0,10)} 批量费用链上转账完成，已收取 ${removed.length} 笔`);
+    } else if (platformOk && !ecoOk) {
+      // 服务费已成功，生态费失败 → 标记pending中已收服务费，下次只收生态费
+      for (const record of pending) {
+        record.platformCollected = true;
+        record.platformCollectedAt = Date.now();
+      }
+      this._log(`⚠️ ${walletKey.slice(0,10)} 服务费已收但生态费失败，下次只收生态费 ${pending.length} 笔`);
     } else {
-      this._log(`⚠️ ${walletKey.slice(0,10)} 部分转账失败，费用保留在 pending 中下次重试`);
+      this._log(`⚠️ ${walletKey.slice(0,10)} 转账失败，费用保留在 pending 中下次重试`);
     }
     this._saveFeeState();
   }
@@ -1321,9 +1364,10 @@ class BBEngine {
       delete this.positions[symbol];
       this._saveState();
     } else {
-      this._log(`⚠️ ${symbol} 平仓失败: ${result.error} — 清除本地状态`);
-      delete this.positions[symbol];
-      this._saveState();
+      // 修复：平仓失败时保留本地仓位，等下一轮同步后重试
+      // 之前直接删除本地仓位 → 远程仓位失去监控 → 持续亏损
+      this._log(`⚠️ ${symbol} 平仓失败: ${result.error} — 保留本地仓位，下一轮重试`);
+      // 不删除 this.positions[symbol]，让 _syncPositions 下一轮确认远程状态
     }
   }
 

@@ -680,7 +680,7 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
 // 版本检查 - 如果浏览器缓存了旧版页面，自动刷新
 // version check moved to <head>
 let currentTab='overview';
-async function api(path){try{const r=await fetch(path);if(!r.ok){console.log('[api] '+path+' status='+r.status);return null}const d=await r.json();console.log('[api] '+path+' OK');return d}catch(e){console.log('[api] '+path+' error: '+e.message);return null}}
+async function api(path){try{const headers={};const ak=localStorage.getItem('ark_admin_key');const tk=localStorage.getItem('ark_token');if(ak)headers['x-admin-key']=ak;if(tk)headers['Authorization']='Bearer '+tk;const r=await fetch(path,{headers});if(!r.ok){console.log('[api] '+path+' status='+r.status);return null}const d=await r.json();console.log('[api] '+path+' OK');return d}catch(e){console.log('[api] '+path+' error: '+e.message);return null}}
 function switchTab(tab,el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
@@ -899,7 +899,7 @@ async function deleteUser(walletFull, walletShort) {
   try {
     var resp = await fetch('/api/admin/delete-user', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': localStorage.getItem('ark_admin_key') || '', 'Authorization': 'Bearer ' + (localStorage.getItem('ark_token') || '') },
       body: JSON.stringify({ wallet: walletFull }),
     });
     var data = await resp.json();
@@ -1673,7 +1673,7 @@ async function switchStrategy(s){
   document.getElementById('activeStrategyName').textContent='🔄 正在切换到'+(s==='bb'?'B策略':'A策略')+'...';
   document.getElementById('activeStrategyName').style.color='#d29922';
   try{
-    const r=await fetch('/api/strategy/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strategy:s})});
+    const r=await fetch('/api/strategy/switch',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':localStorage.getItem('ark_admin_key')||'','Authorization':'Bearer '+(localStorage.getItem('ark_token')||'')},body:JSON.stringify({strategy:s})});
     const d=await r.json();
     if(d.success){
       document.getElementById('activeStrategyName').textContent='✅ 已切换到'+d.name;

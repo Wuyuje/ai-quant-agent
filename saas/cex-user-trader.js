@@ -1609,28 +1609,33 @@ class CEXUserTrader {
         this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message.slice(0,80)}`);
       }
 
-      // Step 2: 转生态费到生态费钱包
-      try {
-        const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
-        this._log(`💸 ${wallet.slice(0,8)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${this.ECO_FUND_WALLET.slice(0,10)}...`);
-        const tx2 = await usdtContract.transferFrom(userBscAddr, this.ECO_FUND_WALLET, ecoWei);
-        await tx2.wait();
-        this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
-        ecoOk = true;
-      } catch (e) {
-        this._log(`❌ 盖茨费-生态费链上转账失败: ${e.message.slice(0,80)}`);
+      // Step 2: 转生态费到生态费钱包（仅当服务费已成功，避免部分成功后重复扣服务费）
+      if (platformOk) {
+        try {
+          const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
+          this._log(`💸 ${wallet.slice(0,8)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${this.ECO_FUND_WALLET.slice(0,10)}...`);
+          const tx2 = await usdtContract.transferFrom(userBscAddr, this.ECO_FUND_WALLET, ecoWei);
+          await tx2.wait();
+          this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
+          ecoOk = true;
+        } catch (e) {
+          this._log(`❌ 盖茨费-生态费链上转账失败: ${e.message.slice(0,80)}`);
+        }
       }
 
       // 更新BSC钱包余额
-      const newBal = await usdtContract.balanceOf(userBscAddr);
-      const newBalance = Number(newBal) / 1e18;
-      if (this.userDB) this.userDB.set(wallet, { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
+      try {
+        const newBal = await usdtContract.balanceOf(userBscAddr);
+        const newBalance = Number(newBal) / 1e18;
+        if (this.userDB) this.userDB.set(wallet, { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
+      } catch(e) { /* 余额查询失败不影响扣费结果 */ }
 
     } catch (e) {
       this._log(`❌ ${wallet.slice(0,8)} 盖茨费链上扣费异常: ${e.message.slice(0,80)}`);
     }
 
-    // 全部成功才从 pending 移除
+    // ═══ 按实际成功情况从 pending 移除已完成的记录 ═══
+    // 修复：之前部分成功也保留全部pending → 重复扣费
     if (platformOk && ecoOk) {
       const removed = pending.splice(0, pending.length);
       for (const record of removed) {
@@ -1641,6 +1646,15 @@ class CEXUserTrader {
       }
       delete this._transferFailCooldown[wallet];
       this._log(`✅ ${wallet.slice(0,8)} 盖茨费收取完成: ${removed.length}笔, 服务费 $${totalPlatform.toFixed(2)}, 生态费 $${totalEco.toFixed(2)}`);
+    } else if (platformOk && !ecoOk) {
+      // 服务费已成功，生态费失败 → 标记pending中已收服务费，下次只收生态费
+      for (const record of pending) {
+        record.platformCollected = true;
+        record.platformCollectedAt = Date.now();
+      }
+      if (!this._transferFailCooldown[wallet]) this._transferFailCooldown[wallet] = { lastFailAt: 0, failCount: 0 };
+      this._transferFailCooldown[wallet].failCount++;
+      this._log(`⚠️ ${wallet.slice(0,8)} 服务费已收但生态费失败，下次只收生态费 ${pending.length}笔 (失败${this._transferFailCooldown[wallet].failCount}/${this.TRANSFER_MAX_FAIL})`);
     } else {
       if (!this._transferFailCooldown[wallet]) this._transferFailCooldown[wallet] = { lastFailAt: 0, failCount: 0 };
       this._transferFailCooldown[wallet].lastFailAt = Date.now();
