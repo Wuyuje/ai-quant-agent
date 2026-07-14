@@ -248,6 +248,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   <!-- ═══ Tab: Overview ═══ -->
   <div class="tab-panel active" id="panel-overview">
+    <!-- CEX/DEX Exchange Mode Toggle (总览页顶部) -->
+    <div style="background:#161b22;border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div>
+          <span style="color:var(--muted);font-size:.7em;text-transform:uppercase;letter-spacing:.8px;font-weight:600">交易所模式</span>
+          <div style="font-size:1.3em;font-weight:bold;color:#58a6ff" id="userExchangeModeText">加载中...</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button id="userBtnCEX" onclick="switchExchangeMode('cex')" style="padding:12px 24px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:1em;font-weight:600;transition:all .2s;flex:1">CEX (Binance 合约)</button>
+        <button id="userBtnDEX" onclick="switchExchangeMode('dex')" style="padding:12px 24px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:1em;font-weight:600;transition:all .2s;flex:1">DEX (PancakeSwap 现货)</button>
+      </div>
+      <div style="font-size:.78em;color:#8b949e;margin-top:8px" id="exchangeModeDesc">CEX = Binance 合约（杠杆+做空）| DEX = BSC 链上现货（仅做多，资金在链上钱包）</div>
+    </div>
     <div class="grid" style="margin-bottom:14px">
       <div class="card"><h3 data-i18n="ov.totalEquity">总权益</h3><div class="val yellow" id="ovEquity">--</div><div class="sub">USDT</div></div>
       <div class="card"><h3 data-i18n="ov.available">可用余额</h3><div class="val blue" id="ovAvail">--</div><div class="sub" data-i18n="ov.availSub">可用于开仓</div></div>
@@ -377,16 +391,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
       <div style="margin-top:12px;display:flex;gap:8px">
         <button class="btn btn-primary btn-sm" onclick="saveSettings()" style="flex:1" data-i18n="set.save">保存</button>
-      </div>
-
-      <!-- CEX/DEX Exchange Mode Toggle -->
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-        <h3 style="color:var(--muted);font-size:.7em;text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">Exchange Mode</h3>
-        <div style="display:flex;gap:10px;align-items:center">
-          <button id="userBtnCEX" onclick="switchExchangeMode('cex')" style="padding:10px 22px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:.9em;font-weight:600;transition:all .2s">CEX (Binance)</button>
-          <button id="userBtnDEX" onclick="switchExchangeMode('dex')" style="padding:10px 22px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:.9em;font-weight:600;transition:all .2s">DEX (PancakeSwap)</button>
-        </div>
-        <div style="font-size:.78em;color:#8b949e;margin-top:8px" id="exchangeModeDesc">CEX = Binance 合约交易（杠杆+做空）| DEX = PancakeSwap BSC 现货（仅做多，资金在链上钱包）</div>
       </div>
     </div>
   </div>
@@ -654,9 +658,10 @@ function refreshAll(){
       // Update exchange mode toggle buttons
       var exchMode=r.user.exchangeMode||'cex';
       var btnC=document.getElementById('userBtnCEX'),btnD=document.getElementById('userBtnDEX');
+      var modeText=document.getElementById('userExchangeModeText');
       if(btnC&&btnD){
-        if(exchMode==='dex'){btnD.style.background='#238636';btnD.style.color='#fff';btnC.style.background='#0d1117';btnC.style.color='#c9d1d9';}
-        else{btnC.style.background='#238636';btnC.style.color='#fff';btnD.style.background='#0d1117';btnD.style.color='#c9d1d9';}
+        if(exchMode==='dex'){btnD.style.background='#238636';btnD.style.color='#fff';btnC.style.background='#0d1117';btnC.style.color='#c9d1d9';if(modeText){modeText.textContent='DEX (PancakeSwap)';modeText.style.color='#3fb950';}}
+        else{btnC.style.background='#238636';btnC.style.color='#fff';btnD.style.background='#0d1117';btnD.style.color='#c9d1d9';if(modeText){modeText.textContent='CEX (Binance)';modeText.style.color='#58a6ff';}}
       }
       // Trading status
       var on=u.tradingEnabled;
