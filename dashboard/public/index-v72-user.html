@@ -356,6 +356,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <label data-i18n="settings.dailyLimit">每日交易限额 (USDT)</label>
         <input id="setDailyLimit" type="number" value="200000" min="1000" step="1000">
       </div>
+      <div class="s-item">
+        <label>🔁 交易所</label>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button id="btnUserCEX" onclick="switchUserExchange('cex')" style="flex:1;padding:8px 16px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:.9em;font-weight:600;transition:all .2s">CEX (Binance)</button>
+          <button id="btnUserDEX" onclick="switchUserExchange('dex')" style="flex:1;padding:8px 16px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:.9em;font-weight:600;transition:all .2s">DEX (PancakeSwap)</button>
+        </div>
+        <div style="font-size:.75em;color:#8b949e;margin-top:4px">CEX=Binance合约 | DEX=BSC链上现货，独立切换，不影响其他用户</div>
+      </div>
     </div>
     <div style="margin-top:14px;display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" onclick="saveSettings()" data-i18n="settings.save">💾 保存</button>
@@ -1835,7 +1843,28 @@ async function loadUserSettings() {
     document.getElementById('setStrategy').value = s.strategy || 'balanced';
     document.getElementById('setMaxSingle').value = s.maxSingle || 50000;
     document.getElementById('setDailyLimit').value = s.dailyLimit || 200000;
+    // 交易所模式
+    updateUserExchangeUI(s.exchangeMode || 'cex');
   } catch (e) { /* 忽略 */ }
+}
+
+// ═══ 用户交易所切换 ═══
+function updateUserExchangeUI(mode){
+  var cex=document.getElementById('btnUserCEX'),dex=document.getElementById('btnUserDEX');
+  if(cex){cex.style.borderColor=mode==='cex'?'#3fb950':'#2a3a5c';cex.style.color=mode==='cex'?'#3fb950':'#c9d1d9';cex.style.background=mode==='cex'?'#0d2d1a':'#0d1117';}
+  if(dex){dex.style.borderColor=mode==='dex'?'#58a6ff':'#2a3a5c';dex.style.color=mode==='dex'?'#58a6ff':'#c9d1d9';dex.style.background=mode==='dex'?'#0d2d4a':'#0d1117';}
+}
+async function switchUserExchange(mode){
+  if(!confirm('确认切换到'+(mode==='dex'?'DEX (PancakeSwap BSC链上现货)':'CEX (Binance合约)')+'？\n\n这将影响你的交易执行路径。'))return;
+  try{
+    const r=await api('POST','/api/vault/exchange-mode',{exchangeMode:mode});
+    if(r&&r.success){
+      updateUserExchangeUI(mode);
+      toast('✅ 已切换到'+(mode==='dex'?'DEX':'CEX'),'ok');
+    }else{
+      toast(r?.error||'切换失败','err');
+    }
+  }catch(e){toast('切换失败: '+e.message,'err');}
 }
 
 // ═══════════════════════════════════════

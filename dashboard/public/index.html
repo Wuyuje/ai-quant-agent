@@ -545,6 +545,21 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
     </div>
   </div>
 
+  <!-- 交易所切换 (管理员独立) -->
+  <div class="card" style="border:1px solid #1f6feb;margin-bottom:14px;padding:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <h3 style="color:#58a6ff;margin:0 0 4px 0">🔁 管理员交易所</h3>
+        <div id="adminExchangeMode" style="font-size:1.4em;font-weight:bold;color:#58a6ff">加载中...</div>
+        <div style="font-size:.82em;color:#8b949e;margin-top:2px">CEX=Binance合约 | DEX=PancakeSwap现货，管理员独立切换，不影响其他用户</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="btnExchCEX" onclick="switchAdminExchange('cex')" style="padding:12px 24px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:1em;font-weight:600;transition:all .2s">CEX</button>
+        <button id="btnExchDEX" onclick="switchAdminExchange('dex')" style="padding:12px 24px;border:2px solid #2a3a5c;border-radius:8px;background:#0d1117;color:#c9d1d9;cursor:pointer;font-size:1em;font-weight:600;transition:all .2s">DEX</button>
+      </div>
+    </div>
+  </div>
+
   <div class="grid g4" style="margin-bottom:14px">
     <div class="card"><h3>B策略状态</h3><div id="bbStatus" class="val blue">--</div><div class="sub" id="bbStatusSub">--</div></div>
     <div class="card"><h3>B策略用户</h3><div id="bbUserCount" class="val green">--</div><div class="sub">活跃用户</div></div>
@@ -1688,10 +1703,38 @@ async function switchStrategy(s){
   }
 }
 
+// ═══ 管理员交易所切换 ═══
+async function loadAdminExchangeMode(){
+  try{
+    const r=await fetch('/api/admin/exchange-mode',{headers:{'x-admin-key':localStorage.getItem('ark_admin_key')||''}});
+    const d=await r.json();
+    const mode=d.exchangeMode||'cex';
+    var el=document.getElementById('adminExchangeMode');
+    if(el){el.textContent=mode==='dex'?'DEX (PancakeSwap)':'CEX (Binance)';el.style.color=mode==='dex'?'#3fb950':'#58a6ff';}
+    var cex=document.getElementById('btnExchCEX'),dex=document.getElementById('btnExchDEX');
+    if(cex){cex.style.borderColor=mode==='cex'?'#58a6ff':'#2a3a5c';cex.style.color=mode==='cex'?'#58a6ff':'#c9d1d9';cex.style.background=mode==='cex'?'#0d2d4a':'#0d1117';}
+    if(dex){dex.style.borderColor=mode==='dex'?'#3fb950':'#2a3a5c';dex.style.color=mode==='dex'?'#3fb950':'#c9d1d9';dex.style.background=mode==='dex'?'#0d2d1a':'#0d1117';}
+  }catch(e){console.log('loadAdminExchangeMode err:',e);}
+}
+async function switchAdminExchange(mode){
+  if(!confirm('确认切换到'+(mode==='dex'?'DEX (PancakeSwap BSC链上现货)':'CEX (Binance合约)')+'？\n\n这会影响管理员自己的交易执行路径。'))return;
+  var cex=document.getElementById('btnExchCEX'),dex=document.getElementById('btnExchDEX');
+  if(cex)cex.disabled=true;if(dex)dex.disabled=true;
+  try{
+    const r=await fetch('/api/admin/exchange-mode',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':localStorage.getItem('ark_admin_key')||''},body:JSON.stringify({exchangeMode:mode})});
+    const d=await r.json();
+    if(d.success){
+      setTimeout(function(){loadAdminExchangeMode();},500);
+    }else{alert(d.error||'切换失败');}
+  }catch(e){alert('切换请求失败: '+e.message);}
+  if(cex)cex.disabled=false;if(dex)dex.disabled=false;
+}
+
 // ═══ B策略 (BB布林带) 加载 ═══
 async function loadBBStrategy(){
   // 加载当前策略状态
   loadActiveStrategy();
+  loadAdminExchangeMode();
   const data=await api('/api/bb-strategy/overview');
   if(!data||data.error){
     document.getElementById('bbStatus').textContent='未启动';

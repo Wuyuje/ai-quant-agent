@@ -777,6 +777,7 @@ class Dashboard {
             ? ((adminStatus.state.wins / adminStatus.state.totalTrades) * 100).toFixed(1) + '%'
             : 'N/A',
           strategy: 'admin',
+          exchangeMode: saasUsers[adminWallet]?.exchangeMode || saasUsers[adminWallet.toLowerCase()]?.exchangeMode || 'cex',
           recentTrades: adminStatus.recentTrades || [],
           uptime: 0,
         });
@@ -969,6 +970,7 @@ class Dashboard {
             gatesFeeBalance: u.gatesFeeBalance || 0,
             gatesFeeApproved: u.gatesFeeApproved || false,
             gatesFeeLow: u.gatesFeeLow || false,
+            exchangeMode: u.exchangeMode || 'cex', // 'cex' | 'dex'
             uptime: u.lastActive ? Math.floor((Date.now() - u.lastActive) / 1000) : 0,
           });
         }
@@ -2426,6 +2428,51 @@ class Dashboard {
         return res.json(um.getStatus());
       }
       res.json({ error: '统一策略管理器未启动' });
+    });
+
+    // ═══ 管理员交易所切换 (CEX/DEX) — 独立于全局策略 ═══
+    const ADMIN_WALLETS_LIST = [
+      '0xfa3b90c574469909d20848273c06752a22fde74a',
+    ];
+    app.get('/api/admin/exchange-mode', this._adminAuth, (req, res) => {
+      try {
+        const fs = require('fs');
+        const pathMod = require('path');
+        const usersFile = pathMod.join(__dirname, '..', 'data', 'saas-users.json');
+        let users = {};
+        try { users = JSON.parse(fs.readFileSync(usersFile, 'utf8')); } catch(e) {}
+        const adminWallet = ADMIN_WALLETS_LIST[0];
+        const adminUser = users[adminWallet] || users[adminWallet.toLowerCase()] || {};
+        res.json({ exchangeMode: adminUser.exchangeMode || 'cex' });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    app.post('/api/admin/exchange-mode', this._adminAuth, (req, res) => {
+      try {
+        const { exchangeMode } = req.body;
+        if (!['cex', 'dex'].includes(exchangeMode)) {
+          return res.status(400).json({ error: '无效模式，只支持 cex 或 dex' });
+        }
+        const fs = require('fs');
+        const pathMod = require('path');
+        const usersFile = pathMod.join(__dirname, '..', 'data', 'saas-users.json');
+        let users = {};
+        try { users = JSON.parse(fs.readFileSync(usersFile, 'utf8')); } catch(e) {}
+        const adminWallet = ADMIN_WALLETS_LIST[0];
+        const key = adminWallet.toLowerCase();
+        if (!users[key]) {
+          users[key] = { walletAddress: adminWallet, createdAt: Date.now() };
+        }
+        users[key].exchangeMode = exchangeMode;
+        users[key].lastActive = Date.now();
+        fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+        console.log(`[Dashboard] 🔄 管理员交易所切换为 ${exchangeMode.toUpperCase()}`);
+        res.json({ success: true, exchangeMode });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
     });
   }
 

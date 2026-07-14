@@ -1088,7 +1088,28 @@ class SaasServer {
         tradeAmount: user?.tradeAmount || 0,
         maxSingle: user?.maxSingle || 50000,
         dailyLimit: user?.dailyLimit || 200000,
+        exchangeMode: user?.exchangeMode || 'cex', // 'cex' | 'dex'
       });
+    });
+
+    // ═══ 交易所切换 (用户独立，互不干扰) ═══
+    this.app.post('/api/vault/exchange-mode', (req, res) => {
+      const session = this._auth(req);
+      if (!session) return res.status(401).json({ error: '未登录' });
+      const { exchangeMode } = req.body;
+      if (!['cex', 'dex'].includes(exchangeMode)) {
+        return res.status(400).json({ error: '无效模式，只支持 cex 或 dex' });
+      }
+      this.userDB.set(session.wallet, { exchangeMode });
+      this.log(`🔄 ${session.wallet.slice(0,10)}... 交易所切换为 ${exchangeMode.toUpperCase()}`);
+      res.json({ success: true, exchangeMode });
+    });
+
+    this.app.get('/api/vault/exchange-mode', (req, res) => {
+      const session = this._auth(req);
+      if (!session) return res.status(401).json({ error: '未登录' });
+      const user = this.userDB.get(session.wallet);
+      res.json({ exchangeMode: user?.exchangeMode || 'cex' });
     });
 
     // 设置交易限额
