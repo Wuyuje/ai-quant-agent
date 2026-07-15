@@ -679,7 +679,7 @@ class SaasServer {
 
   _setupRoutes() {
     // 静态文件
-    this.app.use(express.static(path.join(__dirname, 'public')));
+    this.app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false, setHeaders: (res) => { res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } }));
     this.app.use(express.json({ limit: '1mb' }));
 
     // [audit#2] CORS 头（限制允许的源，不再用 *)
