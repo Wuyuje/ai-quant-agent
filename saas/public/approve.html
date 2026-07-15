@@ -10,9 +10,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .c{background:#161b22;border:1px solid #21262d;border-radius:20px;padding:36px 24px;width:100%;max-width:440px;text-align:center}
 .c h2{color:#58a6ff;margin-bottom:8px;font-size:1.4em}
 .sub{color:#8b949e;font-size:.85em;margin-bottom:24px;line-height:1.5}
+
+/* 钱包选择 */
+.wallet-select{margin-bottom:20px}
+.wallet-select .label{color:#8b949e;font-size:.85em;margin-bottom:12px}
+.wallet-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.wallet-card{background:#0d1117;border:2px solid #21262d;border-radius:14px;padding:18px 12px;cursor:pointer;transition:all .2s;text-align:center}
+.wallet-card:active{transform:scale(.97)}
+.wallet-card.active{border-color:#238636;background:#0d2818}
+.wallet-card .icon{width:48px;height:48px;margin:0 auto 8px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:28px}
+.wallet-card .icon-fox{background:#f6851b20}
+.wallet-card .icon-tp{background:#1e9eff20}
+.wallet-card .name{font-weight:700;font-size:.9em}
+.wallet-card .desc{color:#8b949e;font-size:.75em;margin-top:4px}
+.wallet-card .check{width:20px;height:20px;border-radius:50%;background:#238636;color:#fff;display:none;align-items:center;justify-content:center;font-size:12px;margin:6px auto 0}
+.wallet-card.active .check{display:flex}
+
 .step{background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:16px;margin-bottom:12px;text-align:left}
 .step .num{display:inline-block;width:24px;height:24px;background:#238636;color:#fff;border-radius:50%;text-align:center;line-height:24px;font-size:.8em;font-weight:700;margin-right:8px}
-.step .num.done{background:#238636}
 .step .num.run{background:#1f6feb;animation:pulse 1s infinite}
 .step .num.err{background:#da3633}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
@@ -35,14 +50,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <h2>🔐 授权盖茨费</h2>
   <div class="sub">授权后系统可在盈利时自动从您的BSC钱包扣除盖茨费（服务费20% + 生态费10%）<br>无盈利不收费</div>
 
+  <!-- 钱包选择 -->
+  <div class="wallet-select" id="walletSelect">
+    <div class="label">选择您要使用的钱包</div>
+    <div class="wallet-grid">
+      <div class="wallet-card" id="cardMetaMask" onclick="selectWallet('metamask')">
+        <div class="icon icon-fox">🦊</div>
+        <div class="name">MetaMask</div>
+        <div class="desc">狐狸钱包浏览器插件</div>
+        <div class="check">✓</div>
+      </div>
+      <div class="wallet-card" id="cardTP" onclick="selectWallet('tp')">
+        <div class="icon icon-tp">🔵</div>
+        <div class="name">TP Wallet</div>
+        <div class="desc">TP钱包 App / 插件</div>
+        <div class="check">✓</div>
+      </div>
+    </div>
+  </div>
+
   <div id="steps" style="display:none">
     <div class="step" id="step1">
-      <div><span class="num" id="n1">1</span><span class="title">连接 MetaMask 钱包</span></div>
-      <div class="desc">连接您注册时使用的BSC钱包</div>
+      <div><span class="num" id="n1">1</span><span class="title" id="step1Title">连接钱包</span></div>
+      <div class="desc" id="step1Desc">连接您注册时使用的BSC钱包</div>
     </div>
     <div class="step" id="step2">
       <div><span class="num" id="n2">2</span><span class="title">授权 USDT</span></div>
-      <div class="desc">点击下方按钮，在MetaMask中确认授权交易</div>
+      <div class="desc" id="step2Desc">点击下方按钮，在钱包中确认授权交易</div>
     </div>
     <div class="step" id="step3">
       <div><span class="num" id="n3">3</span><span class="title">完成</span></div>
@@ -50,7 +84,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
   </div>
 
-  <button class="btn btn-blue" id="connectBtn" onclick="connectWallet()">连接 MetaMask</button>
+  <button class="btn btn-blue" id="connectBtn" style="display:none" onclick="connectWallet()">连接钱包</button>
   <button class="btn btn-bg" id="approveBtn" style="display:none" onclick="approveUSDT()">授权 USDT</button>
 
   <div id="msg" class="msg"></div>
@@ -70,6 +104,8 @@ var traderAddress = '';
 var usdtAddress = '';
 var walletAddr = '';
 var connected = false;
+var selectedWallet = ''; // 'metamask' | 'tp'
+var provider = null;    // EIP-1193 provider
 
 function showMsg(text, type) {
   var m = document.getElementById('msg');
@@ -81,6 +117,68 @@ function setStep(num, state) {
   var el = document.getElementById('n' + num);
   el.className = 'num ' + state;
   if (state === 'done') el.textContent = '✓';
+}
+
+function selectWallet(type) {
+  selectedWallet = type;
+
+  // 更新选中样式
+  document.getElementById('cardMetaMask').classList.toggle('active', type === 'metamask');
+  document.getElementById('cardTP').classList.toggle('active', type === 'tp');
+
+  // 更新按钮和步骤文字
+  var connectBtn = document.getElementById('connectBtn');
+  connectBtn.style.display = 'block';
+  document.getElementById('steps').style.display = 'block';
+
+  if (type === 'metamask') {
+    connectBtn.textContent = '连接 MetaMask';
+    document.getElementById('step1Title').textContent = '连接 MetaMask 钱包';
+    document.getElementById('step2Desc').textContent = '点击下方按钮，在 MetaMask 中确认授权交易';
+  } else {
+    connectBtn.textContent = '连接 TP Wallet';
+    document.getElementById('step1Title').textContent = '连接 TP Wallet';
+    document.getElementById('step2Desc').textContent = '点击下方按钮，在 TP 钱包中确认授权交易';
+  }
+
+  // 隐藏消息
+  document.getElementById('msg').className = 'msg';
+}
+
+// ═══ 获取 EIP-1193 provider ═══
+// MetaMask 注入 window.ethereum
+// TP Wallet 注入 window.ethereum 或 window.tp
+function getProvider() {
+  if (selectedWallet === 'metamask') {
+    // MetaMask
+    if (window.ethereum && window.ethereum.isMetaMask) {
+      return window.ethereum;
+    }
+    // 如果 ethereum 存在但不标 isMetaMask，也接受（某些浏览器兼容）
+    if (window.ethereum) {
+      return window.ethereum;
+    }
+    return null;
+  }
+
+  if (selectedWallet === 'tp') {
+    // TP Wallet — 多种注入方式
+    // 1. window.ethereum (TP Wallet 浏览器内置 / TP Wallet 插件)
+    if (window.ethereum && window.ethereum.isTp) {
+      return window.ethereum;
+    }
+    // 2. window.tp (TP Wallet 旧版注入)
+    if (window.tp && typeof window.tp.request === 'function') {
+      return window.tp;
+    }
+    // 3. window.ethereum (通用 EIP-1193 — TP Wallet 移动端 DApp 浏览器)
+    if (window.ethereum) {
+      return window.ethereum;
+    }
+    return null;
+  }
+
+  return null;
 }
 
 async function loadParams() {
@@ -112,37 +210,49 @@ async function loadParams() {
 }
 
 async function connectWallet() {
-  if (typeof window.ethereum === 'undefined') {
-    showMsg('未检测到 MetaMask，请先安装 MetaMask 浏览器插件', 'err');
+  if (!selectedWallet) {
+    showMsg('请先选择钱包类型', 'err');
     return;
   }
 
-  document.getElementById('steps').style.display = 'block';
+  provider = getProvider();
+
+  if (!provider) {
+    var walletName = selectedWallet === 'metamask' ? 'MetaMask' : 'TP Wallet';
+    if (selectedWallet === 'tp') {
+      showMsg('未检测到 TP 钱包\n\n请确保：\n• 在 TP 钱包 App 中打开此页面（DApp 浏览器），或\n• 安装 TP 钱包浏览器插件\n\n也可选择 MetaMask 授权', 'err');
+    } else {
+      showMsg('未检测到 MetaMask，请先安装 MetaMask 浏览器插件\n\n也可选择 TP 钱包授权', 'err');
+    }
+    setStep(1, 'err');
+    return;
+  }
 
   try {
     // 请求账户授权
-    var accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    var accounts = await provider.request({ method: 'eth_requestAccounts' });
     var addr = accounts[0];
 
     // 检查是否是注册的钱包地址
     if (walletAddr && addr.toLowerCase() !== walletAddr.toLowerCase()) {
-      showMsg('钱包地址不匹配！请连接注册时使用的钱包: ' + walletAddr.slice(0,8) + '...', 'err');
+      showMsg('钱包地址不匹配！\n请连接注册时使用的钱包:\n' + walletAddr.slice(0,10) + '...' + walletAddr.slice(-6), 'err');
       setStep(1, 'err');
       return;
     }
 
     // 检查是否在 BSC 网络
-    var chainId = await window.ethereum.request({ method: 'eth_chainId' });
+    var chainId = await provider.request({ method: 'eth_chainId' });
     if (chainId !== '0x38') {
-      showMsg('请在 MetaMask 中切换到 BSC 网络', 'info');
+      var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TP 钱包';
+      showMsg('请在 ' + walletLabel + ' 中切换到 BSC 网络', 'info');
       try {
-        await window.ethereum.request({
+        await provider.request({
           method: 'wallet_switchEthereumChain',
           params: [{ chainId: '0x38' }]
         });
       } catch (switchErr) {
         if (switchErr.code === 4902) {
-          await window.ethereum.request({
+          await provider.request({
             method: 'wallet_addEthereumChain',
             params: [{
               chainId: '0x38',
@@ -158,7 +268,7 @@ async function connectWallet() {
 
     connected = true;
     setStep(1, 'done');
-    showMsg('钱包已连接: ' + addr.slice(0,8) + '...', 'ok');
+    showMsg('钱包已连接: ' + addr.slice(0,8) + '...' + addr.slice(-4), 'ok');
     document.getElementById('connectBtn').style.display = 'none';
     document.getElementById('approveBtn').style.display = 'block';
 
@@ -178,12 +288,12 @@ async function approveUSDT() {
   document.getElementById('approveBtn').disabled = true;
 
   try {
-    var accounts = await window.ethereum.request({ method: 'eth_accounts' });
+    var accounts = await provider.request({ method: 'eth_accounts' });
     var from = accounts[0];
 
     // approve(address spender, uint256 amount) = 0x095ea7b3
     // spender = traderAddress (padding to 32 bytes)
-    // amount = MaxUint256 (0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff)
+    // amount = MaxUint256
     var spenderPadded = traderAddress.toLowerCase().replace('0x', '').padStart(64, '0');
     var maxAmount = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
     var data = '0x095ea7b3' + spenderPadded + maxAmount;
@@ -196,7 +306,7 @@ async function approveUSDT() {
 
     // 估算 gas
     try {
-      var gasEstimate = await window.ethereum.request({
+      var gasEstimate = await provider.request({
         method: 'eth_estimateGas',
         params: [txParams]
       });
@@ -205,9 +315,10 @@ async function approveUSDT() {
       txParams.gas = '0x' + (100000).toString(16);
     }
 
-    showMsg('请在 MetaMask 中确认授权交易...', 'info');
+    var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TP 钱包';
+    showMsg('请在 ' + walletLabel + ' 中确认授权交易...', 'info');
 
-    var txHash = await window.ethereum.request({
+    var txHash = await provider.request({
       method: 'eth_sendTransaction',
       params: [txParams]
     });
@@ -218,7 +329,7 @@ async function approveUSDT() {
     var receipt = null;
     for (var i = 0; i < 60; i++) {
       await new Promise(function(r) { setTimeout(r, 3000); });
-      receipt = await window.ethereum.request({
+      receipt = await provider.request({
         method: 'eth_getTransactionReceipt',
         params: [txHash]
       });
@@ -253,7 +364,7 @@ async function approveUSDT() {
       });
       var confirmData = await confirmResp.json();
       if (!confirmData.success) {
-        showMsg('链上验证失败: ' + (confirmData.error || '未知错误') + '\\n请稍后重试或联系管理员', 'err');
+        showMsg('链上验证失败: ' + (confirmData.error || '未知错误') + '\n请稍后重试或联系管理员', 'err');
         setStep(3, 'err');
         document.getElementById('approveBtn').disabled = false;
         return;
