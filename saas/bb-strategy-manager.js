@@ -800,16 +800,19 @@ class BBStrategyManager {
 
         // 检查Approve授权
         const allowance = await usdtContract.allowance(u.bscWalletAddr, traderWalletAddr);
-        const approved = BigInt(allowance) > BigInt(1000 * 1e18);
+        const chainApproved = BigInt(allowance) > BigInt(1000 * 1e18);
 
         // 更新用户数据
         if (this.userDB) {
           const existing = this.userDB.get(wallet) || {};
+          // 链上查到已授权 → 确认通过
+          // 链上查到未授权 → 但如果管理员/用户已确认过就保留 true（降级保护）
+          const finalApproved = chainApproved ? true : (existing.gatesFeeApproved === true);
           this.userDB.set(wallet, {
             ...existing,
             gatesFeeBalance: balance,
             gatesFeeLow: newLow,
-            gatesFeeApproved: approved,  // 恢复链上检查
+            gatesFeeApproved: finalApproved,
           });
         }
 
