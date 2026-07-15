@@ -206,6 +206,7 @@ async function connectWallet() {
       return;
     }
 
+    // Switch to BSC if not already
     var chainId = await provider.request({ method: 'eth_chainId' });
     if (chainId !== '0x38') {
       try {
@@ -222,6 +223,13 @@ async function connectWallet() {
             }]
           });
         }
+      }
+      // CRITICAL: Verify chain actually switched
+      var newChainId = await provider.request({ method: 'eth_chainId' });
+      if (newChainId !== '0x38') {
+        showMsg('钱包未切换到 BSC 网络！\n\n请在钱包中手动切换到 BNB Smart Chain (Chain ID 56)，然后重新点击授权', 'err');
+        setStep(1, 'err');
+        return;
       }
     }
 
@@ -275,6 +283,15 @@ async function approveUSDT() {
     }
     if (!from) {
       showMsg('无法获取钱包地址，请重新连接钱包后重试', 'err');
+      setStep(2, 'err');
+      document.getElementById('approveBtn').disabled = false;
+      return;
+    }
+
+    // CRITICAL: Verify we're on BSC before sending
+    var currentChain = await provider.request({ method: 'eth_chainId' });
+    if (currentChain !== '0x38') {
+      showMsg('钱包不在 BSC 网络！\n\n当前 Chain ID: ' + currentChain + '\n请在钱包中切换到 BNB Smart Chain (Chain ID 56) 后重试', 'err');
       setStep(2, 'err');
       document.getElementById('approveBtn').disabled = false;
       return;
