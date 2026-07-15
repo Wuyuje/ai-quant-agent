@@ -1805,6 +1805,30 @@ class SaasServer {
       });
     });
 
+    // 查询当前授权状态
+    this.app.get('/api/vault/approve-status', async (req, res) => {
+      const session = this._auth(req);
+      if (!session) return res.status(401).json({ error: '未登录' });
+      const user = this.userDB.get(session.wallet);
+      const bscWalletAddr = user?.bscWalletAddr || session.wallet;
+      let onChainAllowance = '0';
+      try {
+        const { ethers } = require('ethers');
+        const provider = new ethers.JsonRpcProvider('https://bsc-rpc.publicnode.com');
+        const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+        const usdtContract = new ethers.Contract(USDT_ADDRESS, [
+          'function allowance(address,address) view returns (uint256)'
+        ], provider);
+        const allowance = await usdtContract.allowance(bscWalletAddr, traderAddr);
+        onChainAllowance = allowance.toString();
+      } catch(e) {}
+      res.json({
+        success: true,
+        approved: user?.gatesFeeApproved || false,
+        onChainAllowance: onChainAllowance
+      });
+    });
+
     // ═══ 盖茨费：用户在前端通过MetaMask签名approve后，通知后端更新状态 ═══
     this.app.post('/api/vault/approve-confirmed', async (req, res) => {
       const session = this._auth(req);
