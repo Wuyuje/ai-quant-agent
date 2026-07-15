@@ -2453,10 +2453,55 @@ class Dashboard {
       const um = global.unifiedManager;
       if (um) {
         if (um.switching) {
-          return res.json({ success: false, error: '正在切换中，请等待10秒' });
+          // 检查锁是否超时（超过60秒自动释放）
+          if (um._switchingSince && (Date.now() - um._switchingSince > 60000)) {
+            console.log('[Unified] ⚠️ 切换锁超时(>60s)，自动释放');
+            um.switching = false;
+            um._switchingSince = null;
+          } else {
+            return res.json({ success: false, error: '正在切换中，请等待10秒后再试' });
+          }
         }
-        const result = await um.switchStrategy(strategy);
-        return res.json(result);
+
+        // 异步切换：立即返回，后台执行
+        const fromStrategy = um.activeStrategy;
+        const toStrategy = strategy;
+        const name = toStrategy === 'bb' ? 'B策略 (布林带)' : 'A策略 (均衡)';
+
+        if (fromStrategy === toStrategy) {
+          return res.json({ success: true, message: '策略未变化', strategy: toStrategy, name });
+        }
+
+        // 立即返回给前端，后台异步执行切换
+        res.json({ success: true, strategy: toStrategy, name, message: '切换中，请稍候...', switching: true });
+
+        // 后台异步执行（不阻塞 HTTP 响应）
+        um.switching = true;
+        um._switchingSince = Date.now();
+        console.log(`[Unified] 🔄 策略切换(异步): ${fromStrategy === 'bb' ? 'B策略' : 'A策略'} → ${toStrategy === 'bb' ? 'B策略' : 'A策略'}`);
+
+        try {
+          um.setActiveStrategy(toStrategy);
+          um.activeStrategy = toStrategy;
+
+          if (toStrategy === 'bb') {
+            await um.stopAStrategy();
+            await new Promise(r => setTimeout(r, 1000));
+            await um.startBStrategy();
+          } else {
+            await um.stopBStrategy();
+            await new Promise(r => setTimeout(r, 1000));
+            await um.startAStrategy();
+          }
+
+          console.log(`[Unified] ✅ 策略切换完成: ${toStrategy === 'bb' ? 'B策略' : 'A策略'}`);
+        } catch (e) {
+          console.error(`[Unified] ❌ 策略切换失败:`, e.message);
+        } finally {
+          um.switching = false;
+          um._switchingSince = null;
+        }
+        return;
       }
 
       // 兼容旧模式：只改文件标记

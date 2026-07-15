@@ -1709,18 +1709,48 @@ async function switchStrategy(s){
   document.getElementById('activeStrategyName').textContent='🔄 正在切换到'+(s==='bb'?'B策略':'A策略')+'...';
   document.getElementById('activeStrategyName').style.color='#d29922';
   try{
-    const r=await fetch('/api/strategy/switch',{method:'POST',headers:{'Content-Type':'application/json','x-admin-key':localStorage.getItem('ark_admin_key')||'','Authorization':'Bearer '+(localStorage.getItem('ark_token')||'')},body:JSON.stringify({strategy:s})});
-    const d=await r.json();
+    // 使用 AbortController 设置15秒超时
+    var controller=new AbortController();
+    var timeoutId=setTimeout(function(){controller.abort();},15000);
+    var r=await fetch('/api/strategy/switch',{signal:controller.signal,method:'POST',headers:{'Content-Type':'application/json','x-admin-key':localStorage.getItem('ark_admin_key')||'','Authorization':'Bearer '+(localStorage.getItem('ark_token')||'')},body:JSON.stringify({strategy:s})});
+    clearTimeout(timeoutId);
+    var d=await r.json();
     if(d.success){
-      document.getElementById('activeStrategyName').textContent='✅ 已切换到'+d.name;
-      setTimeout(function(){loadActiveStrategy();loadBBStrategy();},2000);
+      document.getElementById('activeStrategyName').textContent='🔄 切换中...';
+      // 轮询策略状态，直到切换完成
+      var pollCount=0;
+      var pollInterval=setInterval(function(){
+        fetch('/api/strategy/status').then(function(r){return r.json();}).then(function(st){
+          pollCount++;
+          if(!st.switching || pollCount>12){
+            clearInterval(pollInterval);
+            loadActiveStrategy();
+            loadBBStrategy();
+          }
+        }).catch(function(){pollCount++;if(pollCount>12){clearInterval(pollInterval);loadActiveStrategy();}});
+      },3000);
     }else{
       alert(d.error||'切换失败');
       loadActiveStrategy();
     }
   }catch(e){
-    alert('切换请求失败: '+e.message);
-    loadActiveStrategy();
+    if(e.name==='AbortError'){
+      // 超时不代表失败，后端可能还在切换
+      document.getElementById('activeStrategyName').textContent='🔄 后台切换中...';
+      var pollCount2=0;
+      var pollInterval2=setInterval(function(){
+        fetch('/api/strategy/status').then(function(r){return r.json();}).then(function(st){
+          pollCount2++;
+          if(!st.switching || pollCount2>12){
+            clearInterval(pollInterval2);
+            loadActiveStrategy();
+          }
+        }).catch(function(){pollCount2++;if(pollCount2>12){clearInterval(pollInterval2);loadActiveStrategy();}});
+      },3000);
+    }else{
+      alert('切换请求失败: '+e.message);
+      loadActiveStrategy();
+    }
   }
 }
 
