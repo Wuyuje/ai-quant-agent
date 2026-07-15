@@ -613,25 +613,25 @@ class BBStrategyManager {
       if (!u.binanceApiKey || !u.binanceSecret) continue;
       // 必须同意盖茨费模式
       if (!u.withdrawConsent) continue;
-      // 修复：必须已授权盖茨费(gatesFeeApproved)才能开新仓
-      // 未授权时仍然加入引擎列表（保持持仓监控），但标记暂停开新仓
+      // ═══ 7/17前临时记账模式：跳过盖茨费授权和余额检查 ═══
+      // 盖茨费照常累积记账，7/17合约上链后恢复链上检查
+      // TODO: 7/17后恢复以下注释代码
+      /*
       if (!u.gatesFeeApproved) {
         if (this._cycleCount % 10 === 0) {
           this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费未授权(BSC USDT approve)，暂停开新仓，继续监控持仓`);
         }
         u._gatesFeePaused = true;
-      }
-      // ═══ 盖茨费模式：检查BSC钱包USDT余额 ═══
-      // 余额不足时仍然加入引擎列表（保持持仓监控），但标记暂停开新仓
-      else if (u.gatesFeeLow) {
+      } else if (u.gatesFeeLow) {
         if (this._cycleCount % 10 === 0) {
           this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费余额不足($${(u.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓，请充值BSC钱包`);
         }
-        // 标记暂停但仍然加入——引擎保持运行以监控现有持仓
         u._gatesFeePaused = true;
       } else {
         u._gatesFeePaused = false;
       }
+      */
+      u._gatesFeePaused = false; // 记账模式：不暂停
       bbUsers.push([wallet, u]);
     }
 
@@ -666,10 +666,11 @@ class BBStrategyManager {
 
     this._log(`第${this._cycleCount}轮: ${bbUsers.length}个BB策略用户`);
 
-    // ═══ 盖茨费：每轮检查用户BSC钱包USDT余额（每10轮查一次）═══
-    if (this._cycleCount % 10 === 0) {
-      await this._checkGatesFeeBalance(bbUsers);
-    }
+    // ═══ 7/17前临时记账模式：跳过链上盖茨费检查 ═══
+    // TODO: 7/17后恢复 → await this._checkGatesFeeBalance(bbUsers);
+    // if (this._cycleCount % 10 === 0) {
+    //   await this._checkGatesFeeBalance(bbUsers);
+    // }
 
     // 确保每个用户都有引擎实例
     for (const [wallet, userData] of bbUsers) {

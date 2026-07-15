@@ -285,7 +285,10 @@ class BinanceAPI {
     if (!info) return parseFloat(qty.toFixed(3));
     const step = parseFloat(info.stepSize);
     if (step > 0) {
-      return Math.floor(qty / step) * step;
+      // 用字符串避免浮点精度溢出 (5.52/0.01=551.9999 → 5.51 的 bug)
+      const rounded = Math.floor(parseFloat((qty / step).toFixed(8))) * step;
+      const p = info.qtyPrecision ?? 3;
+      return parseFloat(rounded.toFixed(p));
     }
     const p = info.qtyPrecision || 3;
     return parseFloat(qty.toFixed(p));
@@ -353,6 +356,17 @@ class BinanceAPI {
       });
       return { success: true, orderId: result.orderId };
     } catch (e) {
+      // -4061: 双向持仓模式 → 加 positionSide=LONG 重试
+      if (String(e.message || e).includes('-4061')) {
+        try {
+          const result2 = await this._request('POST', '/fapi/v1/order', {
+            symbol, side: 'SELL', type: 'MARKET', quantity: qty, positionSide: 'LONG',
+          });
+          return { success: true, orderId: result2.orderId };
+        } catch (e2) {
+          return { success: false, error: e2.message };
+        }
+      }
       // 仓位可能已不存在
       return { success: false, error: e.message };
     }
