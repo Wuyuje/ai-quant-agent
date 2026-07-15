@@ -10,8 +10,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .c{background:#161b22;border:1px solid #21262d;border-radius:20px;padding:36px 24px;width:100%;max-width:440px;text-align:center}
 .c h2{color:#58a6ff;margin-bottom:8px;font-size:1.4em}
 .sub{color:#8b949e;font-size:.85em;margin-bottom:24px;line-height:1.5}
-
-/* 钱包选择 */
 .wallet-select{margin-bottom:20px}
 .wallet-select .label{color:#8b949e;font-size:.85em;margin-bottom:12px}
 .wallet-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -25,11 +23,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .wallet-card .desc{color:#8b949e;font-size:.75em;margin-top:4px}
 .wallet-card .check{width:20px;height:20px;border-radius:50%;background:#238636;color:#fff;display:none;align-items:center;justify-content:center;font-size:12px;margin:6px auto 0}
 .wallet-card.active .check{display:flex}
-
 .step{background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:16px;margin-bottom:12px;text-align:left}
 .step .num{display:inline-block;width:24px;height:24px;background:#238636;color:#fff;border-radius:50%;text-align:center;line-height:24px;font-size:.8em;font-weight:700;margin-right:8px}
 .step .num.run{background:#1f6feb;animation:pulse 1s infinite}
 .step .num.err{background:#da3633}
+.step .num.done{background:#238636}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .step .title{font-weight:600;font-size:.95em}
 .step .desc{color:#8b949e;font-size:.8em;margin-top:4px}
@@ -38,33 +36,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .btn-bg{background:#238636;color:#fff}
 .btn-blue{background:#1f6feb;color:#fff}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.msg{margin-top:14px;padding:12px;border-radius:8px;font-size:.9em;display:none;overflow:hidden}
+.msg{margin-top:14px;padding:12px;border-radius:8px;font-size:.9em;display:none;overflow:hidden;white-space:pre-line;text-align:left;line-height:1.5}
 .msg.ok{display:block;background:#0d2818;color:#3fb950;border:1px solid #238636}
 .msg.err{display:block;background:#2d1117;color:#f85149;border:1px solid #da3633}
 .msg.info{display:block;background:#0d1117;color:#58a6ff;border:1px solid #1f6feb}
 .addr{font-family:monospace;color:#d29922;font-size:.8em;word-break:break-all;margin-top:4px}
+.bnb-info{color:#f0883e;font-size:.82em;margin-top:6px;text-align:left;padding:0 4px}
 </style>
 </head>
 <body>
 <div class="c">
-  <h2>🔐 授权盖茨费</h2>
+  <h2>授权盖茨费</h2>
   <div class="sub">授权后系统可在盈利时自动从您的BSC钱包扣除盖茨费（服务费20% + 生态费10%）<br>无盈利不收费</div>
 
-  <!-- 钱包选择 -->
   <div class="wallet-select" id="walletSelect">
     <div class="label">选择您要使用的钱包</div>
     <div class="wallet-grid">
       <div class="wallet-card" id="cardMetaMask" onclick="selectWallet('metamask')">
-        <div class="icon icon-fox">🦊</div>
+        <div class="icon icon-fox">MM</div>
         <div class="name">MetaMask</div>
         <div class="desc">狐狸钱包浏览器插件</div>
-        <div class="check">✓</div>
+        <div class="check">V</div>
       </div>
       <div class="wallet-card" id="cardTokenPocket" onclick="selectWallet('tokenpocket')">
-        <div class="icon icon-tp">🔵</div>
+        <div class="icon icon-tp">TP</div>
         <div class="name">TokenPocket</div>
         <div class="desc">TokenPocket 钱包 App</div>
-        <div class="check">✓</div>
+        <div class="check">V</div>
       </div>
     </div>
   </div>
@@ -88,11 +86,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <button class="btn btn-bg" id="approveBtn" style="display:none" onclick="approveUSDT()">授权 USDT</button>
 
   <div id="msg" class="msg"></div>
+  <div id="bnbInfo" class="bnb-info" style="display:none"></div>
 
   <div id="info" style="margin-top:16px;font-size:.8em;color:#484f58;display:none">
-    <div>Trader 地址: <span class="addr" id="traderAddr">--</span></div>
-    <div style="margin-top:4px">USDT 合约: <span class="addr" id="usdtAddr">--</span></div>
-    <div style="margin-top:4px">您的钱包: <span class="addr" id="walletAddr">--</span></div>
+    <div>Trader: <span class="addr" id="traderAddr">--</span></div>
+    <div style="margin-top:4px">USDT: <span class="addr" id="usdtAddr">--</span></div>
+    <div style="margin-top:4px">Wallet: <span class="addr" id="walletAddr">--</span></div>
   </div>
 
   <button class="btn" style="background:#21262d;color:#8b949e;margin-top:16px" onclick="location.href='index.html'">返回</button>
@@ -104,8 +103,8 @@ var traderAddress = '';
 var usdtAddress = '';
 var walletAddr = '';
 var connected = false;
-var selectedWallet = ''; // 'metamask' | 'tokenpocket'
-var provider = null;    // EIP-1193 provider
+var selectedWallet = '';
+var provider = null;
 
 function showMsg(text, type) {
   var m = document.getElementById('msg');
@@ -116,17 +115,14 @@ function showMsg(text, type) {
 function setStep(num, state) {
   var el = document.getElementById('n' + num);
   el.className = 'num ' + state;
-  if (state === 'done') el.textContent = '✓';
+  if (state === 'done') el.textContent = '\u2713';
 }
 
 function selectWallet(type) {
   selectedWallet = type;
-
-  // 更新选中样式
   document.getElementById('cardMetaMask').classList.toggle('active', type === 'metamask');
   document.getElementById('cardTokenPocket').classList.toggle('active', type === 'tokenpocket');
 
-  // 更新按钮和步骤文字
   var connectBtn = document.getElementById('connectBtn');
   connectBtn.style.display = 'block';
   document.getElementById('steps').style.display = 'block';
@@ -140,69 +136,35 @@ function selectWallet(type) {
     document.getElementById('step1Title').textContent = '连接 TokenPocket';
     document.getElementById('step2Desc').textContent = '点击下方按钮，在 TokenPocket 中确认授权交易';
   }
-
-  // 隐藏消息
   document.getElementById('msg').className = 'msg';
+  document.getElementById('bnbInfo').style.display = 'none';
 }
 
-// ═══ 获取 EIP-1193 provider ═══
-// MetaMask 注入 window.ethereum
-// TokenPocket 注入 window.ethereum / window.tokenpocket
 function getProvider() {
   if (selectedWallet === 'metamask') {
-    // MetaMask
-    if (window.ethereum && window.ethereum.isMetaMask) {
-      return window.ethereum;
-    }
-    // 如果 ethereum 存在但不标 isMetaMask，也接受（某些浏览器兼容）
-    if (window.ethereum) {
-      return window.ethereum;
-    }
+    if (window.ethereum && window.ethereum.isMetaMask) return window.ethereum;
+    if (window.ethereum) return window.ethereum;
     return null;
   }
-
   if (selectedWallet === 'tokenpocket') {
-    // TokenPocket — 多种注入方式
-    // 1. window.ethereum.isTokenPocket (TokenPocket 新版)
-    if (window.ethereum && window.ethereum.isTokenPocket) {
-      return window.ethereum;
-    }
-    // 2. window.ethereum.isTp (TokenPocket 旧版标识)
-    if (window.ethereum && window.ethereum.isTp) {
-      return window.ethereum;
-    }
-    // 3. window.tokenpocket (TokenPocket SDK 注入)
-    if (window.tokenpocket && typeof window.tokenpocket.request === 'function') {
-      return window.tokenpocket;
-    }
-    // 4. window.tp (TokenPocket 旧版 SDK)
-    if (window.tp && typeof window.tp.request === 'function') {
-      return window.tp;
-    }
-    // 5. window.ethereum (通用 EIP-1193 — TokenPocket 移动端 DApp 浏览器)
-    if (window.ethereum) {
-      return window.ethereum;
-    }
+    if (window.ethereum && window.ethereum.isTokenPocket) return window.ethereum;
+    if (window.ethereum && window.ethereum.isTp) return window.ethereum;
+    if (window.tokenpocket && typeof window.tokenpocket.request === 'function') return window.tokenpocket;
+    if (window.tp && typeof window.tp.request === 'function') return window.tp;
+    if (window.ethereum) return window.ethereum;
     return null;
   }
-
   return null;
 }
 
 async function loadParams() {
-  if (!token) {
-    showMsg('请先登录', 'err');
-    return false;
-  }
+  if (!token) { showMsg('请先登录', 'err'); return false; }
   try {
     var resp = await fetch('/api/vault/approve-params', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     var data = await resp.json();
-    if (!data.success) {
-      showMsg(data.error || '获取参数失败', 'err');
-      return false;
-    }
+    if (!data.success) { showMsg(data.error || '获取参数失败', 'err'); return false; }
     traderAddress = data.traderAddress;
     usdtAddress = data.usdtAddress;
     walletAddr = data.bscWalletAddr;
@@ -218,20 +180,16 @@ async function loadParams() {
 }
 
 async function connectWallet() {
-  if (!selectedWallet) {
-    showMsg('请先选择钱包类型', 'err');
-    return;
-  }
-
+  if (!selectedWallet) { showMsg('请先选择钱包类型', 'err'); return; }
   provider = getProvider();
 
   if (!provider) {
     var msgEl = document.getElementById('msg');
     msgEl.className = 'msg err';
     if (selectedWallet === 'tokenpocket') {
-      msgEl.innerHTML = '未检测到 TokenPocket 钱包<br><br>请在 TokenPocket App 中打开此页面：<br>1. 打开 TokenPocket App<br>2. 点击底部「发现」<br>3. 在搜索框粘贴当前网址<br>4. 打开后点击「去授权」<br><br><a href="https://tokenpocket.pro/" target="_blank" style="color:#58a6ff;text-decoration:underline">下载 TokenPocket</a> &nbsp;或选择 <b>MetaMask</b> 授权';
+      msgEl.innerHTML = '未检测到 TokenPocket 钱包\n\n请在 TokenPocket App 中打开此页面：\n1. 打开 TokenPocket App\n2. 点击底部「发现」\n3. 在搜索框粘贴当前网址\n4. 打开后点击「去授权」\n\n或选择 MetaMask 授权';
     } else {
-      msgEl.innerHTML = '未检测到 MetaMask<br><br>请安装 MetaMask 浏览器插件后刷新页面<br><br><a href="https://metamask.io/download/" target="_blank" style="color:#58a6ff;text-decoration:underline">下载 MetaMask</a> &nbsp;或选择 <b>TokenPocket</b> 授权';
+      msgEl.innerHTML = '未检测到 MetaMask\n\n请安装 MetaMask 浏览器插件后刷新页面\n\n或选择 TokenPocket 授权';
     }
     msgEl.style.display = 'block';
     setStep(1, 'err');
@@ -239,34 +197,25 @@ async function connectWallet() {
   }
 
   try {
-    // 请求账户授权
     var accounts = await provider.request({ method: 'eth_requestAccounts' });
     var addr = accounts[0];
 
-    // 检查是否是注册的钱包地址
     if (walletAddr && addr.toLowerCase() !== walletAddr.toLowerCase()) {
       showMsg('钱包地址不匹配！\n请连接注册时使用的钱包:\n' + walletAddr.slice(0,10) + '...' + walletAddr.slice(-6), 'err');
       setStep(1, 'err');
       return;
     }
 
-    // 检查是否在 BSC 网络
     var chainId = await provider.request({ method: 'eth_chainId' });
     if (chainId !== '0x38') {
-      var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TokenPocket';
-      showMsg('请在 ' + walletLabel + ' 中切换到 BSC 网络', 'info');
       try {
-        await provider.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0x38' }]
-        });
+        await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
       } catch (switchErr) {
         if (switchErr.code === 4902) {
           await provider.request({
             method: 'wallet_addEthereumChain',
             params: [{
-              chainId: '0x38',
-              chainName: 'BNB Smart Chain',
+              chainId: '0x38', chainName: 'BNB Smart Chain',
               nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
               rpcUrls: ['https://bsc-rpc.publicnode.com'],
               blockExplorerUrls: ['https://bscscan.com']
@@ -282,45 +231,85 @@ async function connectWallet() {
     document.getElementById('connectBtn').style.display = 'none';
     document.getElementById('approveBtn').style.display = 'block';
 
+    checkBnbBalance(addr);
   } catch (e) {
     showMsg('连接失败: ' + (e.message || '用户拒绝'), 'err');
     setStep(1, 'err');
   }
 }
 
-async function approveUSDT() {
-  if (!connected) {
-    showMsg('请先连接钱包', 'err');
-    return;
-  }
+// Check BNB balance immediately after connecting
+async function checkBnbBalance(addr) {
+  try {
+    var balHex = await provider.request({ method: 'eth_getBalance', params: [addr, 'latest'] });
+    var balWei = BigInt(balHex);
+    var balBnb = Number(balWei) / 1e18;
+    var infoEl = document.getElementById('bnbInfo');
+    if (balBnb < 0.001) {
+      infoEl.textContent = 'WARNING: BNB 余额不足! 当前: ' + balBnb.toFixed(6) + ' BNB - 授权交易需要约 0.001 BNB 作为 gas 费，请先充值 BNB';
+      infoEl.style.color = '#f85149';
+      infoEl.style.display = 'block';
+    } else {
+      infoEl.textContent = 'BNB 余额: ' + balBnb.toFixed(4) + ' BNB (足够支付 gas 费)';
+      infoEl.style.color = '#3fb950';
+      infoEl.style.display = 'block';
+    }
+  } catch (e) {}
+}
 
+// Simulate approve via eth_call to detect revert before sending
+async function simulateApprove(from) {
+  var spenderPadded = traderAddress.toLowerCase().replace('0x', '').padStart(64, '0');
+  var maxAmount = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+  var data = '0x095ea7b3' + spenderPadded + maxAmount;
+  try {
+    await provider.request({ method: 'eth_call', params: [{ from: from, to: usdtAddress, data: data }, 'latest'] });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message || '模拟执行失败' };
+  }
+}
+
+async function approveUSDT() {
+  if (!connected) { showMsg('请先连接钱包', 'err'); return; }
   setStep(2, 'run');
   document.getElementById('approveBtn').disabled = true;
+  document.getElementById('msg').className = 'msg';
+  document.getElementById('bnbInfo').style.display = 'none';
 
   try {
     var accounts = await provider.request({ method: 'eth_accounts' });
     var from = accounts[0];
 
-    // approve(address spender, uint256 amount) = 0x095ea7b3
-    // spender = traderAddress (padding to 32 bytes)
-    // amount = MaxUint256
+    // Step 1: Check BNB balance first
+    var balHex = await provider.request({ method: 'eth_getBalance', params: [from, 'latest'] });
+    var balWei = BigInt(balHex);
+    var balBnb = Number(balWei) / 1e18;
+    if (balBnb < 0.0005) {
+      showMsg('BNB 余额不足！当前: ' + balBnb.toFixed(6) + ' BNB\n\n授权交易需要约 0.0005~0.002 BNB 作为 gas 费\n\n请在您的 BSC 钱包中充值 BNB 后重试', 'err');
+      setStep(2, 'err');
+      document.getElementById('approveBtn').disabled = false;
+      return;
+    }
+
+    // Step 2: Simulate approve to avoid sending a tx that will revert
+    showMsg('正在检查授权可行性...', 'info');
+    var sim = await simulateApprove(from);
+    if (!sim.success) {
+      showMsg('授权模拟失败: ' + sim.error + '\n\n交易很可能也会失败，已阻止发送。\n\n可能原因：\n1. 钱包未切换到 BSC 网络\n2. USDT 合约不支持此操作\n3. 钱包状态异常', 'err');
+      setStep(2, 'err');
+      document.getElementById('approveBtn').disabled = false;
+      return;
+    }
+
+    // Step 3: Build and send transaction
     var spenderPadded = traderAddress.toLowerCase().replace('0x', '').padStart(64, '0');
     var maxAmount = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
     var data = '0x095ea7b3' + spenderPadded + maxAmount;
+    var txParams = { from: from, to: usdtAddress, data: data };
 
-    var txParams = {
-      from: from,
-      to: usdtAddress,
-      data: data,
-    };
-
-    // 估算 gas — 给 50% 余量
     try {
-      var gasEstimate = await provider.request({
-        method: 'eth_estimateGas',
-        params: [txParams]
-      });
-      // 增加 50% 余量防止 gas 不足导致交易失败
+      var gasEstimate = await provider.request({ method: 'eth_estimateGas', params: [txParams] });
       var gasNum = parseInt(gasEstimate, 16);
       var gasWithMargin = Math.ceil(gasNum * 1.5);
       txParams.gas = '0x' + gasWithMargin.toString(16);
@@ -331,33 +320,40 @@ async function approveUSDT() {
     var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TokenPocket';
     showMsg('请在 ' + walletLabel + ' 中确认授权交易...', 'info');
 
-    var txHash = await provider.request({
-      method: 'eth_sendTransaction',
-      params: [txParams]
-    });
+    var txHash = await provider.request({ method: 'eth_sendTransaction', params: [txParams] });
+    showMsg('交易已发送，等待确认...\n' + txHash.slice(0,18) + '...', 'info');
 
-    showMsg('交易已发送，等待确认... tx=' + txHash.slice(0,16) + '...', 'info');
-
-    // 等待交易确认
+    // Wait for receipt, max 3 minutes
     var receipt = null;
     for (var i = 0; i < 60; i++) {
       await new Promise(function(r) { setTimeout(r, 3000); });
-      receipt = await provider.request({
-        method: 'eth_getTransactionReceipt',
-        params: [txHash]
-      });
+      receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [txHash] });
       if (receipt) break;
     }
 
     if (!receipt) {
-      showMsg('交易超时，请查看 BSCScan: https://bscscan.com/tx/' + txHash, 'err');
+      showMsg('交易超时（3分钟未确认）\n\n请查看 BSCScan:\nhttps://bscscan.com/tx/' + txHash, 'err');
       setStep(2, 'err');
       document.getElementById('approveBtn').disabled = false;
       return;
     }
 
     if (receipt.status === '0x0' || receipt.status === 0) {
-      showMsg('交易失败，可能原因：\n1. 钱包 BNB 不足支付 gas 费\n2. 网络拥堵\n\n请查看: https://bscscan.com/tx/' + txHash, 'err');
+      // Tx mined but failed - try to get revert reason
+      var reason = '';
+      try {
+        var txData = await provider.request({ method: 'eth_getTransactionByHash', params: [txHash] });
+        await provider.request({ method: 'eth_call', params: [{ from: txData.from, to: txData.to, data: txData.input, gas: txData.gas }, 'latest'] });
+      } catch (callErr) {
+        reason = callErr.message || '';
+        if (reason.includes('insufficient funds')) reason = 'BNB 余额不足以支付 gas 费';
+        else if (reason.includes('execution reverted')) reason = '合约执行被拒绝（reverted）';
+      }
+      var errMsg = '交易失败！';
+      if (reason) errMsg += '\n\n原因: ' + reason;
+      errMsg += '\n\n解决方案：\n1. 确保钱包中有足够的 BNB（至少 0.005 BNB）\n2. 确保钱包已切换到 BSC 网络\n3. 如果 BNB 不足，请先在交易所购买 BNB 并提到此钱包';
+      errMsg += '\n\nBSCScan: https://bscscan.com/tx/' + txHash;
+      showMsg(errMsg, 'err');
       setStep(2, 'err');
       document.getElementById('approveBtn').disabled = false;
       return;
@@ -365,14 +361,11 @@ async function approveUSDT() {
 
     setStep(2, 'done');
 
-    // 通知后端更新状态
+    // Step 4: Notify backend to verify on-chain
     try {
       var confirmResp = await fetch('/api/vault/approve-confirmed', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({ txHash: txHash })
       });
       var confirmData = await confirmResp.json();
@@ -383,23 +376,26 @@ async function approveUSDT() {
         return;
       }
     } catch (e) {
-      showMsg('网络错误: ' + e.message + '，授权可能已成功，请刷新页面查看状态', 'err');
+      showMsg('网络错误: ' + e.message + '\n授权可能已成功，请刷新页面查看状态', 'err');
       setStep(3, 'err');
       return;
     }
 
     setStep(3, 'done');
-    showMsg('✅ 授权成功！盖茨费系统已激活，3秒后返回...', 'ok');
+    showMsg('授权成功！盖茨费系统已激活，3秒后返回...', 'ok');
     setTimeout(function() { location.href = 'index.html'; }, 3000);
 
   } catch (e) {
-    showMsg('授权失败: ' + (e.message || '用户拒绝'), 'err');
+    var errMsg = '授权失败: ' + (e.message || '用户拒绝');
+    if (e.message && e.message.includes('-32000')) {
+      errMsg += '\n\n提示: 请确认钱包已切换到 BSC 网络';
+    }
+    showMsg(errMsg, 'err');
     setStep(2, 'err');
     document.getElementById('approveBtn').disabled = false;
   }
 }
 
-// 初始化
 loadParams();
 </script>
 </body>
