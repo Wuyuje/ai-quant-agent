@@ -74,6 +74,12 @@ contract AgentVaultV2 is Ownable, Pausable, ReentrancyGuard {
     /// @notice Vault 部署时间
     uint256 public createdAt;
 
+    /// @notice RevenueDistribution 合约地址（盖茨费自动分配）
+    address public revenueDistributor;
+
+    /// @notice 是否已授权 RevenueDistribution 扣费
+    bool public distributorApproved;
+
     // ============ 结构体 ============
 
     struct TradeRecord {
@@ -135,6 +141,35 @@ contract AgentVaultV2 is Ownable, Pausable, ReentrancyGuard {
         maxSingleTradeAmount = 50000 * 1e18;
         dailyTradeLimit = 200000 * 1e18;
         dailyResetTimestamp = block.timestamp;
+    }
+
+    // ============ RevenueDistribution 集成 ============
+
+    /**
+     * @notice 设置 RevenueDistribution 合约地址（只有 owner）
+     */
+    function setRevenueDistributor(address _distributor) external onlyOwner {
+        require(_distributor != address(0), "Invalid distributor");
+        revenueDistributor = _distributor;
+    }
+
+    /**
+     * @notice 授权 RevenueDistribution 合约从本 Vault 扣 USDT（盖茨费）
+     * @dev 用户调用，approve USDT 给 RevenueDistribution 合约
+     */
+    function approveDistributor(uint256 amount) external onlyOwner {
+        require(revenueDistributor != address(0), "No distributor set");
+        IERC20(USDT).forceApprove(revenueDistributor, amount);
+        distributorApproved = true;
+    }
+
+    /**
+     * @notice 授权最大额度给 RevenueDistribution（无限授权）
+     */
+    function approveDistributorMax() external onlyOwner {
+        require(revenueDistributor != address(0), "No distributor set");
+        IERC20(USDT).forceApprove(revenueDistributor, type(uint256).max);
+        distributorApproved = true;
     }
 
     // ============ 资金管理（只有 owner）===========
@@ -293,18 +328,40 @@ contract AgentVaultV2 is Ownable, Pausable, ReentrancyGuard {
 
     // ============ 收益结算 ============
 
+    /**
+     * @notice 记录盈亏并自动收取盖茨费
+     * @dev 如果盈利，通过 RevenueDistribution 合约自动分配 30% 盖茨费
+     * @param pnlAmount 盈亏金额（正=盈利，负=亏损，18位小数）
+     */
     function recordPnl(int256 pnlAmount) external onlyTrader {
         totalPnl += pnlAmount;
 
         if (pnlAmount > 0) {
-            uint256 fee = (uint256(pnlAmount) * platformFeeBps) / 10000;
-            if (fee > 0) {
-                IERC20 usdt = IERC20(USDT);
-                uint256 balance = usdt.balanceOf(address(this));
-                if (balance >= fee) {
-                    usdt.safeTransfer(platformFeeWallet, fee);
+            uint256 profit = uint256(pnlAmount);
+
+            // 如果设置了 RevenueDistribution，通过它自动收取盖茨费
+            if (revenueDistributor != address(0) && distributorApproved) {
+                // 调用 RevenueDistribution.collectFee(address(this), profit)
+                // RevenueDistribution 会从本 Vault transferFrom USDT 并自动分配
+                (bool success, ) = revenueDistributor.call(
+                    abi.encodeWithSignature("collectFee(address,uint256)", address(this), profit)
+                );
+                if (success) {
+                    uint256 fee = (profit * 3000) / 10000;  // 30% 盖茨费
                     totalFeesCollected += fee;
                     emit PlatformFeeCollected(fee, block.timestamp);
+                }
+            } else {
+                // 降级模式：直接转 20% 给平台钱包（兼容旧逻辑）
+                uint256 fee = (profit * platformFeeBps) / 10000;
+                if (fee > 0) {
+                    IERC20 usdt = IERC20(USDT);
+                    uint256 balance = usdt.balanceOf(address(this));
+                    if (balance >= fee) {
+                        usdt.safeTransfer(platformFeeWallet, fee);
+                        totalFeesCollected += fee;
+                        emit PlatformFeeCollected(fee, block.timestamp);
+                    }
                 }
             }
         }

@@ -1,51 +1,8 @@
 {
   "_format": "hh-sol-cache-2",
   "files": {
-    "/app/workspace/ai-quant-agent/contracts/AgentVault.sol": {
-      "lastModificationDate": 1782634080625,
-      "contentHash": "aa2bc01522f092393398aaf564404cc0",
-      "sourceName": "contracts/AgentVault.sol",
-      "solcConfig": {
-        "version": "0.8.20",
-        "settings": {
-          "viaIR": true,
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "evmVersion": "paris",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "@openzeppelin/contracts/access/Ownable.sol",
-        "@openzeppelin/contracts/utils/Pausable.sol",
-        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
-        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
-        "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol"
-      ],
-      "versionPragmas": [
-        "^0.8.20"
-      ],
-      "artifacts": [
-        "AgentVault"
-      ]
-    },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/access/Ownable.sol": {
-      "lastModificationDate": 1782617715528,
+      "lastModificationDate": 1784078978107,
       "contentHash": "d3c790edc9ccf808a17c5a6cd13614fd",
       "sourceName": "@openzeppelin/contracts/access/Ownable.sol",
       "solcConfig": {
@@ -84,7 +41,7 @@
       ]
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/utils/ReentrancyGuard.sol": {
-      "lastModificationDate": 1782617715526,
+      "lastModificationDate": 1784078978105,
       "contentHash": "6e5efb502dd6652d12ad15eea2c5bdf4",
       "sourceName": "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
       "solcConfig": {
@@ -123,7 +80,7 @@
       ]
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/utils/Pausable.sol": {
-      "lastModificationDate": 1782617715526,
+      "lastModificationDate": 1784078978105,
       "contentHash": "0d47b53e10b1985efbb396f937626279",
       "sourceName": "@openzeppelin/contracts/utils/Pausable.sol",
       "solcConfig": {
@@ -162,7 +119,7 @@
       ]
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/token/ERC20/IERC20.sol": {
-      "lastModificationDate": 1782617715526,
+      "lastModificationDate": 1784078978105,
       "contentHash": "9261adf6457863de3e9892f51317ec89",
       "sourceName": "@openzeppelin/contracts/token/ERC20/IERC20.sol",
       "solcConfig": {
@@ -199,7 +156,7 @@
       ]
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol": {
-      "lastModificationDate": 1782617715527,
+      "lastModificationDate": 1784078978105,
       "contentHash": "bf8e9c3398d381dc66c5302267927386",
       "sourceName": "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol",
       "solcConfig": {
@@ -239,7 +196,7 @@
       ]
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/utils/Context.sol": {
-      "lastModificationDate": 1782617715526,
+      "lastModificationDate": 1784078978105,
       "contentHash": "67bfbc07588eb8683b3fd8f6f909563e",
       "sourceName": "@openzeppelin/contracts/utils/Context.sol",
       "solcConfig": {
@@ -276,7 +233,7 @@
       ]
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/utils/StorageSlot.sol": {
-      "lastModificationDate": 1782617715526,
+      "lastModificationDate": 1784078978105,
       "contentHash": "e656d64c4ce918f3d13030b91c935134",
       "sourceName": "@openzeppelin/contracts/utils/StorageSlot.sol",
       "solcConfig": {
@@ -313,7 +270,7 @@
       ]
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/interfaces/IERC1363.sol": {
-      "lastModificationDate": 1782617715527,
+      "lastModificationDate": 1784078978106,
       "contentHash": "a7fd0f05e36b0d0a21c75340c9c639ec",
       "sourceName": "@openzeppelin/contracts/interfaces/IERC1363.sol",
       "solcConfig": {
@@ -353,7 +310,7 @@
       ]
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/interfaces/IERC20.sol": {
-      "lastModificationDate": 1782617715527,
+      "lastModificationDate": 1784078978106,
       "contentHash": "68620db2da7583d9a4919096ac77f577",
       "sourceName": "@openzeppelin/contracts/interfaces/IERC20.sol",
       "solcConfig": {
@@ -390,7 +347,7 @@
       "artifacts": []
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/interfaces/IERC165.sol": {
-      "lastModificationDate": 1782617715527,
+      "lastModificationDate": 1784078978106,
       "contentHash": "947853028399b7de34bcc3704ee06e99",
       "sourceName": "@openzeppelin/contracts/interfaces/IERC165.sol",
       "solcConfig": {
@@ -427,7 +384,7 @@
       "artifacts": []
     },
     "/app/workspace/ai-quant-agent/node_modules/@openzeppelin/contracts/utils/introspection/IERC165.sol": {
-      "lastModificationDate": 1782617715526,
+      "lastModificationDate": 1784078978105,
       "contentHash": "7074c93b1ea0a122063f26ddd1db1032",
       "sourceName": "@openzeppelin/contracts/utils/introspection/IERC165.sol",
       "solcConfig": {
@@ -463,49 +420,9 @@
         "IERC165"
       ]
     },
-    "/app/workspace/ai-quant-agent/contracts/AgentVaultFactory.sol": {
-      "lastModificationDate": 1782617715441,
-      "contentHash": "bb30f601b9ab1b33b6e5f44808c57ef9",
-      "sourceName": "contracts/AgentVaultFactory.sol",
-      "solcConfig": {
-        "version": "0.8.20",
-        "settings": {
-          "viaIR": true,
-          "optimizer": {
-            "enabled": true,
-            "runs": 200
-          },
-          "evmVersion": "paris",
-          "outputSelection": {
-            "*": {
-              "*": [
-                "abi",
-                "evm.bytecode",
-                "evm.deployedBytecode",
-                "evm.methodIdentifiers",
-                "metadata"
-              ],
-              "": [
-                "ast"
-              ]
-            }
-          }
-        }
-      },
-      "imports": [
-        "@openzeppelin/contracts/access/Ownable.sol",
-        "./AgentVault.sol"
-      ],
-      "versionPragmas": [
-        "^0.8.20"
-      ],
-      "artifacts": [
-        "AgentVaultFactory"
-      ]
-    },
     "/app/workspace/ai-quant-agent/contracts/RevenueDistribution.sol": {
-      "lastModificationDate": 1782617715441,
-      "contentHash": "bfcae8321d581ee914f0112c5c6a51b7",
+      "lastModificationDate": 1784108734374,
+      "contentHash": "d8a7fbee31ebbe9554ebaa2c16576fa9",
       "sourceName": "contracts/RevenueDistribution.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -535,7 +452,9 @@
       "imports": [
         "@openzeppelin/contracts/access/Ownable.sol",
         "@openzeppelin/contracts/utils/Pausable.sol",
-        "@openzeppelin/contracts/utils/ReentrancyGuard.sol"
+        "@openzeppelin/contracts/utils/ReentrancyGuard.sol",
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+        "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol"
       ],
       "versionPragmas": [
         "^0.8.20"
@@ -545,8 +464,8 @@
       ]
     },
     "/app/workspace/ai-quant-agent/contracts/AgentVaultV2.sol": {
-      "lastModificationDate": 1782635907601,
-      "contentHash": "f5c75a9070596f5c9c84e6f8a1f83d30",
+      "lastModificationDate": 1784108773624,
+      "contentHash": "93e26de633f247b13e0a25d588336726",
       "sourceName": "contracts/AgentVaultV2.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -588,8 +507,8 @@
       ]
     },
     "/app/workspace/ai-quant-agent/contracts/AgentVaultFactoryV2.sol": {
-      "lastModificationDate": 1782635917231,
-      "contentHash": "104bcb88e445b599d7e4ec22252ed0e7",
+      "lastModificationDate": 1784108799722,
+      "contentHash": "36b290022b394b332f762b4868473095",
       "sourceName": "contracts/AgentVaultFactoryV2.sol",
       "solcConfig": {
         "version": "0.8.20",

@@ -3,268 +3,277 @@ pragma solidity ^0.8.20;
 
 /**
  * @title AI Quant Agent Revenue Distribution Contract
- * @notice 链上收益分配，自动 70/20/10 分配
+ * @notice 链上收益分配，自动 30% 盖茨费分配（20% 服务费 + 10% 生态费）
  * @dev 部署在 BSC，所有交易透明可验证
- * 
- * 分配规则：
- *   用户收益 70% → 用户钱包
- *   平台提成 20% → 平台钱包
- *   生态基金 10% → 生态基金钱包
- * 
- * 特性：
- *   - Owner（你）可以更新分配比例（有上限约束）
- *   - Owner 可以暂停合约
- *   - 用户可以查询自己的收益记录
- *   - 所有分配事件上链，完全透明
+ *
+ * 分配规则（盖茨费 = 盈利 × 30%）：
+ *   服务费 20% → platformWallet   (0xb6DEb314...)
+ *   生态费 10% → ecoFundWallet     (0xeF87e7fD...)
+ *   用户实得 70% → 留在用户 Vault
+ *
+ * 流程：
+ *   1. 用户在前端 approve USDT 给 RevenueDistribution 合约
+ *   2. 后端检测到盈利 → 调用 collectFee() 从用户 Vault transferFrom USDT
+ *   3. 合约自动按比例分配到两个钱包
+ *   4. 如果用户 USDT 不足，合约标记暂停
  */
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract RevenueDistribution is Ownable, Pausable, ReentrancyGuard {
-    
+    using SafeERC20 for IERC20;
+
+    // ============ 常量 ============
+
+    address constant USDT = 0x55d398326f99059fF775485246999027B3197955;
+
     // ============ 状态变量 ============
-    
+
+    /// @notice 服务费接收钱包（20%）
     address public platformWallet;
+
+    /// @notice 生态基金钱包（10%）
     address public ecoFundWallet;
-    
-    // 分配比例（基点，1bp = 0.01%）
-    uint256 public userShareBps = 7000;    // 70%
-    uint256 public platformFeeBps = 2000;  // 20%
-    uint256 public ecoFundBps = 1000;      // 10%
-    
-    // 平台月费
-    uint256 public monthlyFeeUsd = 2990;   // $29.90 (2位小数)
-    
-    // 用户记录: userId → { wallet, totalEarned, totalFee, lastDistribution, subscription }
+
+    /// @notice 平台执行器（可以调用 collectFee）
+    address public trader;
+
+    // 盖茨费率（基点）= 30%
+    uint256 public constant GATES_FEE_BPS = 3000;
+    // 服务费率（基点）= 20%
+    uint256 public constant PLATFORM_FEE_BPS = 2000;
+    // 生态费率（基点）= 10%
+    uint256 public constant ECO_FUND_BPS = 1000;
+
+    /// @notice 单笔盖茨费上限（USDT, 18位小数）
+    uint256 public maxFeePerTrade = 10000 * 1e18;
+
+    /// @notice 累计统计
+    uint256 public totalCollected;
+    uint256 public totalPlatformFee;
+    uint256 public totalEcoFund;
+    uint256 public totalTrades;
+
+    /// @notice 用户记录: wallet => { exists, totalPaid, lastCollection }
     struct UserRecord {
-        address wallet;
-        uint256 totalEarned;      // 总收益 (USDT)
-        uint256 totalFee;         // 总支付的平台费
-        uint256 lastDistribution; // 最后一次分配时间
-        uint8  subscription;      // 0=free, 1=basic, 2=pro
-        bool   exists;
+        bool exists;
+        uint256 totalPaid;
+        uint256 lastCollection;
     }
-    
-    mapping(uint256 => UserRecord) public users;  // userId => UserRecord
-    
-    // 收益记录: recordIndex => { userId, amount, distribution, timestamp }
-    struct RevenueRecord {
-        uint256 userId;
-        uint256 pnlAmount;
-        uint256 userShare;
+    mapping(address => UserRecord) public users;
+
+    /// @notice 已授权的 Vault 地址（Factory 部署的 Vault 可以被授权扣费）
+    mapping(address => bool) public approvedVaults;
+
+    /// @notice 盖茨费收集记录
+    struct FeeRecord {
+        address user;
+        address vault;
+        uint256 grossAmount;
         uint256 platformFee;
         uint256 ecoFund;
         uint256 timestamp;
     }
-    
-    RevenueRecord[] public revenueRecords;
-    
-    // 统计
-    uint256 public totalDistributed;
-    uint256 public totalPlatformFees;
-    uint256 public totalEcoFund;
-    uint256 public totalTrades;
-    
+    FeeRecord[] public feeRecords;
+
     // ============ 事件 ============
-    
-    event UserRegistered(uint256 indexed userId, address wallet, uint8 subscription);
-    event RevenueDistributed(
-        uint256 indexed userId,
-        uint256 pnlAmount,
-        uint256 userShare,
+
+    event FeeCollected(
+        address indexed user,
+        address indexed vault,
+        uint256 grossAmount,
         uint256 platformFee,
         uint256 ecoFund,
         uint256 timestamp
     );
-    event WalletUpdated(uint256 indexed userId, address newWallet);
-    event SubscriptionUpdated(uint256 indexed userId, uint8 newSubscription);
-    event AllocationUpdated(uint256 userBps, uint256 platformBps, uint256 ecoBps);
-    
+    event UserRegistered(address indexed user, uint256 timestamp);
+    event VaultApproved(address indexed vault, bool approved);
+    event WalletsUpdated(address newPlatform, address newEcoFund);
+    event TraderUpdated(address newTrader);
+
     // ============ 修饰器 ============
-    
-    modifier onlyPlatform() {
-        require(msg.sender == platformWallet || msg.sender == owner(), "Not authorized");
+
+    modifier onlyTraderOrOwner() {
+        require(msg.sender == trader || msg.sender == owner(), "Not authorized");
         _;
     }
-    
+
     // ============ 构造函数 ============
-    
-    constructor(address _platformWallet, address _ecoFundWallet) Ownable(msg.sender) {
+
+    constructor(
+        address _trader,
+        address _platformWallet,
+        address _ecoFundWallet
+    ) Ownable(msg.sender) {
+        require(_trader != address(0), "Invalid trader");
         require(_platformWallet != address(0), "Invalid platform wallet");
         require(_ecoFundWallet != address(0), "Invalid eco fund wallet");
+
+        trader = _trader;
         platformWallet = _platformWallet;
         ecoFundWallet = _ecoFundWallet;
     }
-    
+
     // ============ 核心函数 ============
-    
+
     /**
-     * @notice 分配收益（由后端 Oracle 调用）
-     * @param userId 用户ID
-     * @param pnlAmount 盈亏金额（正=盈利，负=亏损）
+     * @notice 从用户 Vault 收取盖茨费并自动分配
+     * @dev 只有 trader 或 owner 可以调用
+     * @param userVault 用户 Vault 地址（需要已 approve USDT 给本合约）
+     * @param pnlAmount 盈利金额（USDT, 18位小数）
      */
-    function distribute(uint256 userId, int256 pnlAmount) external onlyPlatform whenNotPaused {
-        require(pnlAmount > 0, "Only distribute on profit");
-        require(users[userId].exists, "User not registered");
-        
-        uint256 amount = uint256(pnlAmount);
-        
-        // 计算分配
-        uint256 userShare = (amount * userShareBps) / 10000;
-        uint256 platformFee = (amount * platformFeeBps) / 10000;
-        uint256 ecoFund = (amount * ecoFundBps) / 10000;
-        
-        // 转账 USDT 到各自钱包
-        // 注意：实际部署时需要集成 USDT 合约的 transfer
-        // 这里用 BNB 作为示例，生产环境改为 USDT
-        
-        UserRecord storage user = users[userId];
-        user.totalEarned += userShare;
-        user.totalFee += platformFee;
-        user.lastDistribution = block.timestamp;
-        
-        totalDistributed += userShare;
-        totalPlatformFees += platformFee;
+    function collectFee(address userVault, uint256 pnlAmount) external onlyTraderOrOwner nonReentrant whenNotPaused {
+        require(userVault != address(0), "Invalid vault");
+        require(pnlAmount > 0, "No profit");
+        require(approvedVaults[userVault], "Vault not approved");
+
+        IERC20 usdt = IERC20(USDT);
+
+        // 计算盖茨费 = 盈利 × 30%
+        uint256 totalFee = (pnlAmount * GATES_FEE_BPS) / 10000;
+        if (totalFee == 0) return;
+
+        // 上限检查
+        if (totalFee > maxFeePerTrade) {
+            totalFee = maxFeePerTrade;
+        }
+
+        // 检查 Vault 余额
+        uint256 vaultBalance = usdt.balanceOf(userVault);
+        if (vaultBalance < totalFee) {
+            // 余额不足，收取全部可用余额
+            totalFee = vaultBalance;
+        }
+        if (totalFee == 0) return;
+
+        // 分配比例
+        uint256 platformFee = (totalFee * PLATFORM_FEE_BPS) / 3000;  // 2/3 of fee = 20% of profit
+        uint256 ecoFund = totalFee - platformFee;                     // 1/3 of fee = 10% of profit
+
+        // 从 Vault transferFrom USDT
+        usdt.safeTransferFrom(userVault, address(this), totalFee);
+
+        // 立即转入两个钱包
+        if (platformFee > 0) {
+            usdt.safeTransfer(platformWallet, platformFee);
+        }
+        if (ecoFund > 0) {
+            usdt.safeTransfer(ecoFundWallet, ecoFund);
+        }
+
+        // 更新统计
+        totalCollected += totalFee;
+        totalPlatformFee += platformFee;
         totalEcoFund += ecoFund;
         totalTrades++;
-        
+
+        // 更新用户记录
+        address userAddr = userVault; // 简化，用 vault 地址标识
+        if (!users[userAddr].exists) {
+            users[userAddr] = UserRecord(true, totalFee, block.timestamp);
+        } else {
+            users[userAddr].totalPaid += totalFee;
+            users[userAddr].lastCollection = block.timestamp;
+        }
+
         // 记录
-        revenueRecords.push(RevenueRecord({
-            userId: userId,
-            pnlAmount: amount,
-            userShare: userShare,
+        feeRecords.push(FeeRecord({
+            user: userAddr,
+            vault: userVault,
+            grossAmount: totalFee,
             platformFee: platformFee,
             ecoFund: ecoFund,
             timestamp: block.timestamp
         }));
-        
-        emit RevenueDistributed(userId, amount, userShare, platformFee, ecoFund, block.timestamp);
+
+        emit FeeCollected(userAddr, userVault, totalFee, platformFee, ecoFund, block.timestamp);
     }
-    
+
     /**
      * @notice 注册用户
      */
-    function registerUser(uint256 userId, address wallet, uint8 subscription) external onlyPlatform {
-        require(!users[userId].exists, "User already registered");
-        require(wallet != address(0), "Invalid wallet");
-        
-        users[userId] = UserRecord({
-            wallet: wallet,
-            totalEarned: 0,
-            totalFee: 0,
-            lastDistribution: 0,
-            subscription: subscription,
-            exists: true
-        });
-        
-        emit UserRegistered(userId, wallet, subscription);
+    function registerUser(address user) external onlyTraderOrOwner {
+        if (!users[user].exists) {
+            users[user] = UserRecord(true, 0, 0);
+            emit UserRegistered(user, block.timestamp);
+        }
     }
-    
+
     /**
-     * @notice 更新用户钱包地址
+     * @notice 授权 Vault 可被扣费（由 Factory 调用或 owner 手动）
      */
-    function updateWallet(uint256 userId, address newWallet) external {
-        require(users[userId].exists, "User not registered");
-        // 只有 owner 或用户本人可以修改
-        // 简化：只允许 owner（生产环境用签名验证）
-        require(msg.sender == owner(), "Only owner");
-        require(newWallet != address(0), "Invalid wallet");
-        
-        users[userId].wallet = newWallet;
-        emit WalletUpdated(userId, newWallet);
+    function approveVault(address vault, bool approved) external onlyTraderOrOwner {
+        approvedVaults[vault] = approved;
+        emit VaultApproved(vault, approved);
     }
-    
+
     /**
-     * @notice 提现用户收益
+     * @notice 批量授权 Vault
      */
-    function withdrawEarnings(uint256 userId) external nonReentrant {
-        UserRecord storage user = users[userId];
-        require(user.exists, "User not registered");
-        require(user.totalEarned > 0, "No earnings");
-        
-        uint256 amount = user.totalEarned;
-        user.totalEarned = 0;
-        
-        // 转账 USDT 到用户钱包
-        // payable(user.wallet).transfer(amount); // BNB
-        // 生产环境：IERC20(USDT).transfer(user.wallet, amount);
-        
-        emit RevenueDistributed(userId, 0, amount, 0, 0, block.timestamp);
+    function approveVaults(address[] calldata vaults, bool approved) external onlyTraderOrOwner {
+        for (uint256 i = 0; i < vaults.length; i++) {
+            approvedVaults[vaults[i]] = approved;
+            emit VaultApproved(vaults[i], approved);
+        }
     }
-    
+
     // ============ 管理函数 ============
-    
-    /**
-     * @notice 更新分配比例
-     * @dev 三个比例之和必须等于 10000 (100%)
-     * @dev 单项上限：平台费 ≤ 30%，生态基金 ≤ 20%
-     */
-    function updateAllocation(uint256 _userBps, uint256 _platformBps, uint256 _ecoBps) external onlyOwner {
-        require(_userBps + _platformBps + _ecoBps == 10000, "Must sum to 100%");
-        require(_platformBps <= 3000, "Platform fee max 30%");
-        require(_ecoBps <= 2000, "Eco fund max 20%");
-        
-        userShareBps = _userBps;
-        platformFeeBps = _platformBps;
-        ecoFundBps = _ecoBps;
-        
-        emit AllocationUpdated(_userBps, _platformBps, _ecoBps);
+
+    function setTrader(address _trader) external onlyOwner {
+        require(_trader != address(0), "Invalid trader");
+        trader = _trader;
+        emit TraderUpdated(_trader);
     }
-    
-    /**
-     * @notice 更新平台钱包
-     */
-    function updatePlatformWallet(address _newWallet) external onlyOwner {
-        require(_newWallet != address(0), "Invalid wallet");
-        platformWallet = _newWallet;
+
+    function updateWallets(address _platformWallet, address _ecoFundWallet) external onlyOwner {
+        require(_platformWallet != address(0), "Invalid platform");
+        require(_ecoFundWallet != address(0), "Invalid eco fund");
+        platformWallet = _platformWallet;
+        ecoFundWallet = _ecoFundWallet;
+        emit WalletsUpdated(_platformWallet, _ecoFundWallet);
     }
-    
-    /**
-     * @notice 更新生态基金钱包
-     */
-    function updateEcoFundWallet(address _newWallet) external onlyOwner {
-        require(_newWallet != address(0), "Invalid wallet");
-        ecoFundWallet = _newWallet;
+
+    function setMaxFeePerTrade(uint256 _max) external onlyOwner {
+        maxFeePerTrade = _max;
     }
-    
+
     function pause() external onlyOwner { _pause(); }
     function unpause() external onlyOwner { _unpause(); }
-    
-    // ============ 查询函数 ============
-    
-    function getUserRecord(uint256 userId) external view returns (UserRecord memory) {
-        require(users[userId].exists, "User not registered");
-        return users[userId];
-    }
-    
-    function getUserEarnings(uint256 userId) external view returns (uint256) {
-        return users[userId].totalEarned;
-    }
-    
-    function getRevenueRecord(uint256 index) external view returns (RevenueRecord memory) {
-        require(index < revenueRecords.length, "Index out of bounds");
-        return revenueRecords[index];
-    }
-    
-    function getRevenueCount() external view returns (uint256) {
-        return revenueRecords.length;
-    }
-    
+
     /**
-     * @notice 获取分配比例信息
+     * @notice 紧急提取合约中误转的 USDT
      */
-    function getAllocationInfo() external view returns (
-        uint256 userPct,
-        uint256 platformPct,
-        uint256 ecoPct,
-        address platformWalletAddr,
-        address ecoFundWalletAddr
-    ) {
-        return (userShareBps / 100, platformFeeBps / 100, ecoFundBps / 100, platformWallet, ecoFundWallet);
+    function emergencyWithdrawUSDT(address to) external onlyOwner {
+        require(to != address(0), "Invalid address");
+        IERC20 usdt = IERC20(USDT);
+        uint256 balance = usdt.balanceOf(address(this));
+        if (balance > 0) {
+            usdt.safeTransfer(to, balance);
+        }
     }
-    
-    // 接收 BNB
+
+    // ============ 查询函数 ============
+
+    function getFeeRecord(uint256 index) external view returns (FeeRecord memory) {
+        require(index < feeRecords.length, "Index out of bounds");
+        return feeRecords[index];
+    }
+
+    function getFeeRecordCount() external view returns (uint256) {
+        return feeRecords.length;
+    }
+
+    function getUserRecord(address user) external view returns (UserRecord memory) {
+        return users[user];
+    }
+
+    function getContractUSDTBalance() external view returns (uint256) {
+        return IERC20(USDT).balanceOf(address(this));
+    }
+
     receive() external payable {}
 }

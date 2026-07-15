@@ -154,6 +154,10 @@ const PLATFORM_WALLET = '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A';  // 服务
 const PLATFORM_FEE_BPS = 2000; // 20%
 // Vault Factory 合约（V3: 完全修复版 — encodePacked bug + 18位小数 + ownership 归用户）
 const VAULT_FACTORY = process.env.VAULT_FACTORY_ADDRESS || '0x2A38B82Dd59cBDF8DE7e61338f88B3dA225b8A3d';
+// RevenueDistribution 合约（盖茨费自动分配: 20%服务费 + 10%生态费）
+const REVENUE_DISTRIBUTION = process.env.REVENUE_DISTRIBUTION_ADDRESS || '';
+// 生态基金钱包（10%）
+const ECO_FUND_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';
 // 平台执行器私钥（用于签名交易，存在环境变量里）
 // [SECURITY#1-HIGH] 私钥不应硬编码在源码中，生产环境必须通过环境变量注入
 const TRADER_PRIVATE_KEY = process.env.TRADER_PRIVATE_KEY;

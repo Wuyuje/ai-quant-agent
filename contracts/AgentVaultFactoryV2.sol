@@ -23,11 +23,15 @@ contract AgentVaultFactoryV2 is Ownable {
     address[] public vaults;
     mapping(address => address) public userVaults;
 
+    /// @notice RevenueDistribution 合约地址
+    address public revenueDistributor;
+
     // ============ 事件 ============
 
     event VaultDeployed(address indexed user, address indexed vault, uint256 index, uint256 timestamp);
     event TraderUpdated(address indexed oldTrader, address indexed newTrader);
     event FeeUpdated(uint256 oldFee, uint256 newFee);
+    event DistributorUpdated(address newDistributor);
 
     // ============ 构造函数 ============
 
@@ -43,6 +47,15 @@ contract AgentVaultFactoryV2 is Ownable {
         trader = _trader;
         platformFeeWallet = _platformFeeWallet;
         defaultFeeBps = _defaultFeeBps;
+    }
+
+    /**
+     * @notice 设置 RevenueDistribution 合约地址
+     */
+    function setRevenueDistributor(address _distributor) external onlyOwner {
+        require(_distributor != address(0), "Invalid distributor");
+        revenueDistributor = _distributor;
+        emit DistributorUpdated(_distributor);
     }
 
     // ============ Vault 部署 ============
@@ -62,6 +75,11 @@ contract AgentVaultFactoryV2 is Ownable {
             defaultFeeBps   // 费率
         );
         vault = address(v);
+
+        // 如果设置了 RevenueDistribution，自动配置到新 Vault
+        if (revenueDistributor != address(0)) {
+            v.setRevenueDistributor(revenueDistributor);
+        }
 
         userVaults[user] = vault;
         vaults.push(vault);
