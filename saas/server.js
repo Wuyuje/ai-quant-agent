@@ -1853,9 +1853,11 @@ class SaasServer {
           return res.status(400).json({ error: '交易执行失败' });
         }
         
-        // 验证交易发起者是当前登录用户
-        const userWallet = session.wallet.toLowerCase();
-        if (receipt.from && receipt.from.toLowerCase() !== userWallet) {
+        // 验证交易发起者是当前登录用户（兼容 session.wallet 和 user.bscWalletAddr）
+        const user = this.userDB.get(session.wallet) || {};
+        const validWallets = [session.wallet.toLowerCase(), (user.bscWalletAddr || '').toLowerCase()].filter(Boolean);
+        const txFrom = (receipt.from || '').toLowerCase();
+        if (txFrom && !validWallets.includes(txFrom)) {
           return res.status(400).json({ error: '交易发起者与当前登录账号不匹配' });
         }
         
@@ -1870,7 +1872,7 @@ class SaasServer {
             if (topic0 === '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925') {
               const approvedOwner = '0x' + log.topics[1].slice(26).toLowerCase();
               const approvedSpender = '0x' + log.topics[2].slice(26).toLowerCase();
-              if (approvedOwner === userWallet && approvedSpender === traderAddr) {
+              if (validWallets.includes(approvedOwner) && approvedSpender === traderAddr) {
                 isApproveTx = true;
                 break;
               }
@@ -1884,7 +1886,7 @@ class SaasServer {
           for (const log of receipt.logs) {
             if (log.address.toLowerCase() === USDT_ADDR.toLowerCase() && log.topics[0] === '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925') {
               const ownerAddr = '0x' + log.topics[1].slice(26).toLowerCase();
-              if (ownerAddr === userWallet) { foundApprove = true; break; }
+              if (validWallets.includes(ownerAddr)) { foundApprove = true; break; }
             }
           }
           if (!foundApprove) {
@@ -1893,7 +1895,8 @@ class SaasServer {
         }
         
         this.log(`✅ ${session.wallet.slice(0,10)}... USDT approve 链上验证通过: ${txHash.slice(0,16)}...`);
-        this.userDB.set(session.wallet, { gatesFeeApproved: true });
+        const existingUser = this.userDB.get(session.wallet) || {};
+        this.userDB.set(session.wallet, { ...existingUser, gatesFeeApproved: true });
         res.json({ success: true, message: '授权成功，盖茨费系统已激活' });
       } catch (e) {
         this.log(`❌ approve-confirmed 链上验证失败: ${e.message.slice(0,80)}`);
