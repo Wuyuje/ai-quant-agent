@@ -137,13 +137,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
 <script>
 // 优先从URL参数取token（TokenPocket DApp浏览器内），其次从localStorage取
+// 统一用 ak_tk（与 index.html 一致）
 function getParam(name) {
   var match = new RegExp('[?&]' + name + '=([^&]+)').exec(window.location.search);
   return match ? decodeURIComponent(match[1]) : '';
 }
-var token = getParam('token') || localStorage.getItem('ark_token');
-if (token && !localStorage.getItem('ark_token')) {
-  localStorage.setItem('ark_token', token);
+var token = getParam('token') || localStorage.getItem('ak_tk') || localStorage.getItem('ark_token');
+if (token) {
+  localStorage.setItem('ak_tk', token);
 }
 var traderAddress = '';
 var usdtAddress = '';
