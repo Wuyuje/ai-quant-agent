@@ -1837,6 +1837,30 @@ class SaasServer {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
       const { txHash } = req.body;
+      
+      // 支持 already-approved：直接查链上 allowance
+      if (txHash === 'already-approved') {
+        try {
+          const user = this.userDB.get(session.wallet) || {};
+          const bscAddr = user.bscWalletAddr;
+          if (!bscAddr) return res.status(400).json({ error: '请先绑定BSC钱包地址' });
+          const { ethers } = require('ethers');
+          const provider = new ethers.JsonRpcProvider('https://bsc-rpc.publicnode.com');
+          const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+          const usdt = new ethers.Contract(USDT_ADDRESS, ['function allowance(address,address) view returns (uint256)'], provider);
+          const allowance = await usdt.allowance(bscAddr, traderAddr);
+          if (BigInt(allowance) > BigInt(1000) * BigInt('1000000000000000000')) {
+            this.log(`✅ ${session.wallet.slice(0,10)}... 链上已授权 (allowance > 1000 USDT)，自动更新状态`);
+            this.userDB.set(session.wallet, { ...user, gatesFeeApproved: true, gatesFeeLow: (user.gatesFeeBalance || 0) < 5 });
+            return res.json({ success: true, message: '链上已授权，盖茨费系统已激活' });
+          } else {
+            return res.status(400).json({ error: '链上未找到授权记录，请在钱包中完成授权' });
+          }
+        } catch (e) {
+          return res.status(500).json({ error: '链上查询失败: ' + e.message.slice(0,80) });
+        }
+      }
+      
       if (!txHash || !/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
         return res.status(400).json({ error: '无效的交易哈希' });
       }
