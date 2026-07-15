@@ -804,12 +804,12 @@ class BBStrategyManager {
 
         // 更新用户数据
         if (this.userDB) {
-          // 临时：approve页面正在修复中，不覆盖已手动开通的gatesFeeApproved
-          // 只更新余额和low状态，保留approve状态
+          const existing = this.userDB.get(wallet) || {};
           this.userDB.set(wallet, {
+            ...existing,
             gatesFeeBalance: balance,
             gatesFeeLow: newLow,
-            // gatesFeeApproved: approved,  // 暂时注释，等approve页面修好后恢复
+            gatesFeeApproved: approved,  // 恢复链上检查
           });
         }
 

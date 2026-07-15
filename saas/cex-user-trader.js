@@ -675,7 +675,7 @@ class CEXUserTrader {
         // 如果是签名错误或 key 无效，标记用户
         if (e.message?.includes('Invalid API-key') || e.message?.includes('-2015')) {
           this._log(`🚫 ${wallet.slice(0, 10)} API Key 无效，暂停交易`);
-          this.userDB.set(wallet, { tradingEnabled: false, binanceError: 'API Key 无效' });
+          { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, tradingEnabled: false, binanceError: 'API Key 无效' }); }
         }
         return;
       }
@@ -1617,12 +1617,12 @@ class CEXUserTrader {
 
       if (BigInt(allowance) < totalFeeWei) {
         this._log(`❌ ${wallet.slice(0,8)} 链上授权不足，请重新授权USDT`);
-        if (this.userDB) this.userDB.set(wallet, { gatesFeeApproved: false });
+        if (this.userDB) { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, gatesFeeApproved: false }); }
         return;
       }
       if (BigInt(balance) < totalFeeWei) {
         this._log(`❌ ${wallet.slice(0,8)} BSC钱包USDT不足 ($${Number(balance)/1e18})，请充值`);
-        if (this.userDB) this.userDB.set(wallet, { gatesFeeLow: true, gatesFeeBalance: Number(balance)/1e18 });
+        if (this.userDB) { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, gatesFeeLow: true, gatesFeeBalance: Number(balance)/1e18 }); }
         return;
       }
 
@@ -1661,7 +1661,7 @@ class CEXUserTrader {
       try {
         const newBal = await usdtContract.balanceOf(userBscAddr);
         const newBalance = Number(newBal) / 1e18;
-        if (this.userDB) this.userDB.set(wallet, { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
+        if (this.userDB) { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 }); }
       } catch(e) { /* 余额查询失败不影响扣费结果 */ }
 
     } catch (e) {

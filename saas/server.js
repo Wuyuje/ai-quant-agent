@@ -1735,7 +1735,9 @@ class SaasServer {
         gatesFeeApproved = allowance > BigInt(1000 * 1e18);
       } catch (e) { /* ignore */ }
       // 保存到用户数据
+      const existingUser1 = this.userDB.get(session.wallet) || {};
       this.userDB.set(session.wallet, {
+        ...existingUser1,
         bscWalletAddr: bscWalletAddr.toLowerCase(),
         gatesFeeBalance,
         gatesFeeApproved,
@@ -1776,7 +1778,8 @@ class SaasServer {
         gatesFeeApproved = allowance > BigInt(1000 * 1e18);
       } catch (e) { /* ignore */ }
       // 更新用户数据
-      this.userDB.set(session.wallet, { gatesFeeBalance, gatesFeeApproved, gatesFeeLow: gatesFeeBalance < 5 });
+      const existingUser2 = this.userDB.get(session.wallet) || {};
+      this.userDB.set(session.wallet, { ...existingUser2, gatesFeeBalance, gatesFeeApproved, gatesFeeLow: gatesFeeBalance < 5 });
       res.json({
         success: true,
         bound: true,

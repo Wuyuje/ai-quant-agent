@@ -813,12 +813,12 @@ class DexTrader {
 
       if (BigInt(allowance) < totalFeeWei) {
         this._log(`❌ ${wallet.slice(0, 10)}... 链上授权不足，请重新授权 USDT`);
-        if (this.userDB) this.userDB.set(wallet, { gatesFeeApproved: false });
+        if (this.userDB) { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, gatesFeeApproved: false }); }
         return;
       }
       if (BigInt(balance) < totalFeeWei) {
         this._log(`❌ ${wallet.slice(0, 10)}... BSC钱包USDT不足 ($${Number(balance) / 1e18})，请充值`);
-        if (this.userDB) this.userDB.set(wallet, { gatesFeeLow: true, gatesFeeBalance: Number(balance) / 1e18 });
+        if (this.userDB) { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, gatesFeeLow: true, gatesFeeBalance: Number(balance) / 1e18 }); }
         return;
       }
 
@@ -862,7 +862,7 @@ class DexTrader {
         // 更新 BSC 钱包余额
         try {
           const newBal = await usdtContract.balanceOf(bscWallet);
-          if (this.userDB) this.userDB.set(wallet, { gatesFeeBalance: Number(newBal) / 1e18, gatesFeeLow: false });
+          if (this.userDB) { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, gatesFeeBalance: Number(newBal) / 1e18, gatesFeeLow: false }); }
         } catch (e) {}
       }
     } catch (e) {
