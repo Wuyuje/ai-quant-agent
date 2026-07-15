@@ -2263,6 +2263,10 @@ class SaasServer {
           arkBalance: u.arkBalance,
           createdAt: u.createdAt,
           lastLogin: u.lastLogin,
+          bscWalletAddr: u.bscWalletAddr || '',
+          gatesFeeApproved: u.gatesFeeApproved || false,
+          gatesFeeBalance: u.gatesFeeBalance || 0,
+          gatesFeeLow: u.gatesFeeLow || false,
         })),
       });
     });
@@ -2286,7 +2290,7 @@ class SaasServer {
         // 引擎状态（主引擎 = 管理员自己的交易）
         const engine = this.engine;
         const engineState = engine?.engineState || {};
-        const positions = engine?.guardian?.getAllPositions() || {};
+        const positions = (typeof engine?.guardian?.getAllPositions === 'function') ? engine.guardian.getAllPositions() : {};
         // v17: 补充每个持仓的实时价格和 PnL%
         const enrichedPositions = {};
         for (const [sym, pos] of Object.entries(positions)) {
@@ -2372,6 +2376,10 @@ class SaasServer {
               tradingEnabled: u.tradingEnabled,
               lastLogin: u.lastLogin,
               onChainUsdt, onChainBnb, cexUsdt, cexConnected,
+              bscWalletAddr: u.bscWalletAddr || '',
+              gatesFeeApproved: u.gatesFeeApproved || false,
+              gatesFeeBalance: u.gatesFeeBalance || 0,
+              gatesFeeLow: u.gatesFeeLow || false,
             };
           })),
           pendingFunds: Array.from(pendingFundRequests.values()),

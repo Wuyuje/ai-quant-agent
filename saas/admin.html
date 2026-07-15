@@ -119,8 +119,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="card">
       <h3>👥 用户列表</h3>
       <table class="table" style="margin-top:8px">
-        <thead><tr><th>地址</th><th>策略</th><th>交易</th><th>Vault</th><th>最后登录</th></tr></thead>
-        <tbody id="userTable"><tr><td colspan="5" class="sub">暂无用户</td></tr></tbody>
+        <thead><tr><th>地址</th><th>策略</th><th>交易</th><th>Vault</th><th>盖茨费授权</th><th>盖茨费余额</th><th>最后登录</th></tr></thead>
+        <tbody id="userTable"><tr><td colspan="7" class="sub">暂无用户</td></tr></tbody>
       </table>
     </div>
 
@@ -248,15 +248,23 @@ function render(d) {
   // 用户列表
   const users = d.users || [];
   if (users.length === 0) {
-    html('userTable', '<tr><td colspan="5" class="sub">暂无用户</td></tr>');
+    html('userTable', '<tr><td colspan="7" class="sub">暂无用户</td></tr>');
   } else {
     let h = '';
     users.forEach(u => {
       const lastLogin = u.lastLogin ? new Date(u.lastLogin).toLocaleDateString() : '--';
+      var approveTag = u.gatesFeeApproved
+        ? '<span class="tag on">已授权</span>'
+        : '<span class="tag off">未授权</span>';
+      var balColor = u.gatesFeeLow ? 'var(--red)' : 'var(--green)';
+      var balText = '$' + (u.gatesFeeBalance || 0).toFixed(2);
+      if (!u.bscWalletAddr) { approveTag = '<span style="color:var(--muted)">未绑定</span>'; balText = '--'; }
       h += '<tr><td title="' + u.fullAddress + '">' + u.address + '</td>'
         + '<td>' + u.strategy + '</td>'
         + '<td><span class="tag ' + (u.tradingEnabled ? 'on' : 'off') + '">' + (u.tradingEnabled ? 'ON' : 'OFF') + '</span></td>'
         + '<td>' + (u.vaultAddress ? '✅' : '❌') + '</td>'
+        + '<td>' + approveTag + '</td>'
+        + '<td style="color:' + balColor + '">' + balText + '</td>'
         + '<td>' + lastLogin + '</td></tr>';
     });
     html('userTable', h);
