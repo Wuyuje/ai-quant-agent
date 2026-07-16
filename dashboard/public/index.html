@@ -882,7 +882,7 @@ async function loadUsers(){
       +'<span class="'+runClass+'" style="margin-left:10px;font-size:.8em;padding:2px 8px;border-radius:4px">'+runText+'</span>'
       +'<span style="margin-left:10px;color:#8b949e;font-size:.85em">策略: <strong>'+(u.strategy||'--')+'</strong></span></div>'
       +'<div style="display:flex;gap:16px;font-size:.85em;align-items:center"><span>交易: <strong>'+(u.totalTrades||0)+'</strong></span><span>胜率: <strong class="'+wrClass+'">'+wr+'</strong></span><span>周期: <strong>#'+(u.cycleCount||0)+'</strong></span>'
-      +(u.walletFull&&u.walletFull!=='admin'?'<button onclick="confirmDeleteUser(\''+u.walletFull+'\',\''+walletShort+'\')" style="margin-left:8px;padding:2px 12px;font-size:.78em;border-radius:4px;background:#da3633;color:#fff;border:none;cursor:pointer;font-weight:600;transition:background .2s" onmouseover="this.style.background=\'#f85149\'" onmouseout="this.style.background=\'#da3633\'">注销用户</button>':'')
+      +(u.walletFull&&u.walletFull!=='admin'&&!['0xfa3b90c574469909d20848273c06752a22fde74a','0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e'].includes((u.walletFull||'').toLowerCase())?'<button onclick="confirmDeleteUser(\''+u.walletFull+'\',\''+walletShort+'\')" style="margin-left:8px;padding:2px 12px;font-size:.78em;border-radius:4px;background:#da3633;color:#fff;border:none;cursor:pointer;font-weight:600;transition:background .2s" onmouseover="this.style.background=\'#f85149\'" onmouseout="this.style.background=\'#da3633\'">注销用户</button>':'')
       +'</div>'
       +'</div>'
       +'<div class="grid g4" style="margin-bottom:10px">'
