@@ -556,7 +556,7 @@ class BBStrategyManager {
     this._timer = setTimeout(() => this._loop(), this.intervalMs);
   }
 
-  // ═══ 引擎看门狗：检查所有引擎running状态，停了就自动重启 ═══
+  // ═══ 引擎看门狗：检查所有引擎running状态，停了就自动重启 + 停机告警 ═══
   _watchdog() {
     let revived = 0;
     for (const [wallet, engine] of Object.entries(this._engines)) {
@@ -571,6 +571,29 @@ class BBStrategyManager {
     if (revived > 0) {
       this._log(`🐕 看门狗: 重启了 ${revived} 个引擎`);
     }
+    
+    // ═══ 停机告警：检测管理器自身是否正常运行，记录心跳 ═══
+    const now = Date.now();
+    if (!this._lastHeartbeat) {
+      this._lastHeartbeat = now;
+      this._heartbeatFile = path.join(__dirname, '..', 'data', 'bb-manager-heartbeat.json');
+    }
+    // 每5轮写一次心跳文件（约150秒）
+    if (this._cycleCount % 5 === 0) {
+      try {
+        fs.writeFileSync(this._heartbeatFile, JSON.stringify({
+          timestamp: now,
+          cycleCount: this._cycleCount,
+          engineCount: Object.keys(this._engines).length,
+          engines: Object.entries(this._engines).map(([w, e]) => ({
+            wallet: w.slice(0, 10) + '...',
+            running: e.running,
+            positions: Object.keys(e.positions || {}).length,
+          })),
+        }, null, 2));
+      } catch (e) { /* ignore */ }
+    }
+    this._lastHeartbeat = now;
   }
 
   async _cycle() {

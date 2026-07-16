@@ -2231,10 +2231,23 @@ class Dashboard {
       const adminStatus = bb.getAdminStatus();
       const allUsers = bb.getAllUsersStatus();
       const stats = bb.getStats();
+      
+      // 读取心跳文件，检测是否正常运行
+      let heartbeat = null;
+      try {
+        const hbFile = require('path').join(__dirname, '..', 'data', 'bb-manager-heartbeat.json');
+        if (require('fs').existsSync(hbFile)) {
+          heartbeat = JSON.parse(require('fs').readFileSync(hbFile, 'utf8'));
+          heartbeat.staleMs = Date.now() - heartbeat.timestamp;
+          heartbeat.isStale = heartbeat.staleMs > 120000; // 超过2分钟视为异常
+        }
+      } catch (e) { /* ignore */ }
+      
       res.json({
         stats,
         admin: adminStatus,
         users: allUsers.filter(u => u.wallet !== (adminStatus?.wallet)),
+        heartbeat,
       });
     });
 

@@ -262,6 +262,11 @@ class BinanceAPI {
     return result.filter(p => parseFloat(p.positionAmt) !== 0);
   }
 
+  // 查询已实现盈亏（用于检测强平亏损）
+  async getIncome(startTime, endTime, incomeType = 'REALIZED_PNL') {
+    return this._request('GET', '/fapi/v1/income', { startTime, endTime, incomeType });
+  }
+
   // 设置杠杆
   async setLeverage(symbol, leverage) {
     try {
@@ -1517,6 +1522,47 @@ class BBEngine {
           if (lastCloseAttempt && now - lastCloseAttempt < 60 * 1000) {
             this._log(`⏳ ${symbol} 远程已无持仓，但平仓刚尝试过(<60秒)，可能是平仓成功了，清除本地状态`);
           }
+
+          // ═══ 强平亏损检测：查Binance income记录，如果是强平产生的亏损则记录到交易历史 ═══
+          const pos = this.positions[symbol];
+          if (pos && !pos._forceCloseRecorded) {
+            try {
+              // 查最近5分钟的已实现盈亏
+              const incomeStart = Math.max(pos.openTime || (now - 600000), now - 600000);
+              const incomes = await this.api.getIncome(incomeStart, now);
+              const symbolIncomes = (Array.isArray(incomes) ? incomes : []).filter(i => i.symbol === symbol);
+              const totalPnl = symbolIncomes.reduce((s, i) => s + parseFloat(i.income || 0), 0);
+              
+              if (symbolIncomes.length > 0 && totalPnl !== 0) {
+                // 有已实现盈亏 = 引擎停机期间被Binance强平了
+                const avgClosePrice = pos.currentPrice || 0;
+                this._log(`🔴 ${symbol} 检测到强平亏损: ${symbolIncomes.length}笔 PnL=$${totalPnl.toFixed(4)} — 记录到交易历史`);
+                const forcedTrade = {
+                  symbol,
+                  side: pos.side,
+                  qty: pos.qty,
+                  entryPrice: pos.entryPrice,
+                  closePrice: avgClosePrice,
+                  leverage: pos.leverage,
+                  margin: pos.margin,
+                  pnlUsd: parseFloat(totalPnl.toFixed(4)),
+                  pnlPct: pos.margin > 0 ? parseFloat(((totalPnl / pos.margin) * 100).toFixed(2)) : 0,
+                  reason: '⚠️ 引擎停机期间Binance强平',
+                  openTime: pos.openTime || 0,
+                  closeTime: symbolIncomes[symbolIncomes.length - 1]?.time || now,
+                  replenishCount: pos.replenishCount || 0,
+                  mode: pos.mode || '轨道',
+                  wallet: this.wallet || 'admin',
+                  _forcedClose: true,
+                };
+                this._recordTrade(forcedTrade);
+                if (this.onPositionClosed) this.onPositionClosed(forcedTrade);
+              }
+            } catch (e) {
+              this._log(`⚠️ ${symbol} 强平亏损查询失败: ${e.message}`);
+            }
+          }
+
           this._log(`🧹 ${symbol} 远程已无持仓，清除本地状态`);
           delete this.positions[symbol];
         }
