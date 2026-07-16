@@ -667,6 +667,15 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
     </div>
   </div>
 
+  <!-- 用户管理 -->
+  <div class="card" style="margin-top:14px;border:1px solid #da3633">
+    <h3 style="color:#f85149">⚙️ 用户管理 — 注销钱包</h3>
+    <p style="color:#8b949e;font-size:.82em;margin:0 0 10px 0">点击「注销用户」停止该用户的BB引擎、删除账户数据、清除登录会话。管理员账户不可注销。</p>
+    <div id="bbUserMgmt" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:10px">
+      <span style="color:#484f58">加载中...</span>
+    </div>
+  </div>
+
   <div class="card" style="margin-top:14px">
     <h3 style="color:#00d4ff">📋 B策略平仓记录（按用户）</h3>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
@@ -1865,6 +1874,40 @@ async function loadBBStrategy(){
     }).join('');
   } else {
     userListEl.innerHTML='<span style="color:#484f58">暂无B策略用户</span>';
+  }
+
+  // ═══ 用户管理 — 注销按钮 ═══
+  const adminWallets=['0xfa3b90c574469909d20848273c06752a22fde74a','0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e'];
+  const mgmtEl=document.getElementById('bbUserMgmt');
+  // 合并 admin + users 数据
+  const allUsers=[];
+  if(admin&&admin.wallet) allUsers.push({wallet:admin.wallet,isAdmin:true,balance:admin.balance||0,positionCount:(admin.positions||[]).length,totalPnlUsd:admin.totalPnlUsd||0,gatesFeePaused:false,tradingEnabled:true});
+  for(const u of users) allUsers.push({...u,isAdmin:false});
+  if(allUsers.length>0){
+    mgmtEl.innerHTML=allUsers.map(u=>{
+      const w=u.wallet||'';
+      const wShort=w.slice(0,8)+'...'+w.slice(-4);
+      const isAdmin=adminWallets.includes(w.toLowerCase())||u.isAdmin;
+      const bal='$'+(u.balance||0).toFixed(2);
+      const pnl=u.totalPnlUsd||0;
+      const pnlColor=pnl>=0?'#3fb950':'#f85149';
+      const pos=u.positionCount||0;
+      const paused=u.gatesFeePaused;
+      const statusTag=isAdmin?'<span style="font-size:.7em;padding:1px 6px;border-radius:4px;background:#1f6feb;color:#58a6ff">管理员</span>':(paused?'<span style="font-size:.7em;padding:1px 6px;border-radius:4px;background:#490b0b;color:#f85149">暂停</span>':'<span style="font-size:.7em;padding:1px 6px;border-radius:4px;background:#0d4429;color:#3fb950">交易中</span>');
+      const delBtn=isAdmin?'':'<button onclick="confirmDeleteUser(\''+w+'\',\''+wShort+'\')" style="padding:4px 14px;font-size:.8em;border-radius:6px;background:#da3633;color:#fff;border:none;cursor:pointer;font-weight:600;transition:all .2s" onmouseover="this.style.background=\'#f85149\'" onmouseout="this.style.background=\'#da3633\'">注销用户</button>';
+      return '<div style="border:1px solid #21262d;border-radius:8px;padding:12px;background:#0d1117">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+        '<div><span style="font-size:.9em;font-weight:700;color:#58a6ff">'+wShort+'</span>'+statusTag+'</div>'+
+        delBtn+
+        '</div>'+
+        '<div style="display:flex;gap:16px;font-size:.82em;color:#8b949e">'+
+        '<span>余额 <strong style="color:#58a6ff">'+bal+'</strong></span>'+
+        '<span>持仓 <strong style="color:#c9d1d9">'+pos+'</strong></span>'+
+        '<span>浮动 <strong style="color:'+pnlColor+'">'+(pnl>=0?'+':'')+pnl.toFixed(2)+'</strong></span>'+
+        '</div></div>';
+    }).join('');
+  } else {
+    mgmtEl.innerHTML='<span style="color:#484f58">暂无用户</span>';
   }
 
   // 管理员持仓
