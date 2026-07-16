@@ -43,7 +43,9 @@ class Dashboard {
       res.setHeader('Expires', '0');
       next();
     });
+    // 管理员仪表盘在根路径 / 提供（b7ec701a 公开URL指向此端口）
     this.app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false }));
+    // /admin 代理到 SaaS server 返回 admin.html（兼容旧链接）
 
     // ═══════════════════════════════════════════
     // v72: 反向代理 — 转发用户认证和仪表盘API到SaaS Server
@@ -55,6 +57,7 @@ class Dashboard {
       '/api/user/',
       '/api/backtest',
       '/api/verify-api-key', '/api/cex-mode/', '/api/cex-status',
+      '/admin', '/go', '/reg',  // SaaS 页面路由也代理
     ];
     // 注意: /api/admin/ 不代理，dashboard本地处理
     // body-parser 已经消费了 req.body，代理需要用序列化后的 body
