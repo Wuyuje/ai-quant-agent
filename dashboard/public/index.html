@@ -1879,9 +1879,9 @@ async function loadBBStrategy(){
   // ═══ 用户管理 — 注销按钮 ═══
   const adminWallets=['0xfa3b90c574469909d20848273c06752a22fde74a','0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e'];
   const mgmtEl=document.getElementById('bbUserMgmt');
-  // 合并 admin + users 数据
+  // 合并 admin + users 数据（用 adminData 避免与后面的 const admin 重复声明/TDZ）
   const allUsers=[];
-  if(admin&&admin.wallet) allUsers.push({wallet:admin.wallet,isAdmin:true,balance:admin.balance||0,positionCount:(admin.positions||[]).length,totalPnlUsd:admin.totalPnlUsd||0,gatesFeePaused:false,tradingEnabled:true});
+  if(adminData&&adminData.wallet) allUsers.push({wallet:adminData.wallet,isAdmin:true,balance:adminData.balance||0,positionCount:(adminData.positions||[]).length,totalPnlUsd:adminData.totalPnlUsd||0,gatesFeePaused:false,tradingEnabled:true});
   for(const u of users) allUsers.push({...u,isAdmin:false});
   if(allUsers.length>0){
     mgmtEl.innerHTML=allUsers.map(u=>{
