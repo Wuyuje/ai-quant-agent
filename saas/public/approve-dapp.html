@@ -206,7 +206,32 @@ async function doApprove() {
 
     if (receipt.status === 1) {
       btn.textContent = '✅ 授权成功';
-      showMsg('✅ 授权成功！<br><br>请复制上方的 <b>TxHash</b>，回到 ARK 授权页面粘贴并点击「验证授权」', 'ok');
+      showMsg('✅ 授权成功！正在通知系统...', 'ok');
+
+      // 自动通知后端
+      var token = getParam('token') || '';
+      if (token) {
+        try {
+          var resp = await fetch('/api/vault/approve-confirmed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ txHash: tx.hash })
+          });
+          var data = await resp.json();
+          if (data.success) {
+            showMsg('✅ 授权成功！盖茨费系统已激活，3秒后返回...', 'ok');
+            setTimeout(function() { window.location.href = 'approve.html?token=' + encodeURIComponent(token); }, 3000);
+          } else {
+            // 通知失败但显示 TxHash
+            showMsg('✅ 链上授权成功！请复制 TxHash 回到授权页面提交: ' + tx.hash, 'ok');
+          }
+        } catch(notifyErr) {
+          showMsg('✅ 链上授权成功！请复制 TxHash 回到授权页面提交: ' + tx.hash, 'ok');
+        }
+      } else {
+        // 没有 token，显示 TxHash
+        showMsg('✅ 授权成功！<br><br>请复制上方的 <b>TxHash</b>，回到 ARK 授权页面粘贴并点击「验证授权」', 'ok');
+      }
     } else {
       showMsg('❌ 交易执行失败<br><br>TxHash: ' + tx.hash, 'err');
       btn.disabled = false;

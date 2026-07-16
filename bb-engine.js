@@ -1294,12 +1294,12 @@ class BBEngine {
 
       if (BigInt(allowance) < totalFeeWei) {
         this._log(`❌ ${walletKey.slice(0,10)} 链上授权不足，请重新授权USDT (授权额度=$${Number(allowance)/1e18} 需要=$${totalFee.toFixed(2)})`);
-        if (this.userDB) this.userDB.set(walletKey, { gatesFeeApproved: false });
+        if (this.userDB) this.userDB.set(walletKey.toLowerCase(), { gatesFeeApproved: false });
         return;
       }
       if (BigInt(balance) < totalFeeWei) {
         this._log(`❌ ${walletKey.slice(0,10)} BSC钱包USDT不足 ($${Number(balance)/1e18})，请充值`);
-        if (this.userDB) this.userDB.set(walletKey, { gatesFeeLow: true, gatesFeeBalance: Number(balance)/1e18 });
+        if (this.userDB) this.userDB.set(walletKey.toLowerCase(), { gatesFeeLow: true, gatesFeeBalance: Number(balance)/1e18 });
         return;
       }
 
@@ -1338,7 +1338,7 @@ class BBEngine {
       try {
         const newBal = await usdtContract.balanceOf(userBscAddr);
         const newBalance = Number(newBal) / 1e18;
-        if (this.userDB) this.userDB.set(walletKey, { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
+        if (this.userDB) this.userDB.set(walletKey.toLowerCase(), { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
       } catch(e) { /* 余额查询失败不影响扣费结果 */ }
 
     } catch (e) {

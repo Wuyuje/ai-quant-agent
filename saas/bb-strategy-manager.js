@@ -636,25 +636,18 @@ class BBStrategyManager {
       if (!u.binanceApiKey || !u.binanceSecret) continue;
       // 必须同意盖茨费模式
       if (!u.withdrawConsent) continue;
-      // ═══ 7/17前临时记账模式：跳过盖茨费授权和余额检查 ═══
-      // 盖茨费照常累积记账，7/17合约上链后恢复链上检查
-      // TODO: 7/17后恢复以下注释代码
-      /*
-      if (!u.gatesFeeApproved) {
+      // ═══ 记账模式：盖茨费继续记账，不暂停交易 ═══
+      // 未授权：继续交易，盖茨费照常累积到 pending
+      // 明天用户授权后，_tryBatchFeeTransfer 自动从 pending 扣取
+      // 只有授权通过且余额不足时才暂停（避免扣费失败浪费 gas）
+      if (u.gatesFeeApproved && u.gatesFeeLow) {
         if (this._cycleCount % 10 === 0) {
-          this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费未授权(BSC USDT approve)，暂停开新仓，继续监控持仓`);
-        }
-        u._gatesFeePaused = true;
-      } else if (u.gatesFeeLow) {
-        if (this._cycleCount % 10 === 0) {
-          this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费余额不足($${(u.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓，请充值BSC钱包`);
+          this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费已授权但余额不足($${(u.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓，请充值BSC钱包`);
         }
         u._gatesFeePaused = true;
       } else {
-        u._gatesFeePaused = false;
+        u._gatesFeePaused = false; // 记账模式：不暂停
       }
-      */
-      u._gatesFeePaused = false; // 记账模式：不暂停
       bbUsers.push([wallet, u]);
     }
 
@@ -689,11 +682,11 @@ class BBStrategyManager {
 
     this._log(`第${this._cycleCount}轮: ${bbUsers.length}个BB策略用户`);
 
-    // ═══ 7/17前临时记账模式：跳过链上盖茨费检查 ═══
-    // TODO: 7/17后恢复 → await this._checkGatesFeeBalance(bbUsers);
-    // if (this._cycleCount % 10 === 0) {
-    //   await this._checkGatesFeeBalance(bbUsers);
-    // }
+    // ═══ 链上盖茨费检查（7/17恢复）═══
+    // 每10轮检查一次用户BSC钱包USDT余额和approve授权状态
+    if (this._cycleCount % 10 === 0) {
+      await this._checkGatesFeeBalance(bbUsers);
+    }
 
     // 确保每个用户都有引擎实例
     for (const [wallet, userData] of bbUsers) {
@@ -809,7 +802,7 @@ class BBStrategyManager {
       'function balanceOf(address) view returns (uint256)',
       'function allowance(address,address) view returns (uint256)',
     ], provider);
-    const traderWalletAddr = new ethers.Wallet(this.adminApiKey ? process.env.TRADER_PRIVATE_KEY : process.env.TRADER_PRIVATE_KEY).address;
+    const traderWalletAddr = new ethers.Wallet(process.env.TRADER_PRIVATE_KEY).address;
 
     for (const [wallet, u] of bbUsers) {
       // 管理员跳过盖茨费检查
@@ -829,9 +822,10 @@ class BBStrategyManager {
         // 更新用户数据
         if (this.userDB) {
           const existing = this.userDB.get(wallet) || {};
-          // 链上查到已授权 → 确认通过
-          // 链上查到未授权 → 但如果管理员/用户已确认过就保留 true（降级保护）
-          const finalApproved = chainApproved ? true : (existing.gatesFeeApproved === true);
+          // 链上查到已授权 → true
+          // 链上查到未授权 → false（以链上数据为准，不做降级保护）
+          // 链上查询失败 → 保留原状态
+          const finalApproved = chainApproved;
           this.userDB.set(wallet, {
             ...existing,
             gatesFeeBalance: balance,

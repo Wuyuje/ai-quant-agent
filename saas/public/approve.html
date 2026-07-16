@@ -192,9 +192,9 @@ async function loadParams() {
     document.getElementById('usdtAddr').textContent = usdtAddress;
     document.getElementById('walletAddr').textContent = walletAddr;
 
-    // Build the DApp URL for TokenPocket
+    // Build the DApp URL for TokenPocket — 指向 approve-dapp.html
     var baseUrl = window.location.origin + window.location.pathname.replace('approve.html', '');
-    var approveDappUrl = baseUrl + 'approve.html?dapp=1&token=' + encodeURIComponent(token);
+    var approveDappUrl = baseUrl + 'approve-dapp.html?trader=' + encodeURIComponent(traderAddress) + '&wallet=' + encodeURIComponent(walletAddr);
     document.getElementById('approveUrl').textContent = approveDappUrl;
 
     // 检查当前授权状态
