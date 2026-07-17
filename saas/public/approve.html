@@ -177,13 +177,25 @@ function fallbackCopy(text) {
 }
 
 async function loadParams() {
-  if (!token) { showMsg('请先登录', 'err'); return; }
+  if (!token) {
+    // 没有 token — 自动跳转回仪表盘登录
+    showMsg('正在跳转到登录页面...', 'info');
+    setTimeout(function() { window.location.href = 'index.html'; }, 1500);
+    return;
+  }
   try {
     var resp = await fetch('/api/vault/approve-params', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     var data = await resp.json();
-    if (!data.success) { showMsg(data.error || '获取参数失败', 'err'); return; }
+    if (!data.success) {
+      // token 过期或无效 — 清除旧 token，跳转回仪表盘
+      localStorage.removeItem('ak_tk');
+      localStorage.removeItem('ark_token');
+      showMsg('登录已过期，正在跳转到仪表盘重新登录...', 'info');
+      setTimeout(function() { window.location.href = 'index.html'; }, 2000);
+      return;
+    }
     traderAddress = data.traderAddress;
     usdtAddress = data.usdtAddress;
     walletAddr = data.bscWalletAddr;

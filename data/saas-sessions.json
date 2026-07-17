@@ -1187,5 +1187,16 @@
   "845a81d629684fc6209d1479839cae095c810400a6b74d5b4e06bf6059eef07c": {
     "wallet": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
     "createdAt": 1784246272611
+  },
+  "c4d54ecc7a535c43b67e1cdcf46a3fe35d91c949c0f35d5bf2dadb8613ee233e": {
+    "wallet": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
+    "username": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
+    "walletAddress": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 158.26443792,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1784247498286
   }
 }

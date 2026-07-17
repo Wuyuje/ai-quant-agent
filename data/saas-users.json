@@ -39,7 +39,7 @@
     "binanceApiKey": "2b93b2de0f139cc3313ea06e:e3cb47e2c66b28a6be4b8fedfa6db2bc:ddaa5ad9ac2fe73747e563471ab866efaf9a81f147633c50dfd3e9a377db5f379e94270d75a4cb6c4ea1fdab289bd1dea834691f3a69dec8db1b8fd07f9ec670",
     "binanceSecret": "4963c191b72a0e4cf318b251:fbc1524c4434f0b988d2da3eb0693e8a:aebcb950c542632684b60f7d8dad1cbeef2a8022c64c12c768edbf4ffa2af5b98a586c014585aca154dc04cd6ea45075d6fb86737be848dc36277662c1c4b07b",
     "tradeAmount": 84,
-    "lastActive": 1784246028780,
+    "lastActive": 1784247807127,
     "authToken": "69d0e1431b5569e52122930529a73af9331c5cedef101e2c0fe80210044cc9b6",
     "withdrawConsent": true,
     "canWithdraw": true,
@@ -68,7 +68,7 @@
     "username": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
     "salt": "d21aeffb6fc1ad73d9db94d5ab902f61",
     "passwordHash": "67c04de71611bcb3fc7bd14405c0e543a24d1a1879eabb63032d97faf1050e65561da6ea547da52814a4ea28e20658835bb9ad4dea49c562da64a808d230a2d8",
-    "authToken": "099768d282ce500af36216643b04e0cc7e791c2d125ad2b6a0b9641d267af7ca",
+    "authToken": "c4d54ecc7a535c43b67e1cdcf46a3fe35d91c949c0f35d5bf2dadb8613ee233e",
     "walletAddress": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
     "strategy": "balanced",
     "tradingEnabled": true,
@@ -83,7 +83,7 @@
     "gatesFeeLow": false,
     "usdtBalance": 158.26443792,
     "verifiedAt": 1784032026858,
-    "lastActive": 1784246029161,
+    "lastActive": 1784247807487,
     "tradeAmount": 1300,
     "_gatesFeePaused": false,
     "exchangeMode": "cex"
@@ -120,7 +120,7 @@
     "gatesFeeLow": true,
     "usdtBalance": 426,
     "verifiedAt": 1784163450654,
-    "lastActive": 1784246029521,
+    "lastActive": 1784247807840,
     "_gatesFeePaused": false,
     "tradeAmount": 1000
   }
