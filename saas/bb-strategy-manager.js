@@ -684,7 +684,9 @@ class BBStrategyManager {
 
     // ═══ 链上盖茨费检查（方案A：充值到Trader钱包） ═══
     // 每轮检查一次充值 + 余额状态（确保实时性）
-    await this._detectRecharges(bbUsers);
+    // ═══ 充值检测已移至用户手动确认（confirm-recharge API） ═══
+    // BSC 免费 RPC 不支持 getLogs，_detectRecharges 一直失败
+    // 用户充值后点「我已充值」按钮 → 输入金额 → 后端验证链上余额 → 入账
     await this._checkGatesFeeBalance(bbUsers);
 
     // 确保每个用户都有引擎实例
