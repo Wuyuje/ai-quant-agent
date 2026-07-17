@@ -40,12 +40,12 @@
     "binanceApiKey": "2b93b2de0f139cc3313ea06e:e3cb47e2c66b28a6be4b8fedfa6db2bc:ddaa5ad9ac2fe73747e563471ab866efaf9a81f147633c50dfd3e9a377db5f379e94270d75a4cb6c4ea1fdab289bd1dea834691f3a69dec8db1b8fd07f9ec670",
     "binanceSecret": "4963c191b72a0e4cf318b251:fbc1524c4434f0b988d2da3eb0693e8a:aebcb950c542632684b60f7d8dad1cbeef2a8022c64c12c768edbf4ffa2af5b98a586c014585aca154dc04cd6ea45075d6fb86737be848dc36277662c1c4b07b",
     "tradeAmount": 84,
-    "lastActive": 1784269678881,
+    "lastActive": 1784271041549,
     "authToken": "99baa73dc41d02da72f14faab15d59fbc3b47467e02861f136668449e222edfb",
     "withdrawConsent": true,
     "canWithdraw": true,
     "bscWalletAddr": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "gatesFeeBalance": 13.01,
+    "gatesFeeBalance": 20.009999999999998,
     "gatesFeeLow": false,
     "gatesFeeApproved": true,
     "_gatesFeePaused": false,
@@ -72,7 +72,7 @@
     "username": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
     "salt": "d21aeffb6fc1ad73d9db94d5ab902f61",
     "passwordHash": "67c04de71611bcb3fc7bd14405c0e543a24d1a1879eabb63032d97faf1050e65561da6ea547da52814a4ea28e20658835bb9ad4dea49c562da64a808d230a2d8",
-    "authToken": "c4d54ecc7a535c43b67e1cdcf46a3fe35d91c949c0f35d5bf2dadb8613ee233e",
+    "authToken": "e21f792688cd573d22eacd9f438ac807cee6e5c54c87f40bb64d84e5f3f0f87b",
     "walletAddress": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
     "strategy": "balanced",
     "tradingEnabled": true,
@@ -87,7 +87,7 @@
     "gatesFeeLow": false,
     "usdtBalance": 158.26443792,
     "verifiedAt": 1784032026858,
-    "lastActive": 1784269678881,
+    "lastActive": 1784271041549,
     "tradeAmount": 1000,
     "_gatesFeePaused": false,
     "exchangeMode": "cex"
@@ -111,7 +111,7 @@
     "username": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
     "salt": "629497dc47ca9837a10ae627d517bb53",
     "passwordHash": "c0c45653edd9e1b0054457920bbff52df214ffb5607a6f15d988291eb794f975e37ed099a550e6d0e74efe3864fd6b347940b834fc212b11520347510faddb2f",
-    "authToken": "845a81d629684fc6209d1479839cae095c810400a6b74d5b4e06bf6059eef07c",
+    "authToken": "0524450c367643310a9079505bf5c229003156598c08c0602b42e3ff49cfde9d",
     "walletAddress": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
     "bscWalletAddr": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
     "strategy": "bb",
@@ -126,8 +126,8 @@
     "gatesFeeLow": false,
     "usdtBalance": 426,
     "verifiedAt": 1784163450654,
-    "lastActive": 1784269678881,
+    "lastActive": 1784271041549,
     "_gatesFeePaused": false,
-    "tradeAmount": 1000
+    "tradeAmount": 100000
   }
 }

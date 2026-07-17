@@ -1607,6 +1607,42 @@ class SaasServer {
         };
       }
 
+      // ═══ 仪表盘实时检测充值：Trader链上余额 vs 数据库总额，有差额自动入账 ═══
+      let _gatesFeeBalance = user?.gatesFeeBalance ?? 0;
+      let _gatesFeeLow = user?.gatesFeeLow ?? false;
+      try {
+        const _traderAddr = new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address;
+        // 用直接 RPC eth_call 查 USDT balanceOf（避免 ethers.Contract 初始化卡住）
+        const _data = '0x70a08231' + '000000000000000000000000' + _traderAddr.toLowerCase().replace('0x','');
+        const _ctrl = new AbortController();
+        const _to = setTimeout(() => _ctrl.abort(), 5000);
+        const _resp = await fetch('https://bsc-rpc.publicnode.com', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: '0x55d398326f99059fF775485246999027B3197955', data: _data }, 'latest'] }),
+          signal: _ctrl.signal,
+        });
+        clearTimeout(_to);
+        const _json = await _resp.json();
+        const _traderTotal = _json.result ? Number(BigInt(_json.result)) / 1e18 : 0;
+        let _dbTotal = 0;
+        for (const [, _u] of Object.entries(this.userDB.users || {})) {
+          if (_u && typeof _u.gatesFeeBalance === 'number') _dbTotal += _u.gatesFeeBalance;
+        }
+        const _diff = _traderTotal - _dbTotal;
+        if (_diff > 0.5) {
+          _gatesFeeBalance = _gatesFeeBalance + _diff;
+          _gatesFeeLow = _gatesFeeBalance < 5;
+          this.userDB.set(session.wallet, {
+            ...user,
+            gatesFeeBalance: _gatesFeeBalance,
+            gatesFeeLow: _gatesFeeLow,
+            gatesFeeApproved: true,
+          });
+          console.log(`[GatesFee] 💰 ${session.wallet.slice(0,10)}... 仪表盘实时检测到充值 +$${_diff.toFixed(2)} → 余额: $${_gatesFeeBalance.toFixed(2)} (Trader总: $${_traderTotal.toFixed(2)})`);
+        }
+      } catch (e) { /* RPC失败不影响正常返回 */ }
+
       res.json({
         success: true,
         user: {
@@ -1620,8 +1656,8 @@ class SaasServer {
           // 盖茨费状态（方案A：用户充值到Trader钱包，记账余额）
           gatesFee: {
             bscWalletAddr: user?.bscWalletAddr || walletAddr,
-            balance: user?.gatesFeeBalance ?? 0,
-            low: user?.gatesFeeLow ?? false,
+            balance: _gatesFeeBalance,
+            low: _gatesFeeLow,
             approved: user?.gatesFeeApproved ?? false,
             threshold: 5,
             traderWalletAddr: TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e',

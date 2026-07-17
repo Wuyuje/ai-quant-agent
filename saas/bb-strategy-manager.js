@@ -683,11 +683,9 @@ class BBStrategyManager {
     this._log(`第${this._cycleCount}轮: ${bbUsers.length}个BB策略用户`);
 
     // ═══ 链上盖茨费检查（方案A：充值到Trader钱包） ═══
-    // 每5轮检查一次充值 + 余额状态
-    if (this._cycleCount % 5 === 0) {
-      await this._detectRecharges(bbUsers);
-      await this._checkGatesFeeBalance(bbUsers);
-    }
+    // 每轮检查一次充值 + 余额状态（确保实时性）
+    await this._detectRecharges(bbUsers);
+    await this._checkGatesFeeBalance(bbUsers);
 
     // 确保每个用户都有引擎实例
     for (const [wallet, userData] of bbUsers) {
