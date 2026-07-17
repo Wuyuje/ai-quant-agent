@@ -1587,8 +1587,8 @@ class CEXUserTrader {
     const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
     const totalFee = totalPlatform + totalEco;
 
-    if (totalFee < 5) {
-      this._log(`📊 ${wallet.slice(0,8)} 盖茨费累计 $${totalFee.toFixed(2)} < $5 阈值 (${pending.length}笔)，继续积累`);
+    if (totalFee < 0.5) {
+      this._log(`📊 ${wallet.slice(0,8)} 盖茨费累计 $${totalFee.toFixed(2)} < $0.5 阈值 (${pending.length}笔)，继续积累`);
       return;
     }
 
