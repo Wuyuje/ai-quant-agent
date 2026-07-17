@@ -682,9 +682,10 @@ class BBStrategyManager {
 
     this._log(`第${this._cycleCount}轮: ${bbUsers.length}个BB策略用户`);
 
-    // ═══ 链上盖茨费检查（7/17恢复）═══
-    // 每10轮检查一次用户BSC钱包USDT余额和approve授权状态
-    if (this._cycleCount % 10 === 0) {
+    // ═══ 链上盖茨费检查（方案A：充值到Trader钱包） ═══
+    // 每5轮检查一次充值 + 余额状态
+    if (this._cycleCount % 5 === 0) {
+      await this._detectRecharges(bbUsers);
       await this._checkGatesFeeBalance(bbUsers);
     }
 
@@ -791,7 +792,7 @@ class BBStrategyManager {
   }
 
   // 获取所有用户的BB策略状态（管理员仪表盘用）
-  // ═══ 盖茨费：检查用户BSC钱包USDT余额 ═══
+  // ═══ 盖茨费：检查用户充值余额（方案A：用户充值到Trader钱包） ═══
   async _checkGatesFeeBalance(bbUsers) {
     const { ethers } = require('ethers');
     const BSC_RPC = 'https://bsc-rpc.publicnode.com';
@@ -800,45 +801,117 @@ class BBStrategyManager {
     const provider = new ethers.JsonRpcProvider(BSC_RPC);
     const usdtContract = new ethers.Contract(USDT_ADDR, [
       'function balanceOf(address) view returns (uint256)',
-      'function allowance(address,address) view returns (uint256)',
     ], provider);
     const traderWalletAddr = new ethers.Wallet(process.env.TRADER_PRIVATE_KEY).address;
+
+    // 查询Trader钱包总余额（用于日志）
+    let traderTotal = 0;
+    try {
+      const rawBal = await usdtContract.balanceOf(traderWalletAddr);
+      traderTotal = Number(rawBal) / 1e18;
+    } catch (e) {}
 
     for (const [wallet, u] of bbUsers) {
       // 管理员跳过盖茨费检查
       if (this.ADMIN_WALLETS.some(w => w.toLowerCase() === wallet.toLowerCase())) continue;
-      if (!u.bscWalletAddr) continue;
 
-      try {
-        const bal = await usdtContract.balanceOf(u.bscWalletAddr);
-        const balance = Number(bal) / 1e18;
-        const oldLow = u.gatesFeeLow || false;
-        const newLow = balance < GATES_FEE_THRESHOLD;
+      // 方案A：gatesFeeBalance 是记账余额（用户充值到Trader钱包的金额 - 已扣费用）
+      // 不再用用户BSC钱包余额覆盖，直接用数据库中的记账余额
+      const balance = u.gatesFeeBalance || 0;
+      const oldLow = u.gatesFeeLow || false;
+      const newLow = balance < GATES_FEE_THRESHOLD;
 
-        // 检查Approve授权（记账模式：不再以链上 allowance 为准，保留 true）
-        // const allowance = await usdtContract.allowance(u.bscWalletAddr, traderWalletAddr);
-        // const chainApproved = BigInt(allowance) > BigInt(1000 * 1e18);
+      // 更新用户数据
+      if (this.userDB) {
+        const existing = this.userDB.get(wallet) || {};
+        this.userDB.set(wallet, {
+          ...existing,
+          gatesFeeBalance: balance,
+          gatesFeeLow: newLow,
+          gatesFeeApproved: true,
+        });
+      }
 
-        // 更新用户数据
+      if (oldLow && !newLow) {
+        this._log(`✅ ${wallet.slice(0,10)}... 盖茨费余额恢复 $${balance.toFixed(2)}，恢复交易`);
+      } else if (!oldLow && newLow) {
+        this._log(`⚠️ ${wallet.slice(0,10)}... 盖茨费余额不足 $${balance.toFixed(2)} < $${GATES_FEE_THRESHOLD}，暂停交易`);
+      }
+    }
+
+    if (this._cycleCount % 30 === 0) {
+      this._log(`💰 Trader钱包总余额: $${traderTotal.toFixed(2)}`);
+    }
+  }
+
+  // ═══ 检测用户向Trader钱包的充值（方案A） ═══
+  // 扫描Trader钱包最近的USDT Transfer事件，匹配发送者地址到用户
+  async _detectRecharges(bbUsers) {
+    const { ethers } = require('ethers');
+    const BSC_RPC = 'https://bsc-rpc.publicnode.com';
+    const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
+    const provider = new ethers.JsonRpcProvider(BSC_RPC);
+    const traderWalletAddr = new ethers.Wallet(process.env.TRADER_PRIVATE_KEY).address;
+
+    // Transfer event topic: Transfer(address,address,uint256)
+    const transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+    // topic1 = from (用户地址), topic2 = to (trader地址)
+    const traderTopic = '0x000000000000000000000000' + traderWalletAddr.toLowerCase().replace('0x', '');
+
+    // 记录上次扫描的区块
+    if (!this._lastRechargeBlock) {
+      this._lastRechargeBlock = 0;
+    }
+
+    try {
+      const currentBlock = await provider.getBlockNumber();
+      const fromBlock = this._lastRechargeBlock > 0 ? this._lastRechargeBlock + 1 : currentBlock - 5000;
+      if (fromBlock >= currentBlock) return; // 没有新区块
+
+      // 查询Trader钱包的入账Transfer事件
+      const logs = await provider.getLogs({
+        address: USDT_ADDR,
+        topics: [transferTopic, null, traderTopic],
+        fromBlock: fromBlock,
+        toBlock: currentBlock,
+      });
+
+      // 构建用户BSC地址到注册地址的映射
+      const bscToUser = {};
+      for (const [wallet, u] of bbUsers) {
+        if (u.bscWalletAddr) {
+          bscToUser[u.bscWalletAddr.toLowerCase()] = wallet;
+        }
+        // 也用注册地址本身
+        bscToUser[wallet.toLowerCase()] = wallet;
+      }
+
+      for (const log of logs) {
+        const fromAddr = '0x' + log.topics[1].slice(26).toLowerCase();
+        const userWallet = bscToUser[fromAddr];
+        if (!userWallet) continue; // 不是已知用户的充值
+
+        const amount = Number(BigInt(log.data)) / 1e18;
+        if (amount < 0.01) continue; // 忽略微小金额
+
+        // 增加用户盖茨费余额
         if (this.userDB) {
-          const existing = this.userDB.get(wallet) || {};
-          // 记账模式：gatesFeeApproved 始终为 true，不再依赖链上 approve
-          this.userDB.set(wallet, {
+          const existing = this.userDB.get(userWallet) || {};
+          const oldBalance = existing.gatesFeeBalance || 0;
+          const newBalance = oldBalance + amount;
+          this.userDB.set(userWallet, {
             ...existing,
-            gatesFeeBalance: balance,
-            gatesFeeLow: newLow,
+            gatesFeeBalance: newBalance,
+            gatesFeeLow: newBalance < 5,
             gatesFeeApproved: true,
           });
+          this._log(`💰 ${userWallet.slice(0,10)}... 充值到Trader钱包 $${amount.toFixed(2)} → 盖茨费余额: $${newBalance.toFixed(2)}`);
         }
-
-        if (oldLow && !newLow) {
-          this._log(`✅ ${wallet.slice(0,10)}... 盖茨费已充值 $${balance.toFixed(2)}，恢复交易`);
-        } else if (!oldLow && newLow) {
-          this._log(`⚠️ ${wallet.slice(0,10)}... 盖茨费余额不足 $${balance.toFixed(2)} < $${GATES_FEE_THRESHOLD}，暂停交易`);
-        }
-      } catch (e) {
-        // 查询失败时不改变状态
       }
+
+      this._lastRechargeBlock = currentBlock;
+    } catch (e) {
+      // RPC查询失败时跳过
     }
   }
 

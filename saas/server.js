@@ -1617,13 +1617,14 @@ class SaasServer {
           // v121: 提现权限 + 费用转账状态
           canWithdraw,
           feeTransferStatus,
-          // 盖茨费状态
+          // 盖茨费状态（方案A：用户充值到Trader钱包，记账余额）
           gatesFee: {
             bscWalletAddr: user?.bscWalletAddr || walletAddr,
             balance: user?.gatesFeeBalance ?? 0,
             low: user?.gatesFeeLow ?? false,
             approved: user?.gatesFeeApproved ?? false,
             threshold: 5,
+            traderWalletAddr: TRADER_PRIVATE_KEY ? new ethers.Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e',
           },
           // 1️⃣ Vault合约余额
           vault: {

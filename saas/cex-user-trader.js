@@ -688,30 +688,15 @@ class CEXUserTrader {
       return;
     }
 
-    // ═══ 盖茨费检查 ═══
-    // 7/17之前临时方案：记账模式 — 跳过链上授权检查，所有用户正常交易
-    // 盖茨费照常累积记账，7/17合约上链后再恢复链上扣费
-    // TODO: 7/17后恢复此逻辑（取消下面的注释即可）
-    /*
+    // ═══ 盖茨费检查（方案A：充值到Trader钱包，记账余额） ═══
     let _gatesFeePaused = false;
     if (this._isAdmin(wallet)) {
       // 管理员跳过盖茨费检查
-    } else if (!userData.gatesFeeApproved) {
-      _gatesFeePaused = true;
-      if (this._cycleCount % 10 === 0) {
-        this._log(`⏸️ ${wallet.slice(0, 10)}... 盖茨费未授权(BSC USDT approve)，暂停开新仓，继续监控持仓`);
-      }
     } else if (userData.gatesFeeLow) {
       _gatesFeePaused = true;
       if (this._cycleCount % 10 === 0) {
         this._log(`⏸️ ${wallet.slice(0, 10)}... 盖茨费余额不足($${(userData.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
       }
-    }
-    */
-    // 记账模式：直接标记为未暂停
-    let _gatesFeePaused = false;
-    if (!this._isAdmin(wallet) && (this._cycleCount % 20 === 0)) {
-      this._log(`📝 ${wallet.slice(0, 10)}... [记账模式] 盖茨费正常累积，暂时不检查链上授权`);
     }
 
     const tradeAmount = Number(userData.tradeAmount) || Math.min(balance.available, 50);
@@ -1010,8 +995,11 @@ class CEXUserTrader {
     this._log(`[trade] ${wallet.slice(0,10)} 候选=${candidates.map(c=>c.symbol+'='+c.score).join(',')} 过滤后=${filtered.length} slots=${remainingSlots}`);
     if (filtered.length === 0) return;
 
-    // v114: 记账模式 — 盖茨费暂停检查已跳过，7/17后恢复
-    // if (_gatesFeePaused) { ... return; }
+    // 盖茨费暂停检查
+    if (_gatesFeePaused) {
+      this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费不足，跳过开仓`);
+      return;
+    }
 
     // 5. 开仓 — 共享管理员 PositionSizer 仓位计算
     // v113.72: 不限制方向 — 集中持仓只看趋势强弱

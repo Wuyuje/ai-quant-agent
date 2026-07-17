@@ -604,14 +604,6 @@
     "strategy": "balanced",
     "createdAt": 1783141757197
   },
-  "7b475aaf5228039afb085dd6afa9d24b6b5b50858535fe6e9a49803a3c005087": {
-    "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "walletAddress": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "usdtBalance": 0,
-    "strategy": "balanced",
-    "createdAt": 1783144913854
-  },
   "04620a67604d534555e0378930704489563b9ac40b7bcf030139bd210f71fc64": {
     "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
     "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
