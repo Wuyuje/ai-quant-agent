@@ -1011,7 +1011,7 @@ document.getElementById('binanceGuide').addEventListener('click',function(e){if(
   }
 
   function getToken() {
-    return localStorage.getItem('ark_token') || localStorage.getItem('admin_token') || '';
+    return localStorage.getItem('ak_tk') || localStorage.getItem('ark_token') || localStorage.getItem('admin_token') || '';
   }
 
   window.arkieSendMsg = function() {
