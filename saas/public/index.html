@@ -1116,8 +1116,30 @@ async function wfConnectWallet() {
   }
 
   if (!window.ethereum) {
-    wfShowMsg('未检测到钱包<br>请在 TokenPocket / MetaMask / Trust Wallet 的 DApp 浏览器内打开本页面', '#f85149');
-    btn.disabled = false; btn.textContent = '连接 BSC 钱包';
+    // 检测微信/QQ内置浏览器
+    var ua = navigator.userAgent.toLowerCase();
+    var isWechat = ua.indexOf('micromessenger') > -1;
+    var isQQ = ua.indexOf('qq/') > -1 || ua.indexOf('qqbrowser') > -1;
+    var isInsBrowser = isWechat || isQQ;
+    var pageUrl = window.location.origin + window.location.pathname;
+    
+    var html = '<div style="text-align:left;padding:16px;background:#1a1a2e;border:1px solid #f85149;border-radius:10px;line-height:1.6">';
+    if (isInsBrowser) {
+      html += '<div style="color:#f85149;font-weight:700;font-size:1em;margin-bottom:8px">⚠ 当前浏览器不支持钱包授权</div>';
+      html += '<div style="color:#c9d1d9;font-size:.85em;margin-bottom:10px">您正在使用' + (isWechat ? '微信' : 'QQ') + '内置浏览器，无法连接区块链钱包。</div>';
+    } else {
+      html += '<div style="color:#f85149;font-weight:700;font-size:1em;margin-bottom:8px">⚠ 未检测到钱包</div>';
+      html += '<div style="color:#c9d1d9;font-size:.85em;margin-bottom:10px">当前浏览器没有内置钱包。</div>';
+    }
+    html += '<div style="color:#d29922;font-weight:700;font-size:.85em;margin-bottom:6px">请按以下步骤操作：</div>';
+    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">1. 打开 TokenPocket / MetaMask / Trust Wallet App</div>';
+    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">2. 在 App 内找到「DApp 浏览器」或「发现」</div>';
+    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:10px">3. 粘贴以下链接打开本页面：</div>';
+    html += '<div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-family:monospace;font-size:.78em;color:#58a6ff;word-break:break-all">' + pageUrl + '</div>';
+    html += '<button onclick="navigator.clipboard.writeText(\'' + pageUrl + '\').then(function(){alert(\'链接已复制，请在钱包App的DApp浏览器中粘贴打开\')}).catch(function(){var t=document.createElement(\'textarea\');t.value=\'' + pageUrl + '\';document.body.appendChild(t);t.select();document.execCommand(\'copy\');document.body.removeChild(t);alert(\'链接已复制，请在钱包App的DApp浏览器中粘贴打开\')})" style="width:100%;padding:12px;border:none;border-radius:8px;cursor:pointer;background:#238636;color:#fff;font-weight:700;font-size:14px">📋 复制链接到剪贴板</button>';
+    html += '</div>';
+    
+    wfShowMsg(html, '#f85149');
     return;
   }
 
