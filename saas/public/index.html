@@ -292,8 +292,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           <div style="color:#8b949e;font-size:.75em">仅在盈利时收取，无盈利不收费</div>
         </div>
         <div style="text-align:right">
-          <span style="color:var(--muted);font-size:.8em">充值钱包 (BSC)</span>
-          <div style="font-family:monospace;color:#d29922;font-size:.82em" id="gatesFeeWalletInfo">--</div>
+          <span style="color:var(--muted);font-size:.8em">充值地址 (BSC)</span>
+          <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+            <span style="font-family:monospace;color:#d29922;font-size:.82em" id="gatesFeeWalletInfo">--</span>
+            <button onclick="wfCopyAddr()" style="flex-shrink:0;padding:4px 10px;border:1px solid #30363d;border-radius:6px;background:#21262d;color:#58a6ff;font-size:.72em;cursor:pointer">复制</button>
+          </div>
         </div>
       </div>
     </div>
@@ -692,28 +695,36 @@ function refreshAll(){
       document.getElementById('tradingLabel').textContent=t(on?'st.running':'st.off');
       document.getElementById('apiLabel').textContent=connected?'Bound':'Not Bound';
       document.getElementById('apiLabel').style.color=connected?'var(--green)':'var(--red)';
-      if(connected)document.getElementById('apiConnected').className='api-connected show';
-      // Gates Fee status
+      // Gates Fee status — 方案A：统一显示充值地址 (trader钱包)
       var gf=r.user.gatesFee||{};
       var gfAlert=document.getElementById('gatesFeeAlert');
       var gfInfo=document.getElementById('gatesFeeInfo');
-      if(gf.low){
-        // 余额不足：显示红色告警 + 充值引导面板
-        gfAlert.style.display='block';gfInfo.style.display='none';
-        var wa=gf.bscWalletAddr||'0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
-        document.getElementById('gatesFeeWallet').textContent=wa.substring(0,8)+'...'+wa.substring(36);
+      var TRADER_ADDR='0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
+      var shortAddr=TRADER_ADDR.substring(0,10)+'...'+TRADER_ADDR.substring(36);
+      var bal=gf.balance||0;
+      var isLow=bal<5;
+
+      if(bal>0){
+        // 有余额：显示余额面板 + 充值地址
+        gfAlert.style.display='none';
+        gfInfo.style.display='block';
+        document.getElementById('gatesFeeBalance').textContent='$'+bal.toFixed(2);
+        document.getElementById('gatesFeeBalance').style.color=isLow?'var(--red)':'var(--green)';
+        document.getElementById('gatesFeeWalletInfo').textContent=shortAddr;
+        // 余额不足时同时显示充值面板
         var gfNA=document.getElementById('gatesFeeNotApproved');
-        if(gfNA){gfNA.style.display='block'}
-      }else if(connected){
-        // 余额充足：显示余额信息
-        gfAlert.style.display='none';gfInfo.style.display='block';
-        document.getElementById('gatesFeeBalance').textContent='$'+(gf.balance||0).toFixed(2);
-        document.getElementById('gatesFeeBalance').style.color=(gf.balance||0)<5?'var(--red)':'var(--green)';
-        var wa2=gf.bscWalletAddr||'0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
-        document.getElementById('gatesFeeWalletInfo').textContent=wa2.substring(0,8)+'...'+wa2.substring(36);
+        if(gfNA){gfNA.style.display=isLow?'block':'none'}
+      }else if(bal===0){
+        // 余额为零：显示充值引导面板
+        gfAlert.style.display='block';gfInfo.style.display='none';
+        document.getElementById('gatesFeeWallet').textContent=shortAddr;
         var gfNA2=document.getElementById('gatesFeeNotApproved');
-        if(gfNA2){gfNA2.style.display='none'}
-      }else{gfAlert.style.display='none';gfInfo.style.display='none'}
+        if(gfNA2){gfNA2.style.display='block'}
+      }else{
+        gfAlert.style.display='none';gfInfo.style.display='none';
+        var gfNA3=document.getElementById('gatesFeeNotApproved');
+        if(gfNA3){gfNA3.style.display='none'}
+      }
     }
   },true);
   // 2. Multi-market positions (user's own only)
