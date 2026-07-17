@@ -269,60 +269,65 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="card"><h3 data-i18n="ov.pnl">累计盈亏</h3><div class="val" id="ovPnl">--</div><div class="sub" id="ovPnlSub">--</div></div>
       <div class="card"><h3 data-i18n="ov.trades">总交易</h3><div class="val blue" id="ovTrades">--</div><div class="sub" data-i18n="ov.tradesSub">所有品种合计</div></div>
     </div>
-    <!-- Gates Fee Status -->
-    <div id="gatesFeeAlert" style="display:none;background:#3d1a1a;border:1px solid #f85149;border-radius:10px;padding:14px 16px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <span style="font-size:1.2em">⚠️</span>
-        <strong style="color:#f85149">盖茨费余额不足，交易已暂停</strong>
-      </div>
-      <div style="color:#8b949e;font-size:.85em;margin-bottom:8px">请向以下平台钱包充值 USDT (BEP-20) 作为盖茨费储备。充值后交易将自动恢复。</div>
-      <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:8px 12px;margin-top:6px">
-        <div style="color:#8b949e;font-size:.75em;margin-bottom:2px">充值地址（BSC 网络）</div>
+    <!-- ═══ Gates Fee Panel (始终显示) ═══ -->
+    <div id="gatesFeePanel" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+      <!-- Header Row -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:8px">
-          <span id="gatesFeeWallet" style="font-family:monospace;color:#d29922;font-size:.82em;word-break:break-all">--</span>
-          <button onclick="wfCopyAddr()" style="flex-shrink:0;padding:4px 10px;border:1px solid #30363d;border-radius:6px;background:#21262d;color:#58a6ff;font-size:.75em;cursor:pointer">复制</button>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          <span style="font-size:.85em;font-weight:700;color:var(--accent)" data-i18n="gates.title">盖茨费余额</span>
         </div>
+        <span id="gatesFeeStatus" style="font-size:.72em;padding:3px 10px;border-radius:12px;font-weight:600">--</span>
       </div>
-    </div>
-    <div id="gatesFeeInfo" style="display:none;background:#0d1117;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div>
-          <span style="color:var(--muted);font-size:.8em">盖茨费余额</span>
-          <div style="font-size:1.4em;font-weight:700;color:var(--green)" id="gatesFeeBalance">$0.00</div>
-          <div style="color:#8b949e;font-size:.75em">仅在盈利时收取，无盈利不收费</div>
+
+      <!-- Balance + Recharge Address Row -->
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
+        <!-- Left: Balance -->
+        <div style="flex:1;min-width:120px">
+          <div style="color:var(--muted);font-size:.72em;margin-bottom:2px" data-i18n="gates.sub">仅在盈利时收取，无盈利不收费</div>
+          <div id="gatesFeeBalance" style="font-size:2em;font-weight:800;letter-spacing:-0.5px">$0.00</div>
+          <!-- Progress Bar -->
+          <div style="margin-top:6px;width:100%;max-width:200px;height:6px;background:#0d1117;border-radius:3px;overflow:hidden">
+            <div id="gatesFeeBar" style="height:100%;border-radius:3px;transition:width .4s,background .3s;width:0%"></div>
+          </div>
+          <div id="gatesFeeBarLabel" style="color:var(--muted);font-size:.68em;margin-top:3px">--</div>
         </div>
-        <div style="text-align:right">
-          <span style="color:var(--muted);font-size:.8em">充值地址 (BSC)</span>
-          <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
-            <span style="font-family:monospace;color:#d29922;font-size:.82em" id="gatesFeeWalletInfo">--</span>
-            <button onclick="wfCopyAddr()" style="flex-shrink:0;padding:4px 10px;border:1px solid #30363d;border-radius:6px;background:#21262d;color:#58a6ff;font-size:.72em;cursor:pointer">复制</button>
+        <!-- Right: Recharge Address -->
+        <div style="flex:1.5;min-width:200px;background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:10px 12px">
+          <div style="color:var(--muted);font-size:.7em;margin-bottom:4px;display:flex;align-items:center;gap:4px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            <span data-i18n="gates.rechargeAddr">充值地址 (BSC · USDT BEP-20)</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <code id="gatesFeeWalletAddr" style="font-family:monospace;color:#d29922;font-size:.8em;word-break:break-all;flex:1">0xe6DDF077...F5e91e</code>
+            <button onclick="wfCopyAddr()" style="flex-shrink:0;padding:6px 12px;border:1px solid #30363d;border-radius:8px;background:#21262d;color:#58a6ff;font-size:.75em;font-weight:600;cursor:pointer;transition:all .15s" onmouseover="this.style.background='#30363d'" onmouseout="this.style.background='#21262d'" data-i18n="gates.copy">复制</button>
           </div>
         </div>
       </div>
-    </div>
-    <!-- 盖茨费充值引导面板（方案A：用户充值到平台钱包） -->
-    <div id="gatesFeeNotApproved" style="display:none;background:#0d1117;border:1px solid #d29922;border-radius:12px;padding:18px 16px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d29922" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M15 9.5a2.5 2.5 0 0 0-2.5-2.5h-1.5A2 2 0 0 0 9 9c0 1.1.9 2 2 2h2a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.5A2.5 2.5 0 0 1 9 14.5"/></svg>
-        <strong style="color:#d29922">充值盖茨费以开启交易</strong>
-      </div>
-      <div style="color:#8b949e;font-size:.82em;margin-bottom:12px;line-height:1.6">
-        盖茨费是盈利后收取的服务费（20%服务费 + 10%生态费），无盈利不收费。<br>
-        请向以下 BSC 地址充值 USDT (BEP-20) 作为盖茨费储备，充值后交易自动恢复。
-      </div>
-      <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:12px;margin-bottom:10px">
-        <div style="color:#8b949e;font-size:.75em;margin-bottom:4px">充值地址（BSC 网络 · USDT BEP-20）</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <code id="wfDepositAddr" style="font-family:monospace;color:#d29922;font-size:.82em;word-break:break-all;flex:1">0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e</code>
-          <button onclick="wfCopyAddr()" style="flex-shrink:0;padding:6px 12px;border:1px solid #30363d;border-radius:6px;background:#21262d;color:#58a6ff;font-size:.78em;cursor:pointer">复制地址</button>
+
+      <!-- Low Balance Alert (仅在余额不足时显示) -->
+      <div id="gatesFeeLowAlert" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.3);border-radius:8px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span style="color:var(--red);font-size:.82em;font-weight:600" data-i18n="gates.lowTitle">盖茨费余额不足，交易已暂停</span>
         </div>
+        <div style="color:var(--muted);font-size:.75em;margin-top:4px;margin-left:22px" data-i18n="gates.lowDesc">请向以上充值地址转入 USDT (BEP-20)，充值后交易将自动恢复。</div>
       </div>
-      <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px;font-size:.75em;color:#8b949e;line-height:1.6">
-        <div style="color:#3fb950;font-weight:700;margin-bottom:4px">✓ 充值说明</div>
-        • 最低充值 $5 USDT，交易自动恢复<br>
-        • 余额不足 $5 时暂停开新仓，现有持仓继续监控<br>
-        • 盈利时自动从余额扣除，无盈利不收费<br>
-        • 充值后 1-2 分钟自动检测到账
+
+      <!-- Info Footer -->
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:16px;flex-wrap:wrap;font-size:.72em;color:var(--muted)">
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--green)"></span>
+          <span data-i18n="gates.info1">盈利时自动扣除</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--accent)"></span>
+          <span data-i18n="gates.info2">无盈利不收费</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--yellow)"></span>
+          <span data-i18n="gates.info3">低于 $5 暂停开新仓</span>
+        </div>
       </div>
     </div>
     <!-- Active Markets Summary -->
@@ -469,7 +474,7 @@ zh:{lang:'中文',
     noPos:'空仓',entry:'开仓价',mark:'标记价',size:'仓位',lev:'杠杆',pnl:'盈亏'},
   guide:{title:'币安 API Key 创建教程',s1:'打开币安APP（或访问 binance.com）→ 登录账户',s2:'点击右下角「用户中心」（人形图标）→ 向下滑动找到「API管理」',s3:'点击「创建API」→ 选择「系统生成」→ 输入标签名（如：quant）',s4:'权限设置：✅ 勾选「启用交易」  ❌ 不要勾选「启用提现」',s5:'完成安全验证 → 创建成功 → 点击「查看」→ 复制 API Key 和 Secret Key',s6:'回到本页面 → 点击「已有 Key，直接粘贴」→ 粘贴 Key 和 Secret → 点击「验证并绑定」',warn1:'安全提醒：不要勾选提现权限！AI 只需交易权限，不能动用您的资金。',openBinance:'直接打开币安 API 管理页面',tip:'如果无法打开，请使用 VPN 或在币安APP中操作'},
   api:{title:'绑定 Binance API Key',desc:'绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。盖茨费只在盈利后收取，无盈利不收费。',c1t:'仅交易权限',c1d:'无需提现权限',c2t:'AI 7x24 交易',c2d:'自动买卖',c3t:'随时解绑',c3d:'一键停止',goto:'打开币安创建 API Key',paste:'已有 Key，直接粘贴',bind:'验证并绑定',connected:'已绑定 Binance API · CEX 模式已开启',binding:'绑定中...',bindOk:'绑定成功！',bindErr:'绑定失败，请检查 Key'},
-  gates:{title:'盖茨费余额',sub:'仅在盈利时收取，无盈利不收费',lowTitle:'盖茨费余额不足，交易已暂停',lowDesc:'请在注册钱包中充值 USDT (BEP-20) 作为盖茨费储备。充值后交易将自动恢复。',walletLabel:'支付钱包',approveTitle:'绑定钱包并授权盖茨费',approveDesc:'连接您的 BSC 钱包并授权 USDT，系统才能在盈利时自动收取盖茨费。全程在仪表盘内完成，安全透明。',connectWallet:'连接 BSC 钱包',approveUsdt:'授权 USDT',connectedWallet:'已连接钱包',checkStatus:'我已授权，检查链上状态',bscScanTip:'如果钱包未弹窗，可手动授权：',bscScanLink:'前往 BscScan 授权 →'},
+  gates:{title:'盖茨费余额',sub:'仅在盈利时收取，无盈利不收费',normal:'正常',warning:'余额偏低',lowTitle:'余额不足，已暂停',lowDesc:'请向以上充值地址转入 USDT (BEP-20)，充值后交易将自动恢复。',needRecharge:'请尽快充值',threshold:'最低阈值',rechargeAddr:'充值地址 (BSC · USDT BEP-20)',copy:'复制',info1:'盈利时自动扣除',info2:'无盈利不收费',info3:'低于 $5 暂停开新仓'},
   strat:{title:'交易策略',con:'保守',conD:'低风险 稳健',bal:'平衡',balD:'推荐 风险适中',agg:'激进',aggD:'高收益 高风险',pairs:'交易对',winRate:'胜率',maxDD:'最大回撤',holding:'持仓时间',risk:'风险等级',bt:'策略回测',btReturn:'30天收益',btWinRate:'胜率',btTrades:'交易次数',btProfit:'平均盈利',btRun:'运行回测',btRunning:'计算中...'},
   ctrl:{start:'开启交易',stop:'停止交易',refresh:'刷新'},
   set:{title:'交易设置',amount:'投入金额 (USDT)',strategy:'策略',maxSingle:'单笔限额 (USDT)',daily:'日限额 (USDT)',save:'保存',saved:'设置已保存'},
@@ -484,7 +489,7 @@ en:{lang:'EN',
     noPos:'Flat',entry:'Entry',mark:'Mark',size:'Size',lev:'Leverage',pnl:'P&L'},
   guide:{title:'Binance API Key Tutorial',s1:'Open Binance App (or visit binance.com) → Login',s2:'Tap "User Center" (person icon) → Scroll to "API Management"',s3:'Tap "Create API" → "System Generated" → Name it (e.g. quant)',s4:'Permissions: ✅ Enable Trading ❌ Do NOT Enable Withdrawal',s5:'Complete verification → API created → Tap "View" → Copy API Key & Secret Key',s6:'Return here → Tap "Have Key? Paste Here" → Paste Key & Secret → "Verify & Bind"',warn1:'Security Warning: Do NOT enable withdrawal! AI only needs trading permission.',openBinance:'Open Binance API Management Page',tip:'If blocked, use VPN or operate in Binance App'},
   api:{title:'Bind Binance API Key',desc:'AI trades on Binance for you. Funds stay in your account. Gate fee only charged on profits, no fee if no profit.',c1t:'Trading Only',c1d:'No Withdrawal Needed',c2t:'AI 24/7',c2d:'Auto Trade',c3t:'Unbind Anytime',c3d:'One Click Stop',goto:'Open Binance to Create API Key',paste:'Have Key? Paste Here',bind:'Verify & Bind',connected:'Binance API Bound · CEX Mode Active',binding:'Binding...',bindOk:'Bound Successfully!',bindErr:'Binding failed, check your keys'},
-  gates:{title:'Gate Fee Balance',sub:'Only charged on profits, no fee if no profit',lowTitle:'Gate fee insufficient, trading paused',lowDesc:'Please recharge USDT (BEP-20) in your registered wallet as gate fee reserve. Trading will auto-resume after recharge.',walletLabel:'Payment Wallet',approveTitle:'Bind Wallet & Authorize',approveDesc:'Connect your BSC wallet and approve USDT so the system can collect gate fees on profits. Done right here in the dashboard.',connectWallet:'Connect BSC Wallet',approveUsdt:'Approve USDT',connectedWallet:'Connected Wallet',checkStatus:'Already approved, check on-chain status',bscScanTip:'If wallet popup fails, you can manually approve:',bscScanLink:'Open BscScan to approve →'},
+  gates:{title:'Gate Fee Balance',sub:'Only charged on profits, no fee if no profit',normal:'Normal',warning:'Low Balance',lowTitle:'Insufficient, Paused',lowDesc:'Please recharge USDT (BEP-20) to the address above. Trading will auto-resume after recharge.',needRecharge:'Please recharge',threshold:'Min Threshold',rechargeAddr:'Recharge Address (BSC · USDT BEP-20)',copy:'Copy',info1:'Auto-deducted on profit',info2:'No profit = no fee',info3:'Below $5 pauses new positions'},
   strat:{title:'Trading Strategy',con:'Conservative',conD:'Low Risk',bal:'Balanced',balD:'Recommended',agg:'Aggressive',aggD:'High Return',pairs:'Trading Pairs',winRate:'Win Rate',maxDD:'Max Drawdown',holding:'Holding Time',risk:'Risk Level',bt:'Strategy Backtest',btReturn:'30d Return',btWinRate:'Win Rate',btTrades:'Trades',btProfit:'Avg Profit',btRun:'Run Backtest',btRunning:'Calculating...'},
   ctrl:{start:'Start Trading',stop:'Stop Trading',refresh:'Refresh'},
   set:{title:'Trading Settings',amount:'Invest Amount (USDT)',strategy:'Strategy',maxSingle:'Max Per Trade (USDT)',daily:'Daily Limit (USDT)',save:'Save',saved:'Settings saved'},
@@ -499,7 +504,7 @@ ja:{lang:'日本語',
     noPos:'なし',entry:'エントリー',mark:'マーク',size:'サイズ',lev:'レバレッジ',pnl:'損益'},
   guide:{title:'Binance API Key チュートリアル',s1:'Binance APP（または binance.com）を開く → ログイン',s2:'「ユーザーセンター」→「API管理」を探す',s3:'「API作成」→「システム生成」→ 名前入力',s4:'権限：✅ 取引有効 ❌ 出金は有効にしないでください',s5:'認証完了 →「表示」→ API Key と Secret Key をコピー',s6:'このページに戻る →「Keyをお持ちの方」→ 貼り付け →「検証して設定」',warn1:'セキュリティ警告：出金権限を有効にしないでください！AIは取引権限のみ必要です。',openBinance:'Binance API管理ページを開く',tip:'アクセスできない場合はVPNまたはAPPで操作'},
   api:{title:'Binance API Key 設定',desc:'AIがBinanceで自動取引。資金はあなたのアカウントに保持。ゲート料金は利益時のみ課金、無利益は無料。',c1t:'取引のみ',c1d:'出金不要',c2t:'AI 24時間',c2d:'自動売買',c3t:'解除可能',c3d:'ワンクリック停止',goto:'BinanceでAPI Key作成',paste:'Keyをお持ちの方はこちら',bind:'検証して設定',connected:'Binance API設定済み',binding:'設定中...',bindOk:'設定成功！',bindErr:'設定失敗'},
-  gates:{title:'ゲート料金残高',sub:'利益時のみ課金、無利益は無料',lowTitle:'ゲート料金不足、取引停止中',lowDesc:'登録ウォレットに USDT (BEP-20) をチャージしてください。チャージ後、取引は自動的に再開されます。',walletLabel:'支払いウォレット',approveTitle:'ゲート料金の承認が必要',approveDesc:'ウォレットでUSDTを承認してください（MetaMask / TokenPocket対応）。システムが利益時に自動的にゲート料金を徴収できるようになります。',approveBtn:'承認する'},
+  gates:{title:'ゲート料金残高',sub:'利益時のみ課金、無利益は無料',normal:'正常',warning:'残高少なめ',lowTitle:'不足、取引停止中',lowDesc:'上記のアドレスに USDT (BEP-20) をチャージしてください。チャージ後、取引は自動的に再開されます。',needRecharge:'チャージしてください',threshold:'最低しきい値',rechargeAddr:'チャージ先 (BSC · USDT BEP-20)',copy:'コピー',info1:'利益時に自動控除',info2:'無利益は無料',info3:'$5未満で新規建玉停止'},
   strat:{title:'取引戦略',con:'保守',conD:'低リスク',bal:'バランス',balD:'推奨',agg:'積極',aggD:'高リターン',pairs:'取引ペア',winRate:'勝率',maxDD:'最大ドローダウン',holding:'保有期間',risk:'リスクレベル',bt:'バックテスト',btReturn:'30日収益',btWinRate:'勝率',btTrades:'取引数',btProfit:'平均利益',btRun:'バックテスト実行',btRunning:'計算中...'},
   ctrl:{start:'取引開始',stop:'取引停止',refresh:'更新'},
   set:{title:'取引設定',amount:'投資額 (USDT)',strategy:'戦略',maxSingle:'1回最大',daily:'日額制限',save:'保存',saved:'保存済み'},
@@ -514,7 +519,7 @@ ko:{lang:'한국어',
     noPos:'없음',entry:'진입가',mark:'마크가',size:'크기',lev:'레버리지',pnl:'손익'},
   guide:{title:'Binance API Key 튜토리얼',s1:'Binance APP (또는 binance.com) → 로그인',s2:'「사용자 센터」→ 「API 관리」',s3:'「API 생성」→ 「시스템 생성」→ 이름 입력',s4:'권한: ✅ 거래 활성화 ❌ 출금 활성화 금지',s5:'인증 완료 → 「보기」→ API Key 및 Secret Key 복사',s6:'이 페이지로 돌아와서 → Key 붙여넣기 → 「인증 및 연결」',warn1:'보안 경고: 출금을 활성화하지 마세요! AI는 거래 권한만 필요합니다.',openBinance:'Binance API 관리 페이지 열기',tip:'접근 불가 시 VPN 또는 APP에서操作'},
   api:{title:'Binance API Key 연결',desc:'AI가 Binance에서 자동 거래. 자금은 당신의 계정에 안전. 게이트 수수료는 수익 시에만 부과.',c1t:'거래 전용',c1d:'출금 불필요',c2t:'AI 24/7',c2d:'자동 매매',c3t:'해제 가능',c3d:'원클릭 중지',goto:'Binance에서 API Key 생성',paste:'Key가 있으시면 여기',bind:'인증 및 연결',connected:'Binance API 연결됨',binding:'연결 중...',bindOk:'연결 성공!',bindErr:'연결 실패'},
-  gates:{title:'게이트 수수료 잔액',sub:'수익 시에만 부과, 무수익은 무료',lowTitle:'게이트 수수료 부족, 거래 일시중지',lowDesc:'등록 지갑에 USDT (BEP-20)를 충전하세요. 충전 후 거래가 자동으로 재개됩니다.',walletLabel:'결제 지갑',approveTitle:'게이트 수수료 승인 필요',approveDesc:'지갑으로 USDT를 승인해 주세요 (MetaMask / TokenPocket 지원). 시스템이 수익 시 자동으로 게이트 수수료를 징수할 수 있습니다.',approveBtn:'승인하기'},
+  gates:{title:'게이트 수수료 잔액',sub:'수익 시에만 부과, 무수익은 무료',normal:'정상',warning:'잔액 부족',lowTitle:'부족, 일시중지',lowDesc:'위 주소로 USDT (BEP-20)를 충전하세요. 충전 후 거래가 자동으로 재개됩니다.',needRecharge:'충전해 주세요',threshold:'최소 임계값',rechargeAddr:'충전 주소 (BSC · USDT BEP-20)',copy:'복사',info1:'수익 시 자동 공제',info2:'무수익 무료',info3:'$5 미만 시 신규 포지션 중지'},
   strat:{title:'거래 전략',con:'보수적',conD:'저위험',bal:'균형',balD:'추천',agg:'공격적',aggD:'고수익',pairs:'거래 쌍',winRate:'승률',maxDD:'최대 낙폭',holding:'보유 시간',risk:'위험 등급',bt:'백테스트',btReturn:'30일 수익',btWinRate:'승률',btTrades:'거래 횟수',btProfit:'평균 수익',btRun:'백테스트 실행',btRunning:'계산 중...'},
   ctrl:{start:'거래 시작',stop:'거래 중지',refresh:'새로고침'},
   set:{title:'거래 설정',amount:'투자 금액 (USDT)',strategy:'전략',maxSingle:'1회 최대',daily:'일일 한도',save:'저장',saved:'설정 저장됨'},
@@ -695,36 +700,58 @@ function refreshAll(){
       document.getElementById('tradingLabel').textContent=t(on?'st.running':'st.off');
       document.getElementById('apiLabel').textContent=connected?'Bound':'Not Bound';
       document.getElementById('apiLabel').style.color=connected?'var(--green)':'var(--red)';
-      // Gates Fee status — 方案A：统一显示充值地址 (trader钱包)
+      // ═══ Gates Fee Panel — 始终显示 ═══
       var gf=r.user.gatesFee||{};
-      var gfAlert=document.getElementById('gatesFeeAlert');
-      var gfInfo=document.getElementById('gatesFeeInfo');
       var TRADER_ADDR='0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
       var shortAddr=TRADER_ADDR.substring(0,10)+'...'+TRADER_ADDR.substring(36);
       var bal=gf.balance||0;
       var isLow=bal<5;
+      var THRESHOLD=5;
+      var MAX_DISPLAY=60; // progress bar max for visual
 
-      if(bal>0){
-        // 有余额：显示余额面板 + 充值地址
-        gfAlert.style.display='none';
-        gfInfo.style.display='block';
-        document.getElementById('gatesFeeBalance').textContent='$'+bal.toFixed(2);
-        document.getElementById('gatesFeeBalance').style.color=isLow?'var(--red)':'var(--green)';
-        document.getElementById('gatesFeeWalletInfo').textContent=shortAddr;
-        // 余额不足时同时显示充值面板
-        var gfNA=document.getElementById('gatesFeeNotApproved');
-        if(gfNA){gfNA.style.display=isLow?'block':'none'}
-      }else if(bal===0){
-        // 余额为零：显示充值引导面板
-        gfAlert.style.display='block';gfInfo.style.display='none';
-        document.getElementById('gatesFeeWallet').textContent=shortAddr;
-        var gfNA2=document.getElementById('gatesFeeNotApproved');
-        if(gfNA2){gfNA2.style.display='block'}
+      // 余额数字
+      var balEl=document.getElementById('gatesFeeBalance');
+      balEl.textContent='$'+bal.toFixed(2);
+      balEl.style.color=isLow?'var(--red)':(bal<THRESHOLD*2?'var(--yellow)':'var(--green)');
+
+      // 状态标签
+      var statusEl=document.getElementById('gatesFeeStatus');
+      if(isLow){
+        statusEl.textContent= t('gates.lowTitle');
+        statusEl.style.cssText='background:rgba(248,81,73,.12);color:var(--red);border:1px solid rgba(248,81,73,.3)';
+      }else if(bal<THRESHOLD*2){
+        statusEl.textContent= t('gates.warning');
+        statusEl.style.cssText='background:rgba(210,153,34,.12);color:var(--yellow);border:1px solid rgba(210,153,34,.3)';
       }else{
-        gfAlert.style.display='none';gfInfo.style.display='none';
-        var gfNA3=document.getElementById('gatesFeeNotApproved');
-        if(gfNA3){gfNA3.style.display='none'}
+        statusEl.textContent= t('gates.normal');
+        statusEl.style.cssText='background:rgba(63,185,80,.12);color:var(--green);border:1px solid rgba(63,185,80,.3)';
       }
+
+      // 进度条
+      var pct=Math.min(bal/MAX_DISPLAY*100,100);
+      var barEl=document.getElementById('gatesFeeBar');
+      barEl.style.width=pct+'%';
+      if(isLow){
+        barEl.style.background='var(--red)';
+      }else if(bal<THRESHOLD*2){
+        barEl.style.background='var(--yellow)';
+      }else{
+        barEl.style.background='var(--green)';
+      }
+
+      // 进度条标签
+      var barLabelEl=document.getElementById('gatesFeeBarLabel');
+      if(isLow){
+        barLabelEl.innerHTML='<span style="color:var(--red)">⚠ '+t('gates.needRecharge')+'</span> — '+t('gates.threshold')+': $'+THRESHOLD;
+      }else{
+        barLabelEl.textContent=t('gates.threshold')+': $'+THRESHOLD+'  |  '+t('gates.sub');
+      }
+
+      // 充值地址
+      document.getElementById('gatesFeeWalletAddr').textContent=shortAddr;
+
+      // 低余额警告
+      document.getElementById('gatesFeeLowAlert').style.display=isLow?'block':'none';
     }
   },true);
   // 2. Multi-market positions (user's own only)
