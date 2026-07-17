@@ -779,6 +779,10 @@ class SaasServer {
           recordLoginFailure(username.toLowerCase());
           return res.status(401).json({ error: '用户名或密码错误' });
         }
+        // 检查是否已注销
+        if (user.deleted) {
+          return res.status(403).json({ error: '该账号已被注销，请联系管理员' });
+        }
         const hash = crypto.scryptSync(password, user.salt, 64).toString('hex');
         if (hash !== user.passwordHash) {
           recordLoginFailure(username.toLowerCase());
