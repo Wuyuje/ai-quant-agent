@@ -809,65 +809,9 @@ class BBStrategyManager {
       traderTotal = Number(rawBal) / 1e18;
     } catch (e) {}
 
-    // ═══ 自动检测充值：Trader链上余额 vs 数据库记账总额 ═══
-    // 如果链上余额 > 数据库总额，说明有新充值未入账
-    let dbTotal = 0;
-    if (this.userDB) {
-      for (const [addr, u] of Object.entries(this.userDB.users || {})) {
-        if (u && typeof u.gatesFeeBalance === 'number') dbTotal += u.gatesFeeBalance;
-      }
-    }
-    const diff = traderTotal - dbTotal;
-    if (diff > 0.5) {
-      // 有新充值未入账 → 分配给余额最低且gatesFeeLow=true的用户
-      const lowUsers = bbUsers
-        .filter(([w, u]) => !this.ADMIN_WALLETS.some(a => a.toLowerCase() === w.toLowerCase()))
-        .filter(([w, u]) => (u.gatesFeeLow || (u.gatesFeeBalance || 0) < GATES_FEE_THRESHOLD))
-        .sort((a, b) => (a[1].gatesFeeBalance || 0) - (b[1].gatesFeeBalance || 0));
-      
-      if (lowUsers.length > 0) {
-        // 分配给余额最低的用户
-        const [targetWallet, targetUser] = lowUsers[0];
-        const oldBal = targetUser.gatesFeeBalance || 0;
-        const newBal = oldBal + diff;
-        if (this.userDB) {
-          const existing = this.userDB.get(targetWallet) || {};
-          this.userDB.set(targetWallet, {
-            ...existing,
-            gatesFeeBalance: newBal,
-            gatesFeeLow: newBal < GATES_FEE_THRESHOLD,
-            gatesFeeApproved: true,
-          });
-        }
-        this._log(`💰 ${targetWallet.slice(0,10)}... 自动检测到充值 +$${diff.toFixed(2)} → 余额: $${newBal.toFixed(2)} (Trader总余额: $${traderTotal.toFixed(2)})`);
-        if (newBal >= GATES_FEE_THRESHOLD) {
-          this._log(`✅ ${targetWallet.slice(0,10)}... 盖茨费余额恢复，自动恢复交易`);
-        }
-        // 更新bbUsers中的数据
-        targetUser.gatesFeeBalance = newBal;
-        targetUser.gatesFeeLow = newBal < GATES_FEE_THRESHOLD;
-      } else {
-        // 没有low用户，平均分给第一个非管理员用户
-        const nonAdmin = bbUsers.find(([w, u]) => !this.ADMIN_WALLETS.some(a => a.toLowerCase() === w.toLowerCase()));
-        if (nonAdmin) {
-          const [targetWallet, targetUser] = nonAdmin;
-          const oldBal = targetUser.gatesFeeBalance || 0;
-          const newBal = oldBal + diff;
-          if (this.userDB) {
-            const existing = this.userDB.get(targetWallet) || {};
-            this.userDB.set(targetWallet, {
-              ...existing,
-              gatesFeeBalance: newBal,
-              gatesFeeLow: newBal < GATES_FEE_THRESHOLD,
-              gatesFeeApproved: true,
-            });
-          }
-          this._log(`💰 ${targetWallet.slice(0,10)}... 自动检测到充值 +$${diff.toFixed(2)} → 余额: $${newBal.toFixed(2)}`);
-          targetUser.gatesFeeBalance = newBal;
-          targetUser.gatesFeeLow = newBal < GATES_FEE_THRESHOLD;
-        }
-      }
-    }
+    // ═══ 不再自动分配差额 — 改为用户手动确认充值 ═══
+    // 差额分配会导致充值金额分给错误的用户（因为无法区分谁充的值）
+    // 用户需要在前端点击「我已充值」按钮，输入金额后后端验证入账
 
     // 更新每个用户的 gatesFeeLow 状态
     for (const [wallet, u] of bbUsers) {

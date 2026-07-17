@@ -1607,41 +1607,9 @@ class SaasServer {
         };
       }
 
-      // ═══ 仪表盘实时检测充值：Trader链上余额 vs 数据库总额，有差额自动入账 ═══
+      // ═══ 盖茨费余额：直接读数据库（用户通过「我已充值」按钮入账） ═══
       let _gatesFeeBalance = user?.gatesFeeBalance ?? 0;
       let _gatesFeeLow = user?.gatesFeeLow ?? false;
-      try {
-        const _traderAddr = new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address;
-        // 用直接 RPC eth_call 查 USDT balanceOf（避免 ethers.Contract 初始化卡住）
-        const _data = '0x70a08231' + '000000000000000000000000' + _traderAddr.toLowerCase().replace('0x','');
-        const _ctrl = new AbortController();
-        const _to = setTimeout(() => _ctrl.abort(), 5000);
-        const _resp = await fetch('https://bsc-rpc.publicnode.com', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: '0x55d398326f99059fF775485246999027B3197955', data: _data }, 'latest'] }),
-          signal: _ctrl.signal,
-        });
-        clearTimeout(_to);
-        const _json = await _resp.json();
-        const _traderTotal = _json.result ? Number(BigInt(_json.result)) / 1e18 : 0;
-        let _dbTotal = 0;
-        for (const [, _u] of Object.entries(this.userDB.users || {})) {
-          if (_u && typeof _u.gatesFeeBalance === 'number') _dbTotal += _u.gatesFeeBalance;
-        }
-        const _diff = _traderTotal - _dbTotal;
-        if (_diff > 0.5) {
-          _gatesFeeBalance = _gatesFeeBalance + _diff;
-          _gatesFeeLow = _gatesFeeBalance < 5;
-          this.userDB.set(session.wallet, {
-            ...user,
-            gatesFeeBalance: _gatesFeeBalance,
-            gatesFeeLow: _gatesFeeLow,
-            gatesFeeApproved: true,
-          });
-          console.log(`[GatesFee] 💰 ${session.wallet.slice(0,10)}... 仪表盘实时检测到充值 +$${_diff.toFixed(2)} → 余额: $${_gatesFeeBalance.toFixed(2)} (Trader总: $${_traderTotal.toFixed(2)})`);
-        }
-      } catch (e) { /* RPC失败不影响正常返回 */ }
 
       res.json({
         success: true,
@@ -1877,7 +1845,7 @@ class SaasServer {
       });
     });
 
-    // ═══ 盖茨费：用户确认已充值 — 后端查Trader钱包余额自动确认 ═══
+    // ═══ 盖茨费：用户确认已充值 — 用户输入金额，后端查Trader钱包余额验证 ═══
     this.app.post('/api/gates-fee/confirm-recharge', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1885,60 +1853,62 @@ class SaasServer {
       if (!user) return res.status(400).json({ error: '用户不存在' });
 
       try {
-        const { ethers } = require('ethers');
-        const BSC_RPC = 'https://bsc-rpc.publicnode.com';
-        const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
-        const provider = new ethers.JsonRpcProvider(BSC_RPC);
-        const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
-        const usdtContract = new ethers.Contract(USDT_ADDR, [
-          'function balanceOf(address) view returns (uint256)'
-        ], provider);
-
-        // 1. 查Trader钱包实际USDT余额
-        const rawBal = await usdtContract.balanceOf(traderAddr);
-        const traderBalance = Number(rawBal) / 1e18;
-
-        // 2. 查所有用户的记账余额之和
-        let dbTotal = 0;
-        for (const [addr, u] of Object.entries(this.userDB.users || {})) {
-          if (u && typeof u.gatesFeeBalance === 'number') {
-            dbTotal += u.gatesFeeBalance;
-          }
+        const { amount: inputAmount } = req.body;
+        const amount = parseFloat(inputAmount);
+        if (!amount || amount <= 0) {
+          return res.json({ success: false, message: '请输入有效的充值金额' });
         }
 
-        // 3. 差额 = 链上余额 - 数据库总和（差额就是未检测到的充值）
-        const diff = traderBalance - dbTotal;
+        // 用 fetch + eth_call 查 Trader 钱包 USDT 余额（避免 ethers.Contract 卡住）
+        const traderAddr = new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address;
+        const _data = '0x70a08231' + '000000000000000000000000' + traderAddr.toLowerCase().replace('0x','');
+        const _ctrl = new AbortController();
+        const _to = setTimeout(() => _ctrl.abort(), 8000);
+        const _resp = await fetch('https://bsc-rpc.publicnode.com', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: '0x55d398326f99059fF775485246999027B3197955', data: _data }, 'latest'] }),
+          signal: _ctrl.signal,
+        });
+        clearTimeout(_to);
+        const _json = await _resp.json();
+        const traderBalance = _json.result ? Number(BigInt(_json.result)) / 1e18 : 0;
 
-        if (diff > 0.5) {
-          // 有新充值未入账 → 把差额加到当前用户
+        // 查所有用户记账余额之和
+        let dbTotal = 0;
+        for (const [, _u] of Object.entries(this.userDB.users || {})) {
+          if (_u && typeof _u.gatesFeeBalance === 'number') dbTotal += _u.gatesFeeBalance;
+        }
+
+        // 验证：Trader链上余额 >= 数据库总额 + 用户申报的金额
+        // 这意味着用户申报的金额确实在Trader钱包里
+        const expectedTotal = dbTotal + amount;
+        if (traderBalance + 0.5 >= expectedTotal) {
+          // 余额足够，入账
           const oldBalance = user.gatesFeeBalance || 0;
-          const newBalance = oldBalance + diff;
+          const newBalance = oldBalance + amount;
           this.userDB.set(session.wallet, {
             ...user,
             gatesFeeBalance: newBalance,
             gatesFeeLow: newBalance < 5,
             gatesFeeApproved: true,
           });
-          console.log(`[GatesFee] ✅ ${session.wallet.slice(0,10)}... 确认充值 $${diff.toFixed(2)} → 余额: $${newBalance.toFixed(2)} (Trader总余额: $${traderBalance.toFixed(2)})`);
+          console.log(`[GatesFee] ✅ ${session.wallet.slice(0,10)}... 确认充值 $${amount.toFixed(2)} → 余额: $${newBalance.toFixed(2)} (Trader总余额: $${traderBalance.toFixed(2)}, DB总额: $${dbTotal.toFixed(2)})`);
           res.json({
             success: true,
-            message: `充值确认成功！+$${diff.toFixed(2)}`,
+            message: `充值确认成功！+$${amount.toFixed(2)}`,
             oldBalance: oldBalance.toFixed(2),
             newBalance: newBalance.toFixed(2),
             traderBalance: traderBalance.toFixed(2),
-            recovered: newBalance >= 5, // 余额恢复，可以恢复交易
+            recovered: newBalance >= 5,
           });
         } else {
-          // 没有差额，可能充值还没到账或已经入账
-          const currentBalance = user.gatesFeeBalance || 0;
+          // Trader钱包余额不足
           res.json({
-            success: true,
-            message: '暂未检测到新充值。如果您刚转账，请等待1-2分钟后重试。',
-            currentBalance: currentBalance.toFixed(2),
+            success: false,
+            message: `Trader钱包余额不足。链上余额: $${traderBalance.toFixed(2)}, 当前记账总额: $${dbTotal.toFixed(2)}, 无法入账 $${amount.toFixed(2)}`,
             traderBalance: traderBalance.toFixed(2),
             dbTotal: dbTotal.toFixed(2),
-            diff: diff.toFixed(2),
-            recovered: currentBalance >= 5,
           });
         }
       } catch (e) {

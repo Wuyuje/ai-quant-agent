@@ -1145,41 +1145,37 @@ function wfCopyAddr() {
   }
 }
 
-// ═══ 确认充值到账 — 后端查Trader钱包余额自动确认 ═══
+// ═══ 确认充值到账 — 用户输入金额，后端查Trader钱包余额验证 ═══
 async function confirmRecharge() {
   var btn = document.getElementById('confirmRechargeBtn');
   var msgEl = document.getElementById('confirmRechargeMsg');
   if (!btn) return;
+  
+  // 弹出输入框让用户输入充值金额
+  var input = prompt('请输入您本次充值的 USDT 金额：\n（请输入数字，如 10、20、50）');
+  if (!input) return; // 用户取消
+  var amount = parseFloat(input);
+  if (!amount || amount <= 0) {
+    if (msgEl) { msgEl.textContent = '❌ 请输入有效金额'; msgEl.style.color = 'var(--red)'; }
+    return;
+  }
+  
   btn.disabled = true;
-  btn.textContent = '查询中...';
+  btn.textContent = '验证中...';
   if (msgEl) msgEl.textContent = '';
   try {
     var resp = await fetch('/api/gates-fee/confirm-recharge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
-      body: JSON.stringify({})
+      body: JSON.stringify({ amount: amount })
     });
     var data = await resp.json();
     if (data.success) {
-      if (data.recovered) {
-        // 充值成功且余额恢复
-        if (msgEl) { msgEl.textContent = '✅ ' + data.message + ' 交易已恢复！'; msgEl.style.color = 'var(--green)'; }
-        btn.style.display = 'none';
-        // 刷新仪表盘
-        setTimeout(function() { location.reload(); }, 2000);
-      } else if (data.newBalance) {
-        // 有充值但余额仍不足
-        if (msgEl) { msgEl.textContent = '⚠️ ' + data.message + ' 但余额仍低于 $5，请继续充值。'; msgEl.style.color = 'var(--yellow)'; }
-        btn.disabled = false;
-        btn.textContent = '我已充值，确认到账';
-      } else {
-        // 没检测到新充值
-        if (msgEl) { msgEl.textContent = data.message + ' (当前余额: $' + (data.currentBalance||'0') + ', Trader总余额: $' + (data.traderBalance||'0') + ')'; msgEl.style.color = 'var(--muted)'; }
-        btn.disabled = false;
-        btn.textContent = '重新查询';
-      }
+      if (msgEl) { msgEl.textContent = '✅ ' + data.message + ' 余额: $' + data.newBalance; msgEl.style.color = 'var(--green)'; }
+      btn.style.display = 'none';
+      setTimeout(function() { location.reload(); }, 2000);
     } else {
-      if (msgEl) { msgEl.textContent = '❌ ' + (data.error || '查询失败'); msgEl.style.color = 'var(--red)'; }
+      if (msgEl) { msgEl.textContent = '❌ ' + (data.message || data.error || '验证失败'); msgEl.style.color = 'var(--red)'; }
       btn.disabled = false;
       btn.textContent = '我已充值，确认到账';
     }
