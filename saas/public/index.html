@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>ARK Quant Agent</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -597,7 +600,18 @@ function api(method,url,data,cb,auth){
   x.setRequestHeader('Content-Type','application/json');
   if(auth)x.setRequestHeader('x-api-key',getToken());
   x.timeout=15000;
-  x.onreadystatechange=function(){if(x.readyState===4){try{cb(JSON.parse(x.responseText))}catch(e){toast('err','Parse error')}}};
+  x.onreadystatechange=function(){
+    if(x.readyState===4){
+      // 401 未登录 → 自动清除token跳回登录
+      if(x.status===401&&auth){
+        localStorage.removeItem('ak_tk');localStorage.removeItem('ak_us');
+        clearInterval(_refreshTimer);
+        showLogin();
+        return;
+      }
+      try{cb(JSON.parse(x.responseText))}catch(e){toast('err','Parse error')}
+    }
+  };
   x.onerror=function(){toast('err','Network error')};
   x.ontimeout=function(){toast('err','Timeout')};
   x.send(data?JSON.stringify(data):null);
@@ -679,7 +693,7 @@ function showApp(){
 function refreshAll(){
   // 1. Dashboard (balances + trading status)
   api('POST','/api/dashboard',{},function(r){
-    if(r.success&&r.user){
+    if(r&&r.success&&r.user){
       var u=getUser();Object.assign(u,r.user);setUser(u);
       var cx=r.user.cex||{};
       var connected=cx.connected||u.cexApiKey;
