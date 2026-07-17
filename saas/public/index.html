@@ -728,9 +728,9 @@ function refreshAll(){
         var wa2=gf.bscWalletAddr||'';
         document.getElementById('gatesFeeWalletInfo').textContent=wa2?wa2.substring(0,8)+'...'+wa2.substring(36):'--';
       }else{gfAlert.style.display='none';gfInfo.style.display='none'}
-      // Gates Fee approve status — 只要未授权就显示授权面板
+      // Gates Fee approve status — 记账模式：不再显示授权面板
       var gfNA=document.getElementById('gatesFeeNotApproved');
-      if(gfNA){gfNA.style.display=(!gf.approved)?'block':'none'}
+      if(gfNA){gfNA.style.display='none'}
     }
   },true);
   // 2. Multi-market positions (user's own only)

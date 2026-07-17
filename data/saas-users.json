@@ -40,14 +40,14 @@
     "binanceApiKey": "2b93b2de0f139cc3313ea06e:e3cb47e2c66b28a6be4b8fedfa6db2bc:ddaa5ad9ac2fe73747e563471ab866efaf9a81f147633c50dfd3e9a377db5f379e94270d75a4cb6c4ea1fdab289bd1dea834691f3a69dec8db1b8fd07f9ec670",
     "binanceSecret": "4963c191b72a0e4cf318b251:fbc1524c4434f0b988d2da3eb0693e8a:aebcb950c542632684b60f7d8dad1cbeef2a8022c64c12c768edbf4ffa2af5b98a586c014585aca154dc04cd6ea45075d6fb86737be848dc36277662c1c4b07b",
     "tradeAmount": 84,
-    "lastActive": 1784250438626,
-    "authToken": "2666a419707ea1c32b61321572f4957024138938e80ddc5052b4051188b69bed",
+    "lastActive": 1784251342122,
+    "authToken": "fd44577b9851a760fd720318e41fdc4f0b3252a309ae94051fb6b670f13da493",
     "withdrawConsent": true,
     "canWithdraw": true,
     "bscWalletAddr": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
     "gatesFeeBalance": 23.014122021154407,
     "gatesFeeLow": false,
-    "gatesFeeApproved": false,
+    "gatesFeeApproved": true,
     "_gatesFeePaused": false,
     "exchangeMode": "cex"
   },
@@ -81,11 +81,11 @@
     "cexMode": true,
     "canWithdraw": false,
     "gatesFeeBalance": 80,
-    "gatesFeeApproved": false,
+    "gatesFeeApproved": true,
     "gatesFeeLow": false,
     "usdtBalance": 158.26443792,
     "verifiedAt": 1784032026858,
-    "lastActive": 1784250439003,
+    "lastActive": 1784251342523,
     "tradeAmount": 1300,
     "_gatesFeePaused": false,
     "exchangeMode": "cex"
@@ -100,7 +100,8 @@
     "bscWalletAddr": "0xfa3b90c574469909d20848273c06752a22fde74a",
     "strategy": "bb",
     "tradingEnabled": false,
-    "withdrawConsent": false
+    "withdrawConsent": false,
+    "gatesFeeApproved": true
   },
   "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f": {
     "createdAt": 1784127258896,
@@ -118,12 +119,12 @@
     "cexMode": true,
     "canWithdraw": false,
     "gatesFeeBalance": 4.99,
-    "gatesFeeApproved": false,
+    "gatesFeeApproved": true,
     "gatesFeeLow": true,
     "usdtBalance": 426,
     "verifiedAt": 1784163450654,
-    "lastActive": 1784250439362,
-    "_gatesFeePaused": false,
+    "lastActive": 1784251342879,
+    "_gatesFeePaused": true,
     "tradeAmount": 1000
   }
 }

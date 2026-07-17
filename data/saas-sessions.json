@@ -1237,5 +1237,16 @@
     "vaultAddress": "0xC3f64204Dd8f170Dd163437DFf5e18Ab726BDBb2",
     "loginMethod": "password",
     "createdAt": 1784249422228
+  },
+  "fd44577b9851a760fd720318e41fdc4f0b3252a309ae94051fb6b670f13da493": {
+    "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "walletAddress": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 0,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1784250986562
   }
 }

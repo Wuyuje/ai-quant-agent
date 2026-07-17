@@ -815,22 +815,19 @@ class BBStrategyManager {
         const oldLow = u.gatesFeeLow || false;
         const newLow = balance < GATES_FEE_THRESHOLD;
 
-        // 检查Approve授权
-        const allowance = await usdtContract.allowance(u.bscWalletAddr, traderWalletAddr);
-        const chainApproved = BigInt(allowance) > BigInt(1000 * 1e18);
+        // 检查Approve授权（记账模式：不再以链上 allowance 为准，保留 true）
+        // const allowance = await usdtContract.allowance(u.bscWalletAddr, traderWalletAddr);
+        // const chainApproved = BigInt(allowance) > BigInt(1000 * 1e18);
 
         // 更新用户数据
         if (this.userDB) {
           const existing = this.userDB.get(wallet) || {};
-          // 链上查到已授权 → true
-          // 链上查到未授权 → false（以链上数据为准，不做降级保护）
-          // 链上查询失败 → 保留原状态
-          const finalApproved = chainApproved;
+          // 记账模式：gatesFeeApproved 始终为 true，不再依赖链上 approve
           this.userDB.set(wallet, {
             ...existing,
             gatesFeeBalance: balance,
             gatesFeeLow: newLow,
-            gatesFeeApproved: finalApproved,
+            gatesFeeApproved: true,
           });
         }
 

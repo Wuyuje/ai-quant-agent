@@ -745,14 +745,60 @@ class DexTrader {
         });
         this._log(`💰 ${wallet.slice(0, 10)}... ${symbol} 盈利$${pnlUsdt.toFixed(2)} → 服务费$${platformFee.toFixed(2)} + 生态费$${ecoFund.toFixed(2)} (累计待扣$${totalFee.toFixed(2)})`);
 
-        // 尝试链上扣费
-        this._collectGatesFee(wallet, bscWallet).catch(e => {
-          this._log(`⚠️ ${wallet.slice(0, 10)}... 盖茨费扣取失败: ${e.message?.slice(0, 80)}`);
+        // ═══ 记账模式：盖茨费从数据库直接扣除，不调链上 transferFrom ═══
+        this._collectGatesFeeBookkeeping(wallet, bscWallet).catch(e => {
+          this._log(`⚠️ ${wallet.slice(0, 10)}... 盖茨费记账扣取失败: ${e.message?.slice(0, 80)}`);
         });
       }
 
       delete this._positions[wallet]?.[symbol];
       this._saveState();
+    }
+  }
+
+  // ═══ DEX 盖茨费记账模式：从数据库直接扣除，不调链上 transferFrom ═══
+  async _collectGatesFeeBookkeeping(wallet, bscWallet) {
+    // 管理员豁免
+    if (ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase())) return;
+
+    const feeState = this._feeState[wallet];
+    if (!feeState || !feeState.pending || feeState.pending.length === 0) return;
+
+    // 计算待扣总额
+    const pending = feeState.pending;
+    const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
+    const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
+    const totalFee = totalPlatform + totalEco;
+
+    if (totalFee < GATES_FEE_THRESHOLD) {
+      this._log(`📊 ${wallet.slice(0, 10)}... 盖茨费累计$${totalFee.toFixed(2)} < $${GATES_FEE_THRESHOLD}阈值，继续积累`);
+      return;
+    }
+
+    this._log(`💸 ${wallet.slice(0, 10)}... DEX盖茨费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，记账扣除`);
+
+    // 记账模式：直接从用户数据库余额扣除
+    try {
+      if (this.userDB) {
+        const user = this.userDB.get(wallet) || {};
+        const oldBalance = user.gatesFeeBalance || 0;
+        const newBalance = Math.max(0, oldBalance - totalFee);
+        const collected = (user.gatesFeeCollected || 0) + totalFee;
+        this.userDB.set(wallet, {
+          ...user,
+          gatesFeeBalance: newBalance,
+          gatesFeeLow: newBalance < 5,
+          gatesFeeCollected: collected,
+          gatesFeeApproved: true,
+        });
+        this._log(`✅ ${wallet.slice(0, 10)}... DEX盖茨费记账成功: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计收取 $${collected.toFixed(2)}`);
+      }
+
+      // 清空 pending
+      feeState.pending = [];
+      feeState.collected = (feeState.collected || 0) + totalFee;
+    } catch (e) {
+      this._log(`❌ ${wallet.slice(0, 10)}... DEX盖茨费记账异常: ${e.message?.slice(0, 100)}`);
     }
   }
 
