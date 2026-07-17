@@ -804,22 +804,84 @@ class BBStrategyManager {
     ], provider);
     const traderWalletAddr = new ethers.Wallet(process.env.TRADER_PRIVATE_KEY).address;
 
-    // 查询Trader钱包总余额（用于日志）
+    // 查询Trader钱包总余额
     let traderTotal = 0;
     try {
       const rawBal = await usdtContract.balanceOf(traderWalletAddr);
       traderTotal = Number(rawBal) / 1e18;
     } catch (e) {}
 
+    // ═══ 自动检测充值：Trader链上余额 vs 数据库记账总额 ═══
+    // 如果链上余额 > 数据库总额，说明有新充值未入账
+    let dbTotal = 0;
+    if (this.userDB) {
+      for (const [addr, u] of Object.entries(this.userDB.users || {})) {
+        if (u && typeof u.gatesFeeBalance === 'number') dbTotal += u.gatesFeeBalance;
+      }
+    }
+    const diff = traderTotal - dbTotal;
+    if (diff > 0.5) {
+      // 有新充值未入账 → 分配给余额最低且gatesFeeLow=true的用户
+      const lowUsers = bbUsers
+        .filter(([w, u]) => !this.ADMIN_WALLETS.some(a => a.toLowerCase() === w.toLowerCase()))
+        .filter(([w, u]) => (u.gatesFeeLow || (u.gatesFeeBalance || 0) < GATES_FEE_THRESHOLD))
+        .sort((a, b) => (a[1].gatesFeeBalance || 0) - (b[1].gatesFeeBalance || 0));
+      
+      if (lowUsers.length > 0) {
+        // 分配给余额最低的用户
+        const [targetWallet, targetUser] = lowUsers[0];
+        const oldBal = targetUser.gatesFeeBalance || 0;
+        const newBal = oldBal + diff;
+        if (this.userDB) {
+          const existing = this.userDB.get(targetWallet) || {};
+          this.userDB.set(targetWallet, {
+            ...existing,
+            gatesFeeBalance: newBal,
+            gatesFeeLow: newBal < GATES_FEE_THRESHOLD,
+            gatesFeeApproved: true,
+          });
+        }
+        this._log(`💰 ${targetWallet.slice(0,10)}... 自动检测到充值 +$${diff.toFixed(2)} → 余额: $${newBal.toFixed(2)} (Trader总余额: $${traderTotal.toFixed(2)})`);
+        if (newBal >= GATES_FEE_THRESHOLD) {
+          this._log(`✅ ${targetWallet.slice(0,10)}... 盖茨费余额恢复，自动恢复交易`);
+        }
+        // 更新bbUsers中的数据
+        targetUser.gatesFeeBalance = newBal;
+        targetUser.gatesFeeLow = newBal < GATES_FEE_THRESHOLD;
+      } else {
+        // 没有low用户，平均分给第一个非管理员用户
+        const nonAdmin = bbUsers.find(([w, u]) => !this.ADMIN_WALLETS.some(a => a.toLowerCase() === w.toLowerCase()));
+        if (nonAdmin) {
+          const [targetWallet, targetUser] = nonAdmin;
+          const oldBal = targetUser.gatesFeeBalance || 0;
+          const newBal = oldBal + diff;
+          if (this.userDB) {
+            const existing = this.userDB.get(targetWallet) || {};
+            this.userDB.set(targetWallet, {
+              ...existing,
+              gatesFeeBalance: newBal,
+              gatesFeeLow: newBal < GATES_FEE_THRESHOLD,
+              gatesFeeApproved: true,
+            });
+          }
+          this._log(`💰 ${targetWallet.slice(0,10)}... 自动检测到充值 +$${diff.toFixed(2)} → 余额: $${newBal.toFixed(2)}`);
+          targetUser.gatesFeeBalance = newBal;
+          targetUser.gatesFeeLow = newBal < GATES_FEE_THRESHOLD;
+        }
+      }
+    }
+
+    // 更新每个用户的 gatesFeeLow 状态
     for (const [wallet, u] of bbUsers) {
       // 管理员跳过盖茨费检查
       if (this.ADMIN_WALLETS.some(w => w.toLowerCase() === wallet.toLowerCase())) continue;
 
-      // 方案A：gatesFeeBalance 是记账余额（用户充值到Trader钱包的金额 - 已扣费用）
-      // 不再用用户BSC钱包余额覆盖，直接用数据库中的记账余额
       const balance = u.gatesFeeBalance || 0;
       const oldLow = u.gatesFeeLow || false;
       const newLow = balance < GATES_FEE_THRESHOLD;
+
+      // 同步 _gatesFeePaused（供 _ensureEngine 读取）
+      u._gatesFeePaused = !!(u.gatesFeeApproved && newLow);
 
       // 更新用户数据
       if (this.userDB) {
@@ -832,6 +894,12 @@ class BBStrategyManager {
         });
       }
 
+      // 实时同步引擎暂停状态（不用等 _ensureEngine）
+      const engine = this._engines[wallet.toLowerCase()];
+      if (engine) {
+        engine.gatesFeePaused = u._gatesFeePaused;
+      }
+
       if (oldLow && !newLow) {
         this._log(`✅ ${wallet.slice(0,10)}... 盖茨费余额恢复 $${balance.toFixed(2)}，恢复交易`);
       } else if (!oldLow && newLow) {
@@ -840,7 +908,7 @@ class BBStrategyManager {
     }
 
     if (this._cycleCount % 30 === 0) {
-      this._log(`💰 Trader钱包总余额: $${traderTotal.toFixed(2)}`);
+      this._log(`💰 Trader钱包总余额: $${traderTotal.toFixed(2)} | 用户记账总额: $${dbTotal.toFixed(2)} | 差额: $${diff.toFixed(2)}`);
     }
   }
 
@@ -865,10 +933,14 @@ class BBStrategyManager {
 
     try {
       const currentBlock = await provider.getBlockNumber();
-      const fromBlock = this._lastRechargeBlock > 0 ? this._lastRechargeBlock + 1 : currentBlock - 5000;
+      // 只查最近20个区块（避免触发archive限制）
+      // 如果是首次扫描，从最近20个区块开始
+      const fromBlock = this._lastRechargeBlock > 0
+        ? Math.max(this._lastRechargeBlock + 1, currentBlock - 20)
+        : currentBlock - 20;
       if (fromBlock >= currentBlock) return; // 没有新区块
 
-      // 查询Trader钱包的入账Transfer事件
+      // 查询Trader钱包的入账Transfer事件（只查最近20个区块，不需要archive）
       const logs = await provider.getLogs({
         address: USDT_ADDR,
         topics: [transferTopic, null, traderTopic],
@@ -886,6 +958,7 @@ class BBStrategyManager {
         bscToUser[wallet.toLowerCase()] = wallet;
       }
 
+      let detected = 0;
       for (const log of logs) {
         const fromAddr = '0x' + log.topics[1].slice(26).toLowerCase();
         const userWallet = bscToUser[fromAddr];
@@ -906,12 +979,19 @@ class BBStrategyManager {
             gatesFeeApproved: true,
           });
           this._log(`💰 ${userWallet.slice(0,10)}... 充值到Trader钱包 $${amount.toFixed(2)} → 盖茨费余额: $${newBalance.toFixed(2)}`);
+          detected++;
         }
       }
 
       this._lastRechargeBlock = currentBlock;
+      if (detected === 0 && this._cycleCount % 30 === 0) {
+        this._log(`充值扫描: 无新充值 (block ${fromBlock}-${currentBlock})`);
+      }
     } catch (e) {
-      // RPC查询失败时跳过
+      // RPC查询失败时记录日志（不再静默吞掉）
+      if (this._cycleCount % 30 === 0) {
+        this._log(`⚠️ 充值扫描失败: ${e.message?.slice(0, 80)}`);
+      }
     }
   }
 

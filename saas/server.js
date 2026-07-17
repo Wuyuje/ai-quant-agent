@@ -1841,6 +1841,76 @@ class SaasServer {
       });
     });
 
+    // ═══ 盖茨费：用户确认已充值 — 后端查Trader钱包余额自动确认 ═══
+    this.app.post('/api/gates-fee/confirm-recharge', async (req, res) => {
+      const session = this._auth(req);
+      if (!session) return res.status(401).json({ error: '未登录' });
+      const user = this.userDB.get(session.wallet);
+      if (!user) return res.status(400).json({ error: '用户不存在' });
+
+      try {
+        const { ethers } = require('ethers');
+        const BSC_RPC = 'https://bsc-rpc.publicnode.com';
+        const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
+        const provider = new ethers.JsonRpcProvider(BSC_RPC);
+        const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+        const usdtContract = new ethers.Contract(USDT_ADDR, [
+          'function balanceOf(address) view returns (uint256)'
+        ], provider);
+
+        // 1. 查Trader钱包实际USDT余额
+        const rawBal = await usdtContract.balanceOf(traderAddr);
+        const traderBalance = Number(rawBal) / 1e18;
+
+        // 2. 查所有用户的记账余额之和
+        let dbTotal = 0;
+        for (const [addr, u] of Object.entries(this.userDB.users || {})) {
+          if (u && typeof u.gatesFeeBalance === 'number') {
+            dbTotal += u.gatesFeeBalance;
+          }
+        }
+
+        // 3. 差额 = 链上余额 - 数据库总和（差额就是未检测到的充值）
+        const diff = traderBalance - dbTotal;
+
+        if (diff > 0.5) {
+          // 有新充值未入账 → 把差额加到当前用户
+          const oldBalance = user.gatesFeeBalance || 0;
+          const newBalance = oldBalance + diff;
+          this.userDB.set(session.wallet, {
+            ...user,
+            gatesFeeBalance: newBalance,
+            gatesFeeLow: newBalance < 5,
+            gatesFeeApproved: true,
+          });
+          console.log(`[GatesFee] ✅ ${session.wallet.slice(0,10)}... 确认充值 $${diff.toFixed(2)} → 余额: $${newBalance.toFixed(2)} (Trader总余额: $${traderBalance.toFixed(2)})`);
+          res.json({
+            success: true,
+            message: `充值确认成功！+$${diff.toFixed(2)}`,
+            oldBalance: oldBalance.toFixed(2),
+            newBalance: newBalance.toFixed(2),
+            traderBalance: traderBalance.toFixed(2),
+            recovered: newBalance >= 5, // 余额恢复，可以恢复交易
+          });
+        } else {
+          // 没有差额，可能充值还没到账或已经入账
+          const currentBalance = user.gatesFeeBalance || 0;
+          res.json({
+            success: true,
+            message: '暂未检测到新充值。如果您刚转账，请等待1-2分钟后重试。',
+            currentBalance: currentBalance.toFixed(2),
+            traderBalance: traderBalance.toFixed(2),
+            dbTotal: dbTotal.toFixed(2),
+            diff: diff.toFixed(2),
+            recovered: currentBalance >= 5,
+          });
+        }
+      } catch (e) {
+        console.error('[GatesFee] confirm-recharge error:', e.message);
+        res.status(500).json({ error: '查询失败: ' + e.message });
+      }
+    });
+
     // ═══ 盖茨费：用户在前端通过MetaMask签名approve后，通知后端更新状态 ═══
     this.app.post('/api/vault/approve-confirmed', async (req, res) => {
       const session = this._auth(req);
