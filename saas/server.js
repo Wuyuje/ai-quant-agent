@@ -1624,7 +1624,7 @@ class SaasServer {
             low: user?.gatesFeeLow ?? false,
             approved: user?.gatesFeeApproved ?? false,
             threshold: 5,
-            traderWalletAddr: TRADER_PRIVATE_KEY ? new ethers.Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e',
+            traderWalletAddr: TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e',
           },
           // 1️⃣ Vault合约余额
           vault: {
