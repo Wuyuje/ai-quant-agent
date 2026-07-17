@@ -56,8 +56,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0e17;
   </div>
 </div>
 
-<!-- ethers.js v6 from CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<!-- ethers.js v6 — 本地加载，避免CDN在TokenPocket中被墙 -->
+<script src="ethers.min.js"></script>
 <script>
 var traderAddress = '';
 var usdtAddress = '0x55d398326f99059fF775485246999027B3197955';

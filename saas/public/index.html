@@ -911,8 +911,8 @@ document.getElementById('binanceGuide').addEventListener('click',function(e){if(
   document.addEventListener('click',function(e){if(!e.target.closest('.lang-select'))document.getElementById('langMenu').classList.remove('show')});
 })();
 </script>
-<!-- ethers.js v6 for wallet authorization -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<!-- ethers.js v6 for wallet authorization — 本地加载，避免CDN在TokenPocket中被墙 -->
+<script src="ethers.min.js"></script>
 <script>
 /* Arkie Chat Widget — injected into dashboards */
 (function() {
@@ -1108,6 +1108,26 @@ async function wfConnectWallet() {
   var btn = document.getElementById('wfConnectBtn');
   if (!btn) return;
   btn.disabled = true; btn.textContent = '连接中...';
+
+  // 调试：显示环境检测结果
+  var dbg = 'ethers:' + (typeof ethers !== 'undefined' ? 'YES' : 'NO');
+  dbg += ' ethereum:' + (typeof window.ethereum !== 'undefined' ? 'YES' : 'NO');
+  dbg += ' UA:' + navigator.userAgent.substring(0, 60);
+  console.log('[wfConnectWallet] ' + dbg);
+
+  // 检测 TokenPocket 多种注入方式
+  if (typeof window.ethereum === 'undefined') {
+    // TokenPocket 可能有多种注入
+    if (typeof window.tp !== 'undefined' && window.tp.isTp) {
+      console.log('[wfConnectWallet] TokenPocket tp detected');
+      // TokenPocket 可能需要手动请求
+    }
+    var providers = [];
+    if (typeof window.ethereum !== 'undefined') providers.push('ethereum');
+    if (typeof window.web3 !== 'undefined') providers.push('web3');
+    if (typeof window.tp !== 'undefined') providers.push('tp');
+    console.log('[wfConnectWallet] Available providers: ' + providers.join(','));
+  }
 
   if (typeof ethers === 'undefined') {
     wfShowMsg('ethers.js 加载失败，请检查网络后刷新页面', '#f85149');
