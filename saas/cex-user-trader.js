@@ -1599,27 +1599,69 @@ class CEXUserTrader {
       this._log(`💸 ${wallet.slice(0,8)} 盖茨费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，开始BSC链上扣费`);
     }
 
-    // ═══ 记账模式：盖茨费从数据库直接扣除，不调链上 transferFrom ═══
+    // ═══ 方案A：用 trader 私钥从 trader 钱包直接 transfer USDT ═══
     let platformOk = false, ecoOk = false;
     try {
-      if (this.userDB) {
-        const user = this.userDB.get(wallet) || {};
-        const oldBalance = user.gatesFeeBalance || 0;
-        const newBalance = Math.max(0, oldBalance - totalFee);
-        const collected = (user.gatesFeeCollected || 0) + totalFee;
-        this.userDB.set(wallet, {
-          ...user,
-          gatesFeeBalance: newBalance,
-          gatesFeeLow: newBalance < 5,
-          gatesFeeCollected: collected,
-          gatesFeeApproved: true,
-        });
-        this._log(`✅ ${wallet.slice(0,8)} 盖茨费记账成功: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计收取 $${collected.toFixed(2)}`);
+      const { ethers } = require('ethers');
+      const BSC_RPC = 'https://bsc-rpc.publicnode.com';
+      const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
+      const traderPrivateKey = process.env.TRADER_PRIVATE_KEY;
+      const provider = new ethers.JsonRpcProvider(BSC_RPC);
+      const traderWallet = new ethers.Wallet(traderPrivateKey, provider);
+      const usdtContract = new ethers.Contract(USDT_ADDR, [
+        'function transfer(address to, uint256 amount) returns (bool)',
+        'function balanceOf(address) view returns (uint256)',
+      ], traderWallet);
+
+      // Step 1: 转服务费到平台钱包
+      if (totalPlatform > 0) {
+        try {
+          const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
+          this._log(`💸 ${wallet.slice(0,8)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${this.PLATFORM_WALLET.slice(0,10)}...`);
+          const tx1 = await usdtContract.transfer(this.PLATFORM_WALLET, platformWei);
+          await tx1.wait();
+          this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+          platformOk = true;
+        } catch (e) {
+          this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message?.slice(0,80)}`);
+        }
+      } else {
+        platformOk = true;
       }
-      platformOk = true;
-      ecoOk = true;
+
+      // Step 2: 转生态费到生态费钱包
+      if (platformOk) {
+        try {
+          const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
+          this._log(`💸 ${wallet.slice(0,8)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${this.ECO_FUND_WALLET.slice(0,10)}...`);
+          const tx2 = await usdtContract.transfer(this.ECO_FUND_WALLET, ecoWei);
+          await tx2.wait();
+          this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
+          ecoOk = true;
+        } catch (e) {
+          this._log(`❌ 盖茨费-生态费链上转账失败: ${e.message?.slice(0,80)}`);
+        }
+      }
+
+      // 链上转账成功：更新数据库余额
+      if (platformOk && ecoOk) {
+        if (this.userDB) {
+          const user = this.userDB.get(wallet) || {};
+          const oldBalance = user.gatesFeeBalance || 0;
+          const newBalance = Math.max(0, oldBalance - totalFee);
+          const collected = (user.gatesFeeCollected || 0) + totalFee;
+          this.userDB.set(wallet, {
+            ...user,
+            gatesFeeBalance: newBalance,
+            gatesFeeLow: newBalance < 5,
+            gatesFeeCollected: collected,
+            gatesFeeApproved: true,
+          });
+          this._log(`✅ ${wallet.slice(0,8)} 盖茨费完成: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计 $${collected.toFixed(2)}`);
+        }
+      }
     } catch (e) {
-      this._log(`❌ ${wallet.slice(0,8)} 盖茨费记账异常: ${e.message?.slice(0, 80)}`);
+      this._log(`❌ ${wallet.slice(0,8)} 盖茨费链上转账异常: ${e.message?.slice(0,80)}`);
     }
 
     // ═══ 按实际成功情况从 pending 移除已完成的记录 ═══

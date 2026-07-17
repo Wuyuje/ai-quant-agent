@@ -775,30 +775,72 @@ class DexTrader {
       return;
     }
 
-    this._log(`💸 ${wallet.slice(0, 10)}... DEX盖茨费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，记账扣除`);
+    this._log(`💸 ${wallet.slice(0, 10)}... DEX盖茨费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，链上转账+记账`);
 
-    // 记账模式：直接从用户数据库余额扣除
+    // 方案A：用 trader 私钥从 trader 钱包直接 transfer USDT 到平台钱包和生态费钱包
+    let platformOk = false, ecoOk = false;
     try {
-      if (this.userDB) {
-        const user = this.userDB.get(wallet) || {};
-        const oldBalance = user.gatesFeeBalance || 0;
-        const newBalance = Math.max(0, oldBalance - totalFee);
-        const collected = (user.gatesFeeCollected || 0) + totalFee;
-        this.userDB.set(wallet, {
-          ...user,
-          gatesFeeBalance: newBalance,
-          gatesFeeLow: newBalance < 5,
-          gatesFeeCollected: collected,
-          gatesFeeApproved: true,
-        });
-        this._log(`✅ ${wallet.slice(0, 10)}... DEX盖茨费记账成功: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计收取 $${collected.toFixed(2)}`);
+      const traderWallet = getTraderWallet();
+      const usdtContract = new ethers.Contract(USDT_ADDRESS, [
+        'function transfer(address to, uint256 amount) returns (bool)',
+        'function balanceOf(address) view returns (uint256)',
+      ], traderWallet);
+
+      // Step 1: 转服务费到平台钱包
+      if (totalPlatform > 0) {
+        try {
+          const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
+          this._log(`💸 ${wallet.slice(0, 10)}... DEX服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0, 10)}...`);
+          const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
+          await tx1.wait();
+          this._log(`✅ DEX服务费链上转账成功 $${totalPlatform.toFixed(2)} tx=${tx1.hash.slice(0, 16)}...`);
+          platformOk = true;
+          pending.forEach(r => r.platformCollected = true);
+        } catch (e) {
+          this._log(`❌ DEX服务费链上转账失败: ${e.message?.slice(0, 80)}`);
+        }
+      } else {
+        platformOk = true;
       }
 
-      // 清空 pending
-      feeState.pending = [];
-      feeState.collected = (feeState.collected || 0) + totalFee;
+      // Step 2: 转生态费到生态费钱包
+      if (platformOk) {
+        try {
+          const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
+          this._log(`💸 ${wallet.slice(0, 10)}... DEX生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0, 10)}...`);
+          const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
+          await tx2.wait();
+          this._log(`✅ DEX生态费链上转账成功 $${totalEco.toFixed(2)} tx=${tx2.hash.slice(0, 16)}...`);
+          ecoOk = true;
+        } catch (e) {
+          this._log(`❌ DEX生态费链上转账失败: ${e.message?.slice(0, 80)}`);
+        }
+      }
+
+      if (platformOk && ecoOk) {
+        // 链上转账成功：更新数据库余额
+        if (this.userDB) {
+          const user = this.userDB.get(wallet) || {};
+          const oldBalance = user.gatesFeeBalance || 0;
+          const newBalance = Math.max(0, oldBalance - totalFee);
+          const collected = (user.gatesFeeCollected || 0) + totalFee;
+          this.userDB.set(wallet, {
+            ...user,
+            gatesFeeBalance: newBalance,
+            gatesFeeLow: newBalance < 5,
+            gatesFeeCollected: collected,
+            gatesFeeApproved: true,
+          });
+          this._log(`✅ ${wallet.slice(0, 10)}... DEX盖茨费完成: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计 $${collected.toFixed(2)}`);
+        }
+        feeState.pending = [];
+        feeState.collected = (feeState.collected || 0) + totalFee;
+      } else {
+        // 部分成功：保留 pending，下次重试
+        this._log(`⚠️ ${wallet.slice(0, 10)}... DEX盖茨费部分失败 (服务费=${platformOk}, 生态费=${ecoOk})，保留 pending`);
+      }
     } catch (e) {
-      this._log(`❌ ${wallet.slice(0, 10)}... DEX盖茨费记账异常: ${e.message?.slice(0, 100)}`);
+      this._log(`❌ ${wallet.slice(0, 10)}... DEX盖茨费链上转账异常: ${e.message?.slice(0, 100)}`);
     }
   }
 

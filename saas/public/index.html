@@ -273,73 +273,53 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div id="gatesFeeAlert" style="display:none;background:#3d1a1a;border:1px solid #f85149;border-radius:10px;padding:14px 16px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <span style="font-size:1.2em">⚠️</span>
-        <strong style="color:#f85149" data-i18n="gates.lowTitle">盖茨费余额不足，交易已暂停</strong>
+        <strong style="color:#f85149">盖茨费余额不足，交易已暂停</strong>
       </div>
-      <div style="color:#8b949e;font-size:.85em" data-i18n="gates.lowDesc">请在注册钱包中充值 USDT (BEP-20) 作为盖茨费储备。充值后交易将自动恢复。</div>
-      <div style="color:#8b949e;font-size:.8em;margin-top:4px">Wallet: <span id="gatesFeeWallet" style="font-family:monospace;color:#d29922">--</span></div>
+      <div style="color:#8b949e;font-size:.85em;margin-bottom:8px">请向以下平台钱包充值 USDT (BEP-20) 作为盖茨费储备。充值后交易将自动恢复。</div>
+      <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:8px 12px;margin-top:6px">
+        <div style="color:#8b949e;font-size:.75em;margin-bottom:2px">充值地址（BSC 网络）</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span id="gatesFeeWallet" style="font-family:monospace;color:#d29922;font-size:.82em;word-break:break-all">--</span>
+          <button onclick="wfCopyAddr()" style="flex-shrink:0;padding:4px 10px;border:1px solid #30363d;border-radius:6px;background:#21262d;color:#58a6ff;font-size:.75em;cursor:pointer">复制</button>
+        </div>
+      </div>
     </div>
     <div id="gatesFeeInfo" style="display:none;background:#0d1117;border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
-          <span style="color:var(--muted);font-size:.8em" data-i18n="gates.title">盖茨费余额</span>
+          <span style="color:var(--muted);font-size:.8em">盖茨费余额</span>
           <div style="font-size:1.4em;font-weight:700;color:var(--green)" id="gatesFeeBalance">$0.00</div>
-          <div style="color:#8b949e;font-size:.75em" data-i18n="gates.sub">仅在盈利时收取，无盈利不收费</div>
+          <div style="color:#8b949e;font-size:.75em">仅在盈利时收取，无盈利不收费</div>
         </div>
         <div style="text-align:right">
-          <span style="color:var(--muted);font-size:.8em" data-i18n="gates.walletLabel">支付钱包</span>
-          <div style="font-family:monospace;color:#d29922;font-size:.85em" id="gatesFeeWalletInfo">--</div>
+          <span style="color:var(--muted);font-size:.8em">充值钱包 (BSC)</span>
+          <div style="font-family:monospace;color:#d29922;font-size:.82em" id="gatesFeeWalletInfo">--</div>
         </div>
       </div>
     </div>
-    <!-- Gates Fee Not Approved Alert → 改为仪表盘内授权面板 -->
-    <div id="gatesFeeNotApproved" style="display:none;background:#0d1117;border:1px solid #30363d;border-radius:12px;padding:18px 16px;margin-bottom:14px">
+    <!-- 盖茨费充值引导面板（方案A：用户充值到平台钱包） -->
+    <div id="gatesFeeNotApproved" style="display:none;background:#0d1117;border:1px solid #d29922;border-radius:12px;padding:18px 16px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d29922" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <strong style="color:#d29922" data-i18n="gates.approveTitle">绑定钱包并授权盖茨费</strong>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d29922" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M15 9.5a2.5 2.5 0 0 0-2.5-2.5h-1.5A2 2 0 0 0 9 9c0 1.1.9 2 2 2h2a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.5A2.5 2.5 0 0 1 9 14.5"/></svg>
+        <strong style="color:#d29922">充值盖茨费以开启交易</strong>
       </div>
-      <div style="color:#8b949e;font-size:.82em;margin-bottom:14px;line-height:1.5" data-i18n="gates.approveDesc">连接您的 BSC 钱包并授权 USDT，系统才能在盈利时自动收取盖茨费。全程在仪表盘内完成，安全透明。</div>
-      
-      <!-- 步骤1：连接钱包 -->
-      <div id="wfStep1" style="margin-bottom:12px">
-        <button class="btn btn-primary" id="wfConnectBtn" onclick="wfConnectWallet()" style="width:100%;padding:13px;font-size:15px;border:none;border-radius:8px;cursor:pointer;background:#1f6feb;color:#fff;font-weight:700">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:6px"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
-          <span data-i18n="gates.connectWallet">连接 BSC 钱包</span>
-        </button>
+      <div style="color:#8b949e;font-size:.82em;margin-bottom:12px;line-height:1.6">
+        盖茨费是盈利后收取的服务费（20%服务费 + 10%生态费），无盈利不收费。<br>
+        请向以下 BSC 地址充值 USDT (BEP-20) 作为盖茨费储备，充值后交易自动恢复。
       </div>
-      
-      <!-- 步骤2：钱包已连接，显示地址+授权按钮 -->
-      <div id="wfStep2" style="display:none;margin-bottom:12px">
-        <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:12px;margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <div>
-              <div style="color:#8b949e;font-size:.72em;margin-bottom:2px" data-i18n="gates.connectedWallet">已连接钱包</div>
-              <div style="font-family:monospace;color:#58a6ff;font-size:.85em" id="wfWalletAddr">--</div>
-            </div>
-            <div style="text-align:right">
-              <div style="color:#8b949e;font-size:.72em;margin-bottom:2px">BNB Gas</div>
-              <div style="color:#d29922;font-size:.85em;font-family:monospace" id="wfBnbBal">--</div>
-            </div>
-          </div>
-        </div>
-        <button class="btn" id="wfApproveBtn" onclick="wfDoApprove()" style="width:100%;padding:13px;font-size:15px;border:none;border-radius:8px;cursor:pointer;background:#238636;color:#fff;font-weight:700">
-          <span data-i18n="gates.approveUsdt">授权 USDT</span>
-        </button>
-        <button class="btn" id="wfCheckBtn" onclick="wfCheckChainStatus()" style="width:100%;padding:10px;margin-top:8px;font-size:13px;border:1px solid #30363d;border-radius:8px;cursor:pointer;background:transparent;color:#58a6ff">
-          <span data-i18n="gates.checkStatus">我已授权，检查链上状态</span>
-        </button>
-        <div style="margin-top:10px;padding:10px;background:#161b22;border:1px solid #30363d;border-radius:8px;font-size:.72em;color:#8b949e;line-height:1.5">
-          <div style="color:#d29922;font-weight:700;margin-bottom:4px" data-i18n="gates.bscScanTip">如果钱包未弹窗，可手动授权：</div>
-          1. 复制授权地址: <code style="color:#58a6ff;font-size:.9em" id="traderAddrDisplay">--</code><br>
-          2. 在 BscScan 打开 USDT 合约的 Write Contract<br>
-          3. approve(spender, amount)<br>
-          4. amount 填: <code style="font-size:.85em">0xffffffff...ffff</code>
-          <a id="bscScanLink" href="#" target="_blank" style="color:#58a6ff;text-decoration:underline;font-size:.9em;display:block;margin-top:6px" data-i18n="gates.bscScanLink">前往 BscScan 授权 &rarr;</a>
+      <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:12px;margin-bottom:10px">
+        <div style="color:#8b949e;font-size:.75em;margin-bottom:4px">充值地址（BSC 网络 · USDT BEP-20）</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <code id="wfDepositAddr" style="font-family:monospace;color:#d29922;font-size:.82em;word-break:break-all;flex:1">0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e</code>
+          <button onclick="wfCopyAddr()" style="flex-shrink:0;padding:6px 12px;border:1px solid #30363d;border-radius:6px;background:#21262d;color:#58a6ff;font-size:.78em;cursor:pointer">复制地址</button>
         </div>
       </div>
-      
-      <!-- 步骤3：授权中/结果 -->
-      <div id="wfStep3" style="display:none;text-align:center;padding:20px 0">
-        <div id="wfStatusMsg" style="font-size:.9em;color:#58a6ff"></div>
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px;font-size:.75em;color:#8b949e;line-height:1.6">
+        <div style="color:#3fb950;font-weight:700;margin-bottom:4px">✓ 充值说明</div>
+        • 最低充值 $5 USDT，交易自动恢复<br>
+        • 余额不足 $5 时暂停开新仓，现有持仓继续监控<br>
+        • 盈利时自动从余额扣除，无盈利不收费<br>
+        • 充值后 1-2 分钟自动检测到账
       </div>
     </div>
     <!-- Active Markets Summary -->
@@ -718,19 +698,22 @@ function refreshAll(){
       var gfAlert=document.getElementById('gatesFeeAlert');
       var gfInfo=document.getElementById('gatesFeeInfo');
       if(gf.low){
+        // 余额不足：显示红色告警 + 充值引导面板
         gfAlert.style.display='block';gfInfo.style.display='none';
-        var wa=gf.bscWalletAddr||'';
-        document.getElementById('gatesFeeWallet').textContent=wa?wa.substring(0,8)+'...'+wa.substring(36):'--';
+        var wa=gf.bscWalletAddr||'0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
+        document.getElementById('gatesFeeWallet').textContent=wa.substring(0,8)+'...'+wa.substring(36);
+        var gfNA=document.getElementById('gatesFeeNotApproved');
+        if(gfNA){gfNA.style.display='block'}
       }else if(connected){
+        // 余额充足：显示余额信息
         gfAlert.style.display='none';gfInfo.style.display='block';
         document.getElementById('gatesFeeBalance').textContent='$'+(gf.balance||0).toFixed(2);
         document.getElementById('gatesFeeBalance').style.color=(gf.balance||0)<5?'var(--red)':'var(--green)';
-        var wa2=gf.bscWalletAddr||'';
-        document.getElementById('gatesFeeWalletInfo').textContent=wa2?wa2.substring(0,8)+'...'+wa2.substring(36):'--';
+        var wa2=gf.bscWalletAddr||'0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
+        document.getElementById('gatesFeeWalletInfo').textContent=wa2.substring(0,8)+'...'+wa2.substring(36);
+        var gfNA2=document.getElementById('gatesFeeNotApproved');
+        if(gfNA2){gfNA2.style.display='none'}
       }else{gfAlert.style.display='none';gfInfo.style.display='none'}
-      // Gates Fee approve status — 记账模式：不再显示授权面板
-      var gfNA=document.getElementById('gatesFeeNotApproved');
-      if(gfNA){gfNA.style.display='none'}
     }
   },true);
   // 2. Multi-market positions (user's own only)
@@ -1080,386 +1063,29 @@ document.getElementById('binanceGuide').addEventListener('click',function(e){if(
   };
 })();
 
-// ═══ 仪表盘内钱包授权 — 原生 JSON-RPC，最大兼容 TokenPocket / MetaMask / Trust Wallet ═══
-var wfUsdtAddr = '0x55d398326f99059fF775485246999027B3197955';
-var wfTraderAddr = '';
-var wfWalletAddr = '';
-var wfProvider = null;
-var wfSigner = null;
-var wfBnbBal = 0;
-
-function wfSpinner(color) {
-  return '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:' + (color||'#58a6ff') + ';border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>';
-}
-
-function wfShowStep(n) {
-  for (var i = 1; i <= 3; i++) {
-    var el = document.getElementById('wfStep' + i);
-    if (el) el.style.display = (i === n) ? 'block' : 'none';
-  }
-}
-
-function wfShowMsg(text, color) {
-  var el = document.getElementById('wfStatusMsg');
-  if (el) { el.innerHTML = text; el.style.color = color || '#58a6ff'; }
-  wfShowStep(3);
-}
-
-// 获取钱包 provider — 兼容多种注入方式
-function getWalletProvider() {
-  if (typeof window.ethereum !== 'undefined') return window.ethereum;
-  // 兼容旧版 web3 注入
-  if (typeof window.web3 !== 'undefined' && window.web3.currentProvider) return window.web3.currentProvider;
-  // TokenPocket 特殊注入
-  if (typeof window.tp !== 'undefined' && window.tp.isTp && window.tp.currentProvider) return window.tp.currentProvider;
-  return null;
-}
-
-// 连接 BSC 钱包 — 纯原生 JSON-RPC
-async function wfConnectWallet() {
-  var btn = document.getElementById('wfConnectBtn');
-  if (!btn) return;
-  btn.disabled = true; btn.textContent = '连接中...';
-
-  var provider = getWalletProvider();
-  
-  if (!provider) {
-    var ua = navigator.userAgent.toLowerCase();
-    var isWechat = ua.indexOf('micromessenger') > -1;
-    var isQQ = ua.indexOf('qq/') > -1 || ua.indexOf('qqbrowser') > -1;
-    var pageUrl = window.location.origin + window.location.pathname;
-    
-    var html = '<div style="text-align:left;padding:16px;background:#1a1a2e;border:1px solid #f85149;border-radius:10px;line-height:1.6">';
-    if (isWechat || isQQ) {
-      html += '<div style="color:#f85149;font-weight:700;font-size:1em;margin-bottom:8px">当前浏览器不支持钱包授权</div>';
-      html += '<div style="color:#c9d1d9;font-size:.85em;margin-bottom:10px">您正在使用' + (isWechat ? '微信' : 'QQ') + '内置浏览器，无法连接区块链钱包。</div>';
-    } else {
-      html += '<div style="color:#f85149;font-weight:700;font-size:1em;margin-bottom:8px">未检测到钱包</div>';
-      html += '<div style="color:#c9d1d9;font-size:.85em;margin-bottom:10px">当前页面没有检测到区块链钱包。请确保在 TokenPocket 的 DApp 浏览器内打开本页面。</div>';
-    }
-    html += '<div style="color:#d29922;font-weight:700;font-size:.85em;margin-bottom:6px">请按以下步骤操作：</div>';
-    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">1. 打开 TokenPocket App</div>';
-    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">2. 进入 BSC 钱包</div>';
-    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">3. 点击底部「发现」或「DApp」</div>';
-    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:10px">4. 在地址栏粘贴以下链接打开：</div>';
-    html += '<div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-family:monospace;font-size:.78em;color:#58a6ff;word-break:break-all">' + pageUrl + '</div>';
-    html += '<button onclick="wfCopyLink(\'' + pageUrl + '\')" style="width:100%;padding:12px;border:none;border-radius:8px;cursor:pointer;background:#238636;color:#fff;font-weight:700;font-size:14px">复制链接</button>';
-    html += '</div>';
-    wfShowMsg(html, '#f85149');
-    btn.disabled = false; btn.textContent = '连接 BSC 钱包';
-    return;
-  }
-
-  try {
-    // 请求账户授权 — 这一步会触发钱包弹窗
-    var accounts = await provider.request({ method: 'eth_requestAccounts' });
-    if (!accounts || accounts.length === 0) {
-      throw new Error('未获取到钱包地址');
-    }
-    wfWalletAddr = accounts[0];
-    wfProvider = provider;
-
-    // 获取 BNB 余额
-    var balHex = await provider.request({ method: 'eth_getBalance', params: [wfWalletAddr, 'latest'] });
-    wfBnbBal = parseInt(balHex, 16) / 1e18;
-
-    // 检查并切换到 BSC
-    var chainIdHex = await provider.request({ method: 'eth_chainId' });
-    if (chainIdHex !== '0x38') {
-      try {
-        await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
-      } catch(e) {
-        // 链不存在，尝试添加
-        if (e.code === 4902) {
-          await provider.request({ method: 'wallet_addEthereumChain', params: [{
-            chainId: '0x38',
-            chainName: 'BNB Smart Chain',
-            nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-            rpcUrls: ['https://bsc-rpc.publicnode.com'],
-            blockExplorerUrls: ['https://bscscan.com']
-          }] });
-        } else {
-          throw e;
-        }
-      }
-    }
-
-    // 获取 trader 地址
-    var tk = getToken();
-    if (tk) {
-      try {
-        var resp = await fetch('/api/vault/approve-params', { headers: { 'Authorization': 'Bearer ' + tk } });
-        var data = await resp.json();
-        if (data.success) {
-          wfTraderAddr = data.traderAddress;
-          var disp = document.getElementById('traderAddrDisplay');
-          if (disp) disp.textContent = wfTraderAddr.substring(0, 10) + '...' + wfTraderAddr.substring(36);
-        }
-      } catch(e) {}
-    }
-
-    document.getElementById('wfWalletAddr').textContent = wfWalletAddr.substring(0, 8) + '...' + wfWalletAddr.substring(36);
-    document.getElementById('wfBnbBal').textContent = wfBnbBal.toFixed(6) + ' BNB';
-
-    // 通知后端绑定钱包地址
-    try {
-      var tk2 = getToken();
-      await fetch('/api/vault/bsc-wallet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk2 },
-        body: JSON.stringify({ bscWalletAddr: wfWalletAddr })
-      });
-    } catch(e) {}
-
-    wfShowStep(2);
-
-    if (wfBnbBal < 0.00005) {
-      var approveBtn = document.getElementById('wfApproveBtn');
-      if (approveBtn) { approveBtn.disabled = true; approveBtn.textContent = 'BNB 不足，请先充值'; }
-    }
-  } catch(e) {
-    var msg = e.message || '连接失败';
-    if (e.code === 4001) msg = '用户拒绝了连接请求';
-    wfShowMsg('连接失败: ' + msg, '#f85149');
-    btn.disabled = false; btn.textContent = '连接 BSC 钱包';
-  }
-}
-
-// 授权 USDT — 纯原生 JSON-RPC
-async function wfDoApprove() {
-  var btn = document.getElementById('wfApproveBtn');
-  if (!btn) return;
-  btn.disabled = true; btn.textContent = '授权中...';
-  wfShowStep(3);
-  var msgEl = document.getElementById('wfStatusMsg');
-
-  var provider = getWalletProvider();
-  if (!provider) {
-    wfShowMsg('未检测到钱包，请在 TokenPocket DApp 浏览器内打开本页面', '#f85149');
-    btn.disabled = false; btn.textContent = '授权 USDT';
-    return;
-  }
-
-  try {
-    // 确保钱包已连接
-    if (!wfWalletAddr) {
-      var accounts = await provider.request({ method: 'eth_requestAccounts' });
-      wfWalletAddr = accounts[0];
-      wfProvider = provider;
-    }
-
-    // 获取 trader 地址
-    if (!wfTraderAddr) {
-      var tk = getToken();
-      var resp = await fetch('/api/vault/approve-params', { headers: { 'Authorization': 'Bearer ' + tk } });
-      var data = await resp.json();
-      if (data.success) wfTraderAddr = data.traderAddress;
-      else throw new Error('获取授权地址失败');
-    }
-
-    // 检查当前授权状态
-    if (msgEl) { msgEl.innerHTML = wfSpinner() + '正在检查链上授权状态...'; msgEl.style.color = '#58a6ff'; }
-
-    var allowanceData = '0x' +
-      'dd62ed3e' + // allowance(address,address) selector
-      wfWalletAddr.substring(2).padStart(64, '0') +
-      wfTraderAddr.substring(2).padStart(64, '0');
-    
-    var allowHex = await provider.request({
-      method: 'eth_call',
-      params: [{ to: wfUsdtAddr, data: allowanceData }, 'latest']
-    });
-    var allowVal = BigInt(allowHex);
-    
-    if (allowVal > BigInt('1000000000000000000000')) {
-      // 已授权
-      if (msgEl) { msgEl.innerHTML = wfSpinner('#3fb950') + '链上已授权，正在同步状态...'; msgEl.style.color = '#3fb950'; }
-      var tk2 = getToken();
-      var resp3 = await fetch('/api/vault/approve-confirmed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk2 },
-        body: JSON.stringify({ txHash: 'already-approved' })
-      });
-      var d3 = await resp3.json();
-      if (d3.success) {
-        if (msgEl) { msgEl.innerHTML = '已授权！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
-      } else {
-        if (msgEl) { msgEl.innerHTML = '链上已授权，请稍后刷新'; msgEl.style.color = '#3fb950'; }
-      }
-      setTimeout(function() { refreshAll(); }, 1500);
-      return;
-    }
-
-    // 构造 approve 交易 — 原生 JSON-RPC
-    if (msgEl) {
-      msgEl.innerHTML = wfSpinner() + '请在钱包弹窗中确认授权...<br><span style="font-size:.8em;color:#8b949e">等待钱包弹出确认窗口，不要离开本页面</span>';
-      msgEl.style.color = '#58a6ff';
-    }
-
-    // approve(address spender, uint256 amount) = 0x095ea7b3 + spender(32 bytes) + amount(32 bytes)
-    // MaxUint256 = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-    var approveData = '0x095ea7b3' +
-      wfTraderAddr.substring(2).padStart(64, '0') +
-      'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
-
-    // 先估算 gas limit — 提高兼容性
-    var gasLimit = '0x' + (60000).toString(16); // approve 通常 ~46000 gas，给 60000 余量
-    try {
-      var estimated = await provider.request({
-        method: 'eth_estimateGas',
-        params: [{ from: wfWalletAddr, to: wfUsdtAddr, data: approveData }]
-      });
-      gasLimit = estimated;
-    } catch(e) {
-      console.log('[wfDoApprove] gas估算失败，使用默认值: ' + gasLimit);
-    }
-
-    // 获取当前 gas price
-    var gasPrice = '0x' + (5000000000).toString(16); // 默认 5 Gwei
-    try {
-      var price = await provider.request({ method: 'eth_gasPrice' });
-      gasPrice = price;
-    } catch(e) {
-      console.log('[wfDoApprove] gasPrice获取失败，使用默认值');
-    }
-
-    // 发送交易 — 这一步会触发钱包弹窗！
-    // 包含 gas 和 gasPrice 以确保 TokenPocket 兼容
-    var txHash = await provider.request({
-      method: 'eth_sendTransaction',
-      params: [{
-        from: wfWalletAddr,
-        to: wfUsdtAddr,
-        data: approveData,
-        gas: gasLimit,
-        gasPrice: gasPrice
-      }]
-    });
-
-    if (msgEl) {
-      msgEl.innerHTML = wfSpinner('#3fb950') + '交易已发送，等待链上确认...<br><span style="font-size:.8em;color:#8b949e">Hash: ' + txHash.substring(0,20) + '...</span>';
-      msgEl.style.color = '#3fb950';
-    }
-
-    // 等待交易确认 — 轮询 getTransactionReceipt
-    var receipt = null;
-    for (var i = 0; i < 60; i++) {
-      await new Promise(function(resolve) { setTimeout(resolve, 3000); });
-      try {
-        receipt = await provider.request({
-          method: 'eth_getTransactionReceipt',
-          params: [txHash]
-        });
-        if (receipt) break;
-      } catch(e) {}
-    }
-
-    if (receipt && receipt.status === '0x1') {
-      if (msgEl) { msgEl.innerHTML = wfSpinner('#3fb950') + '授权成功！正在通知系统...'; msgEl.style.color = '#3fb950'; }
-
-      var tk4 = getToken();
-      var resp2 = await fetch('/api/vault/approve-confirmed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk4 },
-        body: JSON.stringify({ txHash: txHash })
-      });
-      var data2 = await resp2.json();
-
-      if (data2.success) {
-        if (msgEl) { msgEl.innerHTML = '授权成功！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
-      } else {
-        if (msgEl) { msgEl.innerHTML = '链上授权成功！系统确认稍后自动完成'; msgEl.style.color = '#3fb950'; }
-      }
-      btn.textContent = '已授权';
-      setTimeout(function() { refreshAll(); }, 2000);
-    } else if (receipt && receipt.status === '0x0') {
-      if (msgEl) { msgEl.textContent = '交易执行失败，请重试'; msgEl.style.color = '#f85149'; }
-      btn.disabled = false; btn.textContent = '授权 USDT';
-      wfShowStep(2);
-    } else {
-      // 超时但可能成功
-      var tk5 = getToken();
-      await fetch('/api/vault/approve-confirmed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk5 },
-        body: JSON.stringify({ txHash: txHash })
-      });
-      if (msgEl) { msgEl.innerHTML = '交易已发送，等待链上确认中...<br><span style="font-size:.8em;color:#8b949e">请稍后刷新页面查看状态</span>'; msgEl.style.color = '#3fb950'; }
-      setTimeout(function() { refreshAll(); }, 5000);
-    }
-  } catch(e) {
-    var msg = e.message || '未知错误';
-    if (e.code === 4001) msg = '用户取消了交易';
-    else if (msg.indexOf('insufficient funds') !== -1) msg = 'BNB 余额不足以支付 gas 费';
-    else if (msg.indexOf('execution reverted') !== -1) msg = '合约执行被拒绝';
-    if (msgEl) { msgEl.innerHTML = '授权失败: ' + msg + '<br><span style="font-size:.8em;color:#8b949e">请确保钱包已连接 BSC 网络，且有少量 BNB 作为 gas 费</span>'; msgEl.style.color = '#f85149'; }
-    btn.disabled = false; btn.textContent = '授权 USDT';
-    wfShowStep(2);
-  }
-}
-
-// 检查链上授权状态
-async function wfCheckChainStatus() {
-  var btn = document.getElementById('wfCheckBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '正在检查链上状态...'; }
-  wfShowStep(3);
-  var msgEl = document.getElementById('wfStatusMsg');
-  if (msgEl) {
-    msgEl.innerHTML = wfSpinner() + '正在查询链上授权状态...';
-    msgEl.style.color = '#58a6ff';
-  }
-  try {
-    var tk = getToken();
-    var resp = await fetch('/api/vault/approve-confirmed', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk },
-      body: JSON.stringify({ txHash: 'already-approved' })
-    });
-    var data = await resp.json();
-    if (data.success) {
-      if (msgEl) { msgEl.innerHTML = '链上已授权！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
-      setTimeout(function() { refreshAll(); }, 1500);
-    } else {
-      if (msgEl) { msgEl.innerHTML = (data.error || '链上未找到授权记录'); msgEl.style.color = '#f85149'; }
-      if (btn) { btn.disabled = false; btn.textContent = '我已授权，检查链上状态'; }
-      wfShowStep(2);
-    }
-  } catch(e) {
-    if (msgEl) { msgEl.textContent = '检查失败: ' + (e.message || '网络错误'); msgEl.style.color = '#f85149'; }
-    if (btn) { btn.disabled = false; btn.textContent = '我已授权，检查链上状态'; }
-    wfShowStep(2);
-  }
-}
-
-// 复制链接
-function wfCopyLink(url) {
+// ═══ 盖茨费充值引导（方案A：用户充值到平台钱包） ═══
+function wfCopyAddr() {
+  var addr = '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(function() {
-      alert('链接已复制，请在 TokenPocket 的 DApp 浏览器中粘贴打开');
+    navigator.clipboard.writeText(addr).then(function() {
+      alert('充值地址已复制：' + addr + '\n请在 TokenPocket 中向该地址转入 USDT (BEP-20)');
     }).catch(function() {
       var t = document.createElement('textarea');
-      t.value = url;
+      t.value = addr;
       document.body.appendChild(t); t.select();
       document.execCommand('copy');
       document.body.removeChild(t);
-      alert('链接已复制，请在 TokenPocket 的 DApp 浏览器中粘贴打开');
+      alert('充值地址已复制：' + addr);
     });
   } else {
     var t = document.createElement('textarea');
-    t.value = url;
+    t.value = addr;
     document.body.appendChild(t); t.select();
     document.execCommand('copy');
     document.body.removeChild(t);
-    alert('链接已复制，请在 TokenPocket 的 DApp 浏览器中粘贴打开');
+    alert('充值地址已复制：' + addr);
   }
 }
-
-// 初始化 BscScan 链接
-(function() {
-  var approveUrl = 'https://bscscan.com/token/0x55d398326f99059fF775485246999027B3197955#writeContract';
-  var link = document.getElementById('bscScanLink');
-  if (link) link.href = approveUrl;
-})();
 </script>
 </body>
 </html>
