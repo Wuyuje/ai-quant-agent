@@ -339,6 +339,13 @@ class UserBBEngine extends BBEngine {
         const pinCheck = this.checkPinBar(klines);
         if (!pinCheck.valid) continue;
 
+        // 波动率过滤 — 拒绝极端高波动币（如BANKUSDT）
+        const volCheck = Indicators.volatilityCheck(klines, CONFIG);
+        if (!volCheck.passed) {
+          this._log(`🔴 ${symbol} ${volCheck.reason} — 波动率过滤拦截`);
+          continue;
+        }
+
         const openCheck = this.checkOpenCondition(klines);
         if (!openCheck.allowed) continue;
 

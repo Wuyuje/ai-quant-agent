@@ -58,6 +58,13 @@ const CONFIG = {
   singleKLossPct: 20,       // 单K浮亏≥本金20%止损
   ultimateLossPct: 70,       // 总浮亏≥70%终极止损
   
+  // 波动率过滤（开仓前）
+  volatilityFilterEnabled: true,    // 启用波动率过滤
+  maxMedian5mAmp: 2.0,             // 5m K线振幅中位数>2.0%禁开仓（BTC~0.13%, BANK~1.54%, AKE~2.46%）
+  maxP905mAmp: 5.0,                // 5m K线振幅P90>5.0%禁开仓（BTC~0.29%, BANK~8.25%）
+  max1hBollingerBW: 6.0,           // 1h布林带带宽>6.0%禁开仓（极端波动）
+  volatilityLookback: 100,         // 波动率计算回看K线数
+  
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
   deliveryPauseMin: 60,     // 交割前1小时暂停
@@ -516,6 +523,88 @@ class Indicators {
     if (!currentBB || !prevBB) return false;
     return currentBB.bandwidth > prevBB.bandwidth;
   }
+
+  // ═══ 波动率过滤指标 ═══
+
+  // 5m K线振幅 (high-low)/close * 100
+  static klineAmplitude(kline) {
+    if (!kline || kline.close === 0) return 0;
+    return (kline.high - kline.low) / kline.close * 100;
+  }
+
+  // 最近N根K线振幅统计：中位数 + P90
+  static amplitudeStats(klines, lookback = 100) {
+    if (klines.length < 20) return null;
+    const slice = klines.slice(-Math.min(lookback, klines.length));
+    const amps = slice.map(k => this.klineAmplitude(k)).sort((a, b) => a - b);
+    const mid = amps[Math.floor(amps.length / 2)];
+    const p90 = amps[Math.floor(amps.length * 0.9)];
+    const max = amps[amps.length - 1];
+    return { median: mid, p90, max, count: amps.length };
+  }
+
+  // 波动率过滤：返回 { passed, reason, stats }
+  static volatilityCheck(klines, config) {
+    if (!config.volatilityFilterEnabled) return { passed: true, reason: '波动率过滤未启用' };
+
+    const stats = this.amplitudeStats(klines, config.volatilityLookback);
+    if (!stats) return { passed: false, reason: '振幅数据不足' };
+
+    // 检查1：5m振幅中位数
+    if (stats.median > config.maxMedian5mAmp) {
+      return {
+        passed: false,
+        reason: `5m振幅中位数${stats.median.toFixed(2)}%>${config.maxMedian5mAmp}% — 高波动币禁开仓`,
+        stats
+      };
+    }
+
+    // 检查2：5m振幅P90
+    if (stats.p90 > config.maxP905mAmp) {
+      return {
+        passed: false,
+        reason: `5m振幅P90=${stats.p90.toFixed(2)}%>${config.maxP905mAmp}% — 极端波动禁开仓`,
+        stats
+      };
+    }
+
+    return { passed: true, reason: `振幅中位${stats.median.toFixed(2)}% P90=${stats.p90.toFixed(2)}%`, stats };
+  }
+
+  // ═══ 补仓方向检查指标 ═══
+
+  // 计算近期趋势方向（用MA7 vs MA20）
+  // 返回: 'UP' | 'DOWN' | 'FLAT'
+  static shortTermTrend(klines) {
+    if (klines.length < 20) return 'FLAT';
+    const closes = klines.map(k => k.close);
+    const ma7 = this.sma(closes, 7);
+    const ma20 = this.sma(closes, 20);
+    if (ma7 === null || ma20 === null) return 'FLAT';
+    const diff = (ma7 - ma20) / ma20 * 100;
+    if (diff > 0.3) return 'UP';   // MA7在MA20上方>0.3%
+    if (diff < -0.3) return 'DOWN'; // MA7在MA20下方>0.3%
+    return 'FLAT';
+  }
+
+  // 补仓方向检查：判断补仓是否逆势
+  // pos.side = 'LONG' or 'SHORT'
+  // 返回: { allow, ratio, reason }
+  static replenishDirectionCheck(klines, pos) {
+    const trend = this.shortTermTrend(klines);
+
+    // 多头持仓 + 趋势向下 = 逆势补仓
+    if (pos.side === 'LONG' && trend === 'DOWN') {
+      return { allow: true, ratio: 0.5, reason: `⚠️逆势补仓: 多头但趋势向下(MA7<MA20)，补仓比例减半`, trend };
+    }
+    // 空头持仓 + 趋势向上 = 逆势补仓
+    if (pos.side === 'SHORT' && trend === 'UP') {
+      return { allow: true, ratio: 0.5, reason: `⚠️逆势补仓: 空头但趋势向上(MA7>MA20)，补仓比例减半`, trend };
+    }
+
+    // 顺势或横盘，正常补仓
+    return { allow: true, ratio: 1.0, reason: `趋势${trend}，正常补仓`, trend };
+  }
 }
 
 // ════════════════════════════════════════
@@ -805,9 +894,16 @@ class BBEngine {
       return { action: 'HOLD', reason: `收口后${pos.klinesSinceNarrow}/${CONFIG.replenishInterval}根K线` };
     }
 
+    // ═══ 补仓方向检查 ═══
+    // 检查当前趋势是否与持仓方向一致
+    const dirCheck = Indicators.replenishDirectionCheck(klines, pos);
+    
     // 间隔3根K线到了，执行补仓
-    const ratio = CONFIG.replenishRatios[pos.replenishCount];
-    const replenishAmount = pos.margin * ratio;
+    const baseRatio = CONFIG.replenishRatios[pos.replenishCount];
+    // 逆势补仓时比例减半
+    const finalRatio = baseRatio * dirCheck.ratio;
+    const replenishAmount = pos.margin * finalRatio;
+    
     pos.replenishCount++;
     pos.klinesSinceNarrow = 0;  // 重置计数，等下次收口
     pos.lastNarrowTime = null;   // 清除，等下次收口触发
@@ -816,7 +912,7 @@ class BBEngine {
       action: 'REPLENISH', 
       amount: replenishAmount, 
       count: pos.replenishCount,
-      reason: `第${pos.replenishCount}次补仓 ${ratio * 100}%=$${replenishAmount.toFixed(2)}` 
+      reason: `第${pos.replenishCount}次补仓 ${(finalRatio * 100).toFixed(0)}%=$${replenishAmount.toFixed(2)} (${dirCheck.reason})`
     };
   }
 
@@ -1056,6 +1152,13 @@ class BBEngine {
         const pinCheck = this.checkPinBar(klines);
         if (!pinCheck.valid) {
           this._log(`⚪ ${symbol} ${pinCheck.reason} — 信号作废`);
+          continue;
+        }
+
+        // 波动率过滤 — 拒绝极端高波动币（如BANKUSDT）
+        const volCheck = Indicators.volatilityCheck(klines, CONFIG);
+        if (!volCheck.passed) {
+          this._log(`🔴 ${symbol} ${volCheck.reason} — 波动率过滤拦截`);
           continue;
         }
 
