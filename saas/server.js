@@ -1877,17 +1877,30 @@ class SaasServer {
       let onChainAllowance = '0';
       try {
         const { ethers } = require('ethers');
-        const provider = new ethers.JsonRpcProvider('https://bsc-rpc.publicnode.com');
         const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
-        const usdtContract = new ethers.Contract(USDT_ADDRESS, [
-          'function allowance(address,address) view returns (uint256)'
-        ], provider);
-        const allowance = await usdtContract.allowance(bscWalletAddr, traderAddr);
-        onChainAllowance = allowance.toString();
+        // 用直接 eth_call 查 allowance，避免 ethers.Contract 解码失败
+        const allowanceData = '0xdd62ed3e'
+          + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
+          + traderAddr.toLowerCase().replace('0x', '').padStart(64, '0');
+        const _ctrl = new AbortController();
+        const _to = setTimeout(() => _ctrl.abort(), 10000);
+        const _resp = await fetch('https://bsc-rpc.publicnode.com', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: USDT_ADDRESS, data: allowanceData }, 'latest'] }),
+          signal: _ctrl.signal,
+        });
+        clearTimeout(_to);
+        const _json = await _resp.json();
+        if (_json.result && _json.result !== '0x') {
+          onChainAllowance = BigInt(_json.result).toString();
+        }
       } catch(e) {}
+      // 修复：以链上 allowance 为准，而不只依赖数据库 gatesFeeApproved
+      const actualApproved = BigInt(onChainAllowance) > BigInt(1000) * BigInt('1000000000000000000');
       res.json({
         success: true,
-        approved: user?.gatesFeeApproved || false,
+        approved: actualApproved,
         onChainAllowance: onChainAllowance
       });
     });
@@ -1970,23 +1983,37 @@ class SaasServer {
       if (!session) return res.status(401).json({ error: '未登录' });
       const { txHash } = req.body;
       
-      // 支持 already-approved：直接查链上 allowance
+      // 支持 already-approved：直接查链上 allowance（用 eth_call 避免 ethers.Contract 解码失败）
       if (txHash === 'already-approved') {
         try {
           const user = this.userDB.get(session.wallet) || {};
           const bscAddr = user.bscWalletAddr;
           if (!bscAddr) return res.status(400).json({ error: '请先绑定BSC钱包地址' });
-          const { ethers } = require('ethers');
-          const provider = new ethers.JsonRpcProvider('https://bsc-rpc.publicnode.com');
-          const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
-          const usdt = new ethers.Contract(USDT_ADDRESS, ['function allowance(address,address) view returns (uint256)'], provider);
-          const allowance = await usdt.allowance(bscAddr, traderAddr);
-          if (BigInt(allowance) > BigInt(1000) * BigInt('1000000000000000000')) {
+          const traderAddr = new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address;
+          // 用直接 eth_call 查 allowance，避免 ethers.Contract RPC 解码问题
+          const allowanceData = '0xdd62ed3e'
+            + bscAddr.toLowerCase().replace('0x', '').padStart(64, '0')
+            + traderAddr.toLowerCase().replace('0x', '').padStart(64, '0');
+          const _ctrl = new AbortController();
+          const _to = setTimeout(() => _ctrl.abort(), 10000);
+          const _resp = await fetch('https://bsc-rpc.publicnode.com', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: USDT_ADDRESS, data: allowanceData }, 'latest'] }),
+            signal: _ctrl.signal,
+          });
+          clearTimeout(_to);
+          const _json = await _resp.json();
+          if (!_json.result || _json.result === '0x') {
+            return res.status(400).json({ error: '链上未找到授权记录(RPC返回空)，请在钱包中完成授权' });
+          }
+          const allowance = BigInt(_json.result);
+          if (allowance > BigInt(1000) * BigInt('1000000000000000000')) {
             this.log(`✅ ${session.wallet.slice(0,10)}... 链上已授权 (allowance > 1000 USDT)，自动更新状态`);
             this.userDB.set(session.wallet, { ...user, gatesFeeApproved: true, gatesFeeLow: (user.gatesFeeBalance || 0) < 5 });
             return res.json({ success: true, message: '链上已授权，盖茨费系统已激活' });
           } else {
-            return res.status(400).json({ error: '链上未找到授权记录，请在钱包中完成授权' });
+            return res.status(400).json({ error: `链上授权额度为 $${Number(allowance) / 1e18}，需要大于 $1000，请在钱包中重新授权` });
           }
         } catch (e) {
           return res.status(500).json({ error: '链上查询失败: ' + e.message.slice(0,80) });
@@ -2040,17 +2067,22 @@ class SaasServer {
         }
         
         if (!isApproveTx) {
-          // 宽松检查：至少验证 Approval event 存在且 owner 是当前用户
-          let foundApprove = false;
-          for (const log of receipt.logs) {
-            if (log.address.toLowerCase() === USDT_ADDR.toLowerCase() && log.topics[0] === '0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925') {
-              const ownerAddr = '0x' + log.topics[1].slice(26).toLowerCase();
-              if (validWallets.includes(ownerAddr)) { foundApprove = true; break; }
-            }
+          // 修复：移除宽松检查 — 必须严格验证 spender 是 Trader 地址
+          // 旧宽松检查只验证 owner 是用户就通过，不检查 spender，
+          // 导致用户授权给别的地址也被标记为已授权
+          return res.status(400).json({ error: '交易不是USDT授权交易或授权地址不匹配（spender 必须是 Trader 钱包）' });
+        }
+        
+        // 修复：验证通过后，再查一次链上 allowance 确认实际授权额度 > 0
+        try {
+          const usdtCheck = new ethers.Contract(USDT_ADDR, ['function allowance(address,address) view returns (uint256)'], provider);
+          const actualAllowance = await usdtCheck.allowance(validWallets[0], traderAddr);
+          if (BigInt(actualAllowance) === BigInt(0)) {
+            this.log(`⚠️ ${session.wallet.slice(0,10)}... txHash验证通过但allowance=0，可能授权被撤销`);
+            return res.status(400).json({ error: '链上授权额度为0，请确认授权交易已成功' });
           }
-          if (!foundApprove) {
-            return res.status(400).json({ error: '交易不是USDT授权交易或授权地址不匹配' });
-          }
+        } catch (e) {
+          this.log(`⚠️ ${session.wallet.slice(0,10)}... allowance二次验证失败(非致命): ${e.message.slice(0,60)}`);
         }
         
         this.log(`✅ ${session.wallet.slice(0,10)}... USDT approve 链上验证通过: ${txHash.slice(0,16)}...`);

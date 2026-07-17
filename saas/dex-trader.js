@@ -844,7 +844,7 @@ class DexTrader {
     }
   }
 
-  // ═══ DEX 盖茨费链上扣取（与 CEX 一致：transferFrom 从用户 BSC 钱包扣）═══
+  // ═══ DEX 盖茨费扣取（方案A：Trader钱包直接 transfer，不需要用户授权） ═══
   async _collectGatesFee(wallet, bscWallet) {
     // 管理员豁免
     if (ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase())) return;
@@ -878,35 +878,22 @@ class DexTrader {
       return;
     }
 
-    if (!bscWallet) {
-      this._log(`⏸️ ${wallet.slice(0, 10)}... 无 BSC 钱包地址，盖茨费继续记账`);
-      return;
-    }
-
-    this._log(`💸 ${wallet.slice(0, 10)}... DEX盖茨费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，开始链上扣费`);
+    this._log(`💸 ${wallet.slice(0, 10)}... DEX盖茨费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，Trader钱包直接转出`);
 
     let platformOk = false, ecoOk = false;
     try {
       const traderWallet = getTraderWallet();
       const usdtContract = new ethers.Contract(USDT_ADDRESS, [
-        'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+        'function transfer(address to, uint256 amount) returns (bool)',
         'function balanceOf(address) view returns (uint256)',
-        'function allowance(address,address) view returns (uint256)',
       ], traderWallet);
 
-      // 检查授权额度和余额
-      const allowance = await usdtContract.allowance(bscWallet, traderWallet.address);
-      const balance = await usdtContract.balanceOf(bscWallet);
+      // 检查 Trader 钱包余额
+      const traderBalance = await usdtContract.balanceOf(traderWallet.address);
       const totalFeeWei = ethers.parseUnits(totalFee.toFixed(6), 18);
 
-      if (BigInt(allowance) < totalFeeWei) {
-        this._log(`❌ ${wallet.slice(0, 10)}... 链上授权不足，请重新授权 USDT`);
-        if (this.userDB) { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, gatesFeeApproved: false }); }
-        return;
-      }
-      if (BigInt(balance) < totalFeeWei) {
-        this._log(`❌ ${wallet.slice(0, 10)}... BSC钱包USDT不足 ($${Number(balance) / 1e18})，请充值`);
-        if (this.userDB) { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, gatesFeeLow: true, gatesFeeBalance: Number(balance) / 1e18 }); }
+      if (BigInt(traderBalance) < totalFeeWei) {
+        this._log(`❌ ${wallet.slice(0, 10)}... Trader钱包USDT不足 ($${Number(traderBalance) / 1e18})，需要 $${totalFee.toFixed(2)}`);
         return;
       }
 
@@ -915,17 +902,16 @@ class DexTrader {
         try {
           const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
           this._log(`💸 ${wallet.slice(0, 10)}... DEX服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0, 10)}...`);
-          const tx1 = await usdtContract.transferFrom(bscWallet, PLATFORM_WALLET, platformWei);
+          const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
           await tx1.wait();
-          this._log(`✅ DEX服务费链上转账成功 $${totalPlatform.toFixed(2)} tx=${tx1.hash.slice(0, 16)}...`);
+          this._log(`✅ DEX服务费转账成功 $${totalPlatform.toFixed(2)} tx=${tx1.hash.slice(0, 16)}...`);
           platformOk = true;
-          // 标记已收
           pending.forEach(r => r.platformCollected = true);
         } catch (e) {
-          this._log(`❌ DEX服务费链上转账失败: ${e.message?.slice(0, 80)}`);
+          this._log(`❌ DEX服务费转账失败: ${e.message?.slice(0, 80)}`);
         }
       } else {
-        platformOk = true; // 服务费已收过
+        platformOk = true;
       }
 
       // Step 2: 转生态费到生态费钱包
@@ -933,12 +919,12 @@ class DexTrader {
         try {
           const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
           this._log(`💸 ${wallet.slice(0, 10)}... DEX生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0, 10)}...`);
-          const tx2 = await usdtContract.transferFrom(bscWallet, ECO_FUND_WALLET, ecoWei);
+          const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
           await tx2.wait();
-          this._log(`✅ DEX生态费链上转账成功 $${totalEco.toFixed(2)} tx=${tx2.hash.slice(0, 16)}...`);
+          this._log(`✅ DEX生态费转账成功 $${totalEco.toFixed(2)} tx=${tx2.hash.slice(0, 16)}...`);
           ecoOk = true;
         } catch (e) {
-          this._log(`❌ DEX生态费链上转账失败: ${e.message?.slice(0, 80)}`);
+          this._log(`❌ DEX生态费转账失败: ${e.message?.slice(0, 80)}`);
         }
       }
 
@@ -947,17 +933,21 @@ class DexTrader {
         feeState.pending = [];
         feeState.collected = (feeState.collected || 0) + totalFee;
         this._log(`🎉 ${wallet.slice(0, 10)}... DEX盖茨费全部收取完成 $${totalFee.toFixed(2)}`);
-        // 更新 BSC 钱包余额
-        try {
-          const newBal = await usdtContract.balanceOf(bscWallet);
-          if (this.userDB) { const e = this.userDB.get(wallet) || {}; this.userDB.set(wallet, { ...e, gatesFeeBalance: Number(newBal) / 1e18, gatesFeeLow: false }); }
-        } catch (e) {}
+        // 从用户记账余额扣除
+        if (this.userDB) {
+          const user = this.userDB.get(wallet) || {};
+          const oldBalance = user.gatesFeeBalance || 0;
+          const newBalance = Math.max(0, oldBalance - totalFee);
+          const collected = (user.gatesFeeCollected || 0) + totalFee;
+          this.userDB.set(wallet, { ...user, gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5, gatesFeeCollected: collected, gatesFeeApproved: true });
+          this._log(`✅ ${wallet.slice(0, 10)}... 记账扣除: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计 $${collected.toFixed(2)}`);
+        }
       }
     } catch (e) {
       this._log(`❌ ${wallet.slice(0, 10)}... DEX盖茨费扣取异常: ${e.message?.slice(0, 100)}`);
     }
 
-    // 记录失败
+        // 记录失败
     if (!platformOk || !ecoOk) {
       const cd = this._transferFailCooldown[wallet] || { failCount: 0, lastFailAt: 0 };
       cd.failCount++;
