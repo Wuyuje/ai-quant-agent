@@ -65,6 +65,15 @@ const CONFIG = {
   max1hBollingerBW: 6.0,           // 1h布林带带宽>6.0%禁开仓（极端波动）
   volatilityLookback: 100,         // 波动率计算回看K线数
   
+  // 趋势过滤（开仓前）— 从A策略移植
+  trendFilterEnabled: true,        // 启用趋势过滤
+  trendEmaFast: 7,                 // 快线EMA周期
+  trendEmaSlow: 25,               // 慢线EMA周期
+  trendEmaTrend: 99,              // 趋势线EMA周期
+  trendMinSlope: 0.15,            // EMA99斜率>0.15%才认为有趋势（<0.15%=横盘，放行）
+  trendBlockStrongCounter: true,  // 强趋势逆势开仓直接拦截
+  trendBlockThreshold: 0.5,       // EMA99偏离>0.5%的强趋势中，逆势方向禁开仓
+  
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
   deliveryPauseMin: 60,     // 交割前1小时暂停
@@ -604,6 +613,159 @@ class Indicators {
 
     // 顺势或横盘，正常补仓
     return { allow: true, ratio: 1.0, reason: `趋势${trend}，正常补仓`, trend };
+  }
+
+  // ═══ 趋势过滤指标（从A策略移植）═══
+
+  // EMA计算
+  static ema(values, period) {
+    if (values.length < period) return null;
+    const k = 2 / (period + 1);
+    let ema = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < values.length; i++) {
+      ema = values[i] * k + ema * (1 - k);
+    }
+    return ema;
+  }
+
+  // EMA序列（返回最后N个EMA值，用于算斜率）
+  static emaSeries(values, period, count = 5) {
+    if (values.length < period + count) return null;
+    const k = 2 / (period + 1);
+    let ema = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    const series = [ema];
+    for (let i = period; i < values.length; i++) {
+      ema = values[i] * k + ema * (1 - k);
+      series.push(ema);
+    }
+    return series.slice(-count);
+  }
+
+  // ADX计算（简化版，判断趋势强度）
+  // 返回 0-100，>25 认为有趋势
+  static adx(klines, period = 14) {
+    if (klines.length < period * 2 + 10) return 0;
+    const highs = klines.map(k => k.high);
+    const lows = klines.map(k => k.low);
+    const closes = klines.map(k => k.close);
+    
+    const plusDM = [];
+    const minusDM = [];
+    const tr = [];
+    
+    for (let i = 1; i < klines.length; i++) {
+      const upMove = highs[i] - highs[i - 1];
+      const downMove = lows[i - 1] - lows[i];
+      plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+      minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+      const trueRange = Math.max(
+        highs[i] - lows[i],
+        Math.abs(highs[i] - closes[i - 1]),
+        Math.abs(lows[i] - closes[i - 1])
+      );
+      tr.push(trueRange);
+    }
+    
+    // Wilder平滑
+    const smooth = (arr, p) => {
+      if (arr.length < p) return [];
+      let val = arr.slice(0, p).reduce((a, b) => a + b, 0);
+      const result = [val];
+      for (let i = p; i < arr.length; i++) {
+        val = val - val / p + arr[i];
+        result.push(val);
+      }
+      return result;
+    };
+    
+    const trS = smooth(tr, period);
+    const plusDMS = smooth(plusDM, period);
+    const minusDMS = smooth(minusDM, period);
+    
+    const dx = [];
+    for (let i = 0; i < trS.length; i++) {
+      if (trS[i] === 0) continue;
+      const plusDI = 100 * plusDMS[i] / trS[i];
+      const minusDI = 100 * minusDMS[i] / trS[i];
+      const sum = plusDI + minusDI;
+      if (sum > 0) dx.push(100 * Math.abs(plusDI - minusDI) / sum);
+    }
+    
+    if (dx.length < period) return 0;
+    // ADX = DX的Wilder平滑
+    const adxVal = dx.slice(-period).reduce((a, b) => a + b, 0) / period;
+    return adxVal;
+  }
+
+  // 趋势过滤：开仓前检查趋势方向是否与开仓方向严重逆向
+  // direction: 'LONG' 或 'SHORT'
+  // 返回: { passed, reason, trendInfo }
+  static trendCheck(klines, direction, config) {
+    if (!config.trendFilterEnabled) return { passed: true, reason: '趋势过滤未启用' };
+
+    const closes = klines.map(k => k.close);
+    if (closes.length < config.trendEmaTrend + 5) {
+      return { passed: true, reason: 'K线数据不足，趋势过滤放行' };
+    }
+
+    const ema7 = this.ema(closes, config.trendEmaFast);
+    const ema25 = this.ema(closes, config.trendEmaSlow);
+    const ema99 = this.ema(closes, config.trendEmaTrend);
+    const lastClose = closes[closes.length - 1];
+    
+    if (ema7 === null || ema25 === null || ema99 === null) {
+      return { passed: true, reason: 'EMA数据不足，放行' };
+    }
+
+    // EMA99斜率（最近5根的变化率）
+    const ema99Series = this.emaSeries(closes, config.trendEmaTrend, 5);
+    let slope = 0;
+    if (ema99Series && ema99Series.length >= 2) {
+      const oldVal = ema99Series[0];
+      const newVal = ema99Series[ema99Series.length - 1];
+      slope = oldVal > 0 ? (newVal - oldVal) / oldVal * 100 : 0;
+    }
+
+    // 价格偏离EMA99的百分比
+    const deviation = (lastClose - ema99) / ema99 * 100;
+
+    // ADX趋势强度
+    const adxVal = this.adx(klines, 14);
+
+    const trendInfo = {
+      ema7, ema25, ema99, slope, deviation, adx: adxVal,
+      direction: slope > config.trendMinSlope ? 'UP' : (slope < -config.trendMinSlope ? 'DOWN' : 'FLAT')
+    };
+
+    // 横盘市场（EMA99斜率很小）— 放行，布林带均值回归在横盘效果最好
+    if (Math.abs(slope) < config.trendMinSlope) {
+      return { passed: true, reason: `横盘市场(EMA99斜率${slope.toFixed(3)}%)，趋势过滤放行`, trendInfo };
+    }
+
+    // 有明确趋势时检查方向
+    // 强趋势定义：ADX > 25 且价格偏离EMA99 > threshold%
+    const isStrongTrend = adxVal > 25 && Math.abs(deviation) > config.trendBlockThreshold;
+
+    if (config.trendBlockStrongCounter && isStrongTrend) {
+      // 强趋势向上 + 要开空 → 拦截
+      if (trendInfo.direction === 'UP' && direction === 'SHORT') {
+        return {
+          passed: false,
+          reason: `强趋势向上(ADX=${adxVal.toFixed(0)} EMA99偏离${deviation.toFixed(2)}%) — 禁止逆势做空`,
+          trendInfo
+        };
+      }
+      // 强趋势向下 + 要开多 → 拦截
+      if (trendInfo.direction === 'DOWN' && direction === 'LONG') {
+        return {
+          passed: false,
+          reason: `强趋势向下(ADX=${adxVal.toFixed(0)} EMA99偏离${deviation.toFixed(2)}%) — 禁止逆势做多`,
+          trendInfo
+        };
+      }
+    }
+
+    return { passed: true, reason: `趋势${trendInfo.direction}(ADX=${adxVal.toFixed(0)} 斜率${slope.toFixed(3)}% 偏离${deviation.toFixed(2)}%) — 放行`, trendInfo };
   }
 }
 
@@ -1169,8 +1331,15 @@ class BBEngine {
           continue;
         }
 
+        // 趋势过滤 — 从A策略移植，拦截强趋势逆势开仓（如BANKUSDT单边暴跌时做多）
+        const trendResult = Indicators.trendCheck(klines, openCheck.direction, CONFIG);
+        if (!trendResult.passed) {
+          this._log(`🔴 ${symbol} ${trendResult.reason} — 趋势过滤拦截`);
+          continue;
+        }
+
         // 执行开仓
-        this._log(`🟢 ${symbol} ${openCheck.direction} 信号: ${openCheck.reason} | 带宽分位=${openCheck.bwPercentile?.toFixed(0)}%`);
+        this._log(`🟢 ${symbol} ${openCheck.direction} 信号: ${openCheck.reason} | 带宽分位=${openCheck.bwPercentile?.toFixed(0)}% | ${trendResult.reason}`);
         await this._openPosition(symbol, openCheck.direction, klines);
 
       } catch (e) {
