@@ -1607,55 +1607,12 @@ class SaasServer {
         };
       }
 
-      // ═══ 盖茨费余额：自动检测链上差额并入账 ═══
-      // 用户刷新仪表盘时，实时查Trader钱包链上USDT余额
-      // 如果链上余额 > 数据库总额（有新充值），自动入账给当前用户
+      // ═══ 盖茨费余额：只显示数据库记账余额（自动扣费模式） ═══
+      // 用户充值到Trader钱包后，点击"我已充值"按钮输入金额，系统记入gatesFeeBalance
+      // 不再自动检测链上差额（因为Trader钱包是共用地址，无法区分哪个用户充的）
       let _gatesFeeBalance = user?.gatesFeeBalance ?? 0;
       let _gatesFeeLow = user?.gatesFeeLow ?? false;
-      let _autoDetected = 0; // 自动检测到的充值金额
-
-      try {
-        // 查Trader钱包链上USDT余额（用 fetch + eth_call，5秒超时）
-        const _traderAddr = TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
-        const _data = '0x70a08231' + '000000000000000000000000' + _traderAddr.toLowerCase().replace('0x','');
-        const _ctrl = new AbortController();
-        const _to = setTimeout(() => _ctrl.abort(), 5000);
-        const _resp = await fetch('https://bsc-rpc.publicnode.com', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: '0x55d398326f99059fF775485246999027B3197955', data: _data }, 'latest'] }),
-          signal: _ctrl.signal,
-        });
-        clearTimeout(_to);
-        const _json = await _resp.json();
-        const _traderOnchain = _json.result ? Number(BigInt(_json.result)) / 1e18 : 0;
-
-        // 查数据库总额
-        let _dbTotal = 0;
-        for (const [, _u] of Object.entries(this.userDB.users || {})) {
-          if (_u && typeof _u.gatesFeeBalance === 'number') _dbTotal += _u.gatesFeeBalance;
-        }
-
-        // 有差额 → 自动入账给当前用户
-        const _diff = _traderOnchain - _dbTotal;
-        if (_diff > 0.5) {
-          // 链上 > 数据库，说明有新充值
-          _autoDetected = _diff;
-          const _newBal = _gatesFeeBalance + _diff;
-          _gatesFeeBalance = _newBal;
-          _gatesFeeLow = _newBal < 5;
-
-          this.userDB.set(session.wallet, {
-            ...user,
-            gatesFeeBalance: _newBal,
-            gatesFeeLow: _newBal < 5,
-            gatesFeeApproved: true,
-          });
-          console.log(`[GatesFee] ✅ ${session.wallet.slice(0,10)}... 自动检测充值 +$${_diff.toFixed(2)} → 余额: $${_newBal.toFixed(2)} (Trader链上: $${_traderOnchain.toFixed(2)}, DB总额: $${_dbTotal.toFixed(2)})`);
-        }
-      } catch (e) {
-        // RPC失败时静默降级，用数据库余额
-      }
+      let _autoDetected = 0;
 
       res.json({
         success: true,
