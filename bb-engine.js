@@ -59,14 +59,14 @@ const CONFIG = {
   ultimateLossPct: 70,       // 总浮亏≥70%终极止损
   
   // 波动率过滤（开仓前）
-  volatilityFilterEnabled: true,    // 启用波动率过滤
+  volatilityFilterEnabled: false,    // 已禁用波动率过滤（用户要求纯B策略）
   maxMedian5mAmp: 2.0,             // 5m K线振幅中位数>2.0%禁开仓（BTC~0.13%, BANK~1.54%, AKE~2.46%）
   maxP905mAmp: 5.0,                // 5m K线振幅P90>5.0%禁开仓（BTC~0.29%, BANK~8.25%）
   max1hBollingerBW: 6.0,           // 1h布林带带宽>6.0%禁开仓（极端波动）
   volatilityLookback: 100,         // 波动率计算回看K线数
   
   // 趋势过滤（开仓前）— 从A策略移植
-  trendFilterEnabled: true,        // 启用趋势过滤
+  trendFilterEnabled: false,        // 已禁用趋势过滤（用户要求纯B策略）
   trendEmaFast: 7,                 // 快线EMA周期
   trendEmaSlow: 25,               // 慢线EMA周期
   trendEmaTrend: 99,              // 趋势线EMA周期
