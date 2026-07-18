@@ -30,6 +30,12 @@ const CONFIG = {
   leverage: 3,              // 默认杠杆
   perPositionPct: 0.15,    // 单仓位占总资金15%
   
+  // v122: 交易对黑名单 — 这些币种永不选入持仓
+  // BANKUSDT: 2026-07-17 触发 3 次终极止损，单笔亏损 -$150+，拉入黑名单
+  blacklist: [
+    'BANKUSDT',   // 单笔巨亏 -$150（3次终极止损）
+  ],
+  
   // K线参数
   klineInterval: '5m',
   klineLimit: 200,           // 拉取200根5min K线
@@ -556,10 +562,13 @@ class BBEngine {
     const allTickers = await this.api.getAllTickers();
     
     // 过滤：只保留 USDT 永续合约，排除交割合约
+    // v122: 同时排除黑名单币种
+    const blacklistSet = new Set(CONFIG.blacklist || []);
     const usdtPerps = allTickers.filter(t => 
       t.symbol.endsWith('USDT') && 
       parseFloat(t.quoteVolume) > 0 &&
-      !t.symbol.includes('_')
+      !t.symbol.includes('_') &&
+      !blacklistSet.has(t.symbol)  // v122: 黑名单过滤
     );
 
     // 按成交额排序，取前50强
@@ -1085,6 +1094,13 @@ class BBEngine {
   async _openPosition(symbol, direction, klines) {
     const price = klines[klines.length - 1].close;
     
+    // v122: 黑名单币种禁止开仓
+    const blacklistSet = new Set(CONFIG.blacklist || []);
+    if (blacklistSet.has(symbol)) {
+      this._log(`🚫 ${symbol} ${direction} 跳过开仓: 黑名单币种`);
+      return;
+    }
+    
     // 修复：盖茨费暂停时不开新仓（余额不足或未授权）
     if (this.gatesFeePaused) {
       this._log(`⏸️ ${symbol} ${direction} 跳过开仓: 盖茨费暂停(余额不足或未授权)，保留持仓监控`);
@@ -1505,9 +1521,13 @@ class BBEngine {
           }
         } else {
           // 远程有但本地没有 → 孤儿仓位（可能是另一策略开的仓，或手动开的仓）
-          // 修复：持仓数超过 maxPositions 时，不接管新孤儿仓位，已有持仓靠策略止盈自然减仓
+          // v122: 黑名单币种不接管孤儿仓位（只监控价格，等机会平掉）
+          const blacklistSet = new Set(CONFIG.blacklist || []);
           const currentCount = Object.keys(this.positions).length;
-          if (currentCount >= CONFIG.maxPositions) {
+          if (blacklistSet.has(symbol)) {
+            this._log(`🚫 ${symbol} 在黑名单中，不接管孤儿仓位（等机会平掉）`);
+          } else if (currentCount >= CONFIG.maxPositions) {
+            // 修复：持仓数超过 maxPositions 时，不接管新孤儿仓位，已有持仓靠策略止盈自然减仓
             this._log(`⏸️ ${symbol} 远程孤儿仓位存在，但持仓已满${currentCount}/${CONFIG.maxPositions} — 暂不接管，等止盈减仓后接管`);
           } else {
             this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${leverage}x`);
