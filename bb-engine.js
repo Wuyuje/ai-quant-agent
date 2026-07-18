@@ -1425,6 +1425,11 @@ class BBEngine {
       // 回调通知 manager 更新统计
       if (this.onPositionClosed) this.onPositionClosed(tradeRecord);
       
+      // v122: 记录平仓成功时间，供 _syncPositions 跳过强平误判
+      // （必须在 delete 之前保存，否则丢失）
+      this._lastCloseSuccess = this._lastCloseSuccess || {};
+      this._lastCloseSuccess[symbol] = Date.now();
+      
       delete this.positions[symbol];
       this._saveState();
     } else {
@@ -1537,6 +1542,14 @@ class BBEngine {
           if (lastCloseAttempt && now - lastCloseAttempt < 60 * 1000) {
             this._log(`⏳ ${symbol} 远程已无持仓，但平仓刚尝试过(<60秒)，可能是平仓成功了，清除本地状态`);
           }
+          // v122: 如果刚刚平仓成功（5分钟内），不再触发强平误判
+          const lastSuccess = this._lastCloseSuccess?.[symbol] || 0;
+          if (lastSuccess && now - lastSuccess < 5 * 60 * 1000) {
+            this._log(`✅ ${symbol} 远程已无持仓，本引擎刚平仓成功 — 跳过强平检测`);
+            delete this.positions[symbol];
+            this._saveState();
+            continue;
+          }
 
           // ═══ 强平亏损检测：查Binance income记录，如果是强平产生的亏损则记录到交易历史 ═══
           const pos = this.positions[symbol];
@@ -1592,6 +1605,20 @@ class BBEngine {
     try {
       const dir = path.join(__dirname, 'data');
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      
+      // v122: 去重 — 用 symbol+closeTime+wallet 作为唯一 key，5秒内同 key 不重复记录
+      const dedupKey = `${trade.symbol}_${trade.closeTime}_${(trade.wallet || 'admin').toLowerCase()}`;
+      this._lastRecordedTrades = this._lastRecordedTrades || {};
+      const now = Date.now();
+      // 清理超过 60 秒的旧记录
+      for (const k of Object.keys(this._lastRecordedTrades)) {
+        if (now - this._lastRecordedTrades[k] > 60 * 1000) delete this._lastRecordedTrades[k];
+      }
+      if (this._lastRecordedTrades[dedupKey]) {
+        this._log(`⏭️ 跳过重复交易记录: ${trade.symbol} closeTime=${trade.closeTime}`);
+        return;
+      }
+      this._lastRecordedTrades[dedupKey] = now;
       
       // 1. 全局交易历史（兼容旧API）
       const tradeFile = path.join(dir, 'bb-trade-history.json');

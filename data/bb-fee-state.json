@@ -1,8 +1,74 @@
 {
   "pending": {
-    "0x588ff823e3b50ebc4691c567cee23485b97d7025": [],
-    "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f": [],
-    "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": []
+    "0x588ff823e3b50ebc4691c567cee23485b97d7025": [
+      {
+        "symbol": "SPCXUSDT",
+        "pnlUsdt": "0.6756",
+        "platformFee": "0.1351",
+        "ecoFund": "0.0676",
+        "userShare": "0.4729",
+        "timestamp": 1784374927722,
+        "status": "pending"
+      },
+      {
+        "symbol": "LTCUSDT",
+        "pnlUsdt": "1.3817",
+        "platformFee": "0.2763",
+        "ecoFund": "0.1382",
+        "userShare": "0.9672",
+        "timestamp": 1784381340483,
+        "status": "pending"
+      },
+      {
+        "symbol": "INTCUSDT",
+        "pnlUsdt": "0.9236",
+        "platformFee": "0.1847",
+        "ecoFund": "0.0924",
+        "userShare": "0.6465",
+        "timestamp": 1784382674450,
+        "status": "pending"
+      }
+    ],
+    "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f": [
+      {
+        "symbol": "INTCUSDT",
+        "pnlUsdt": "0.8543",
+        "platformFee": "0.1709",
+        "ecoFund": "0.0854",
+        "userShare": "0.5980",
+        "timestamp": 1784382676839,
+        "status": "pending"
+      }
+    ],
+    "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": [
+      {
+        "symbol": "SPCXUSDT",
+        "pnlUsdt": "0.3560",
+        "platformFee": "0.0712",
+        "ecoFund": "0.0356",
+        "userShare": "0.2492",
+        "timestamp": 1784374934459,
+        "status": "pending"
+      },
+      {
+        "symbol": "HYPEUSDT",
+        "pnlUsdt": "0.2601",
+        "platformFee": "0.0520",
+        "ecoFund": "0.0260",
+        "userShare": "0.1821",
+        "timestamp": 1784374936331,
+        "status": "pending"
+      },
+      {
+        "symbol": "SEIUSDT",
+        "pnlUsdt": "1.6399",
+        "platformFee": "0.3280",
+        "ecoFund": "0.1640",
+        "userShare": "1.1480",
+        "timestamp": 1784383526264,
+        "status": "pending"
+      }
+    ]
   },
   "collected": {
     "0x588ff823e3b50ebc4691c567cee23485b97d7025": [
@@ -377,6 +443,46 @@
         "timestamp": 1784314736669,
         "status": "auto-collected",
         "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "USUSDT",
+        "pnlUsdt": "1.4767",
+        "platformFee": "0.2953",
+        "ecoFund": "0.1477",
+        "userShare": "1.0337",
+        "timestamp": 1784362040351,
+        "status": "auto-collected",
+        "collectedAt": 1784362052529
+      },
+      {
+        "symbol": "SEIUSDT",
+        "pnlUsdt": "1.2166",
+        "platformFee": "0.2433",
+        "ecoFund": "0.1217",
+        "userShare": "0.8517",
+        "timestamp": 1784366271971,
+        "status": "auto-collected",
+        "collectedAt": 1784366284520
+      },
+      {
+        "symbol": "HYPEUSDT",
+        "pnlUsdt": "1.2688",
+        "platformFee": "0.2538",
+        "ecoFund": "0.1269",
+        "userShare": "0.8882",
+        "timestamp": 1784374933794,
+        "status": "auto-collected",
+        "collectedAt": 1784374941694
+      },
+      {
+        "symbol": "UNIUSDT",
+        "pnlUsdt": "0.4860",
+        "platformFee": "0.0972",
+        "ecoFund": "0.0486",
+        "userShare": "0.3402",
+        "timestamp": 1784375017732,
+        "status": "auto-collected",
+        "collectedAt": 1784375029833
       }
     ],
     "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": [
@@ -409,11 +515,21 @@
         "timestamp": 1784345316338,
         "status": "auto-collected",
         "collectedAt": 1784358465187
+      },
+      {
+        "symbol": "USUSDT",
+        "pnlUsdt": "1.1255",
+        "platformFee": "0.2251",
+        "ecoFund": "0.1126",
+        "userShare": "0.7879",
+        "timestamp": 1784362021086,
+        "status": "auto-collected",
+        "collectedAt": 1784362033389
       }
     ]
   },
-  "totalPlatformFee": 18.071059400000053,
-  "totalEcoFund": 9.035529700000026,
+  "totalPlatformFee": 20.280828200000034,
+  "totalEcoFund": 10.140414100000017,
   "resetAt": "2026-07-17T00:00:00Z",
   "resetNote": "清除旧记账"
 }
