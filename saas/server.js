@@ -150,14 +150,14 @@ const PANCAKE_ROUTER = '0x10ED43C718714eb63d5aA57B78B54704E256024E';
 const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955';
 const WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
 const ARK_TOKEN = '0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D';
-const PLATFORM_WALLET = '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A';  // 服务费接收地址
+const PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 服务费直接转管理员钱包
 const PLATFORM_FEE_BPS = 2000; // 20%
 // Vault Factory 合约（V3: 完全修复版 — encodePacked bug + 18位小数 + ownership 归用户）
 const VAULT_FACTORY = process.env.VAULT_FACTORY_ADDRESS || '0x2A38B82Dd59cBDF8DE7e61338f88B3dA225b8A3d';
 // RevenueDistribution 合约（盖茨费自动分配: 20%服务费 + 10%生态费）
 const REVENUE_DISTRIBUTION = process.env.REVENUE_DISTRIBUTION_ADDRESS || '';
-// 生态基金钱包（10%）
-const ECO_FUND_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';
+// 生态基金钱包（直接转管理员钱包）
+const ECO_FUND_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';
 // 平台执行器私钥（用于签名交易，存在环境变量里）
 // [SECURITY#1-HIGH] 私钥不应硬编码在源码中，生产环境必须通过环境变量注入
 const TRADER_PRIVATE_KEY = process.env.TRADER_PRIVATE_KEY;
@@ -2576,7 +2576,7 @@ class SaasServer {
             };
           })),
           pendingFunds: Array.from(pendingFundRequests.values()),
-          fees: this.userTrader?.getFeeSummary() || { platformWallet: PLATFORM_WALLET, ecoFundWallet: '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82', users: {}, grandTotal: { platformFee: '0', ecoFund: '0' } },
+          fees: this.userTrader?.getFeeSummary() || { platformWallet: PLATFORM_WALLET, ecoFundWallet: '0xfA3b90c574469909D20848273C06752a22fdE74a', users: {}, grandTotal: { platformFee: '0', ecoFund: '0' } },
         });
       } catch(e) {
         res.status(500).json({ error: e.message });
@@ -2774,7 +2774,7 @@ document.getElementById('lb').onclick=L;
           vaultAbi: vaultArtifact.abi,
           vaultBytecode: vaultArtifact.bytecode,
           trader: '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e',
-          platformFeeWallet: '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A',
+          platformFeeWallet: '0xfA3b90c574469909D20848273C06752a22fdE74a',
           defaultFeeBps: 2000,
           version: 'V3',
         });

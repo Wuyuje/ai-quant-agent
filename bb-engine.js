@@ -1146,13 +1146,13 @@ class BBEngine {
     PLATFORM_FEE_RATE: 0.20,   // 20% 服务费
     ECO_FUND_RATE: 0.10,       // 10% 生态费
     USER_SHARE_RATE: 0.70,     // 70% 用户实得
-    PLATFORM_WALLET: '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A',  // 服务费钱包
-    ECO_FUND_WALLET: '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82',  // 生态费钱包
+    PLATFORM_WALLET: '0xfA3b90c574469909D20848273C06752a22fdE74a',  // 服务费直接转管理员钱包
+    ECO_FUND_WALLET: '0xfA3b90c574469909D20848273C06752a22fdE74a',  // 生态费直接转管理员钱包
     ADMIN_WALLETS: [
       '0xfa3b90c574469909d20848273c06752a22fde74a',
       '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
     ],
-    FEE_THRESHOLD: 0.1,          // 累计费用≥$0.1才转账（每笔止盈即扣，不积累）
+    FEE_THRESHOLD: 5,          // v122: 累计费用≥$5才转账（高于$5才自动转给管理员）
     FEE_STATE_FILE: path.join(__dirname, 'data', 'bb-fee-state.json'),
   };
 

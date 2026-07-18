@@ -11,8 +11,8 @@ const path = require('path');
   const { ethers } = require('ethers');
   const BSC_RPC = 'https://bsc-rpc.publicnode.com';
   const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
-  const PLATFORM_WALLET = '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A';
-  const ECO_FUND_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';
+  const PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 服务费直接转管理员钱包
+  const ECO_FUND_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 生态费直接转管理员钱包
   
   const traderPrivateKey = process.env.TRADER_PRIVATE_KEY;
   if (!traderPrivateKey) {

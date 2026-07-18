@@ -489,8 +489,9 @@ class CEXUserTrader {
     this.PLATFORM_FEE_RATE = 0.20;   // 20% 服务费
     this.ECO_FUND_RATE = 0.10;       // 10% 生态费
     this.USER_SHARE_RATE = 0.70;     // 70% 用户实得
-    this.PLATFORM_WALLET = '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A';  // 服务费钱包
-    this.ECO_FUND_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';  // 生态费钱包
+    this.PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 服务费直接转管理员钱包
+    this.ECO_FUND_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 生态费直接转管理员钱包
+    this.FEE_TRANSFER_THRESHOLD = 5;  // v122: 阈值改为 $5 — 累计服务费+生态费超过 $5 才自动转
     this.FEE_STATE_FILE = path.join(__dirname, '..', 'data', 'cex-fee-state.json');
     this._feeState = { pending: {}, collected: {}, totalPlatformFee: 0, totalEcoFund: 0 };
 
@@ -1575,8 +1576,8 @@ class CEXUserTrader {
     const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
     const totalFee = totalPlatform + totalEco;
 
-    if (totalFee < 0.5) {
-      this._log(`📊 ${wallet.slice(0,8)} 盖茨费累计 $${totalFee.toFixed(2)} < $0.5 阈值 (${pending.length}笔)，继续积累`);
+    if (totalFee < (this.FEE_TRANSFER_THRESHOLD || 5)) {
+      this._log(`📊 ${wallet.slice(0,8)} 盖茨费累计 $${totalFee.toFixed(2)} < $${this.FEE_TRANSFER_THRESHOLD || 5} 阈值 (${pending.length}笔)，继续积累`);
       return;
     }
 
