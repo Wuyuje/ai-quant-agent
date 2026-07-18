@@ -58,22 +58,6 @@ const CONFIG = {
   singleKLossPct: 20,       // 单K浮亏≥本金20%止损
   ultimateLossPct: 70,       // 总浮亏≥70%终极止损
   
-  // 波动率过滤（开仓前）
-  volatilityFilterEnabled: false,    // 已禁用波动率过滤（用户要求纯B策略）
-  maxMedian5mAmp: 2.0,             // 5m K线振幅中位数>2.0%禁开仓（BTC~0.13%, BANK~1.54%, AKE~2.46%）
-  maxP905mAmp: 5.0,                // 5m K线振幅P90>5.0%禁开仓（BTC~0.29%, BANK~8.25%）
-  max1hBollingerBW: 6.0,           // 1h布林带带宽>6.0%禁开仓（极端波动）
-  volatilityLookback: 100,         // 波动率计算回看K线数
-  
-  // 趋势过滤（开仓前）— 从A策略移植
-  trendFilterEnabled: false,        // 已禁用趋势过滤（用户要求纯B策略）
-  trendEmaFast: 7,                 // 快线EMA周期
-  trendEmaSlow: 25,               // 慢线EMA周期
-  trendEmaTrend: 99,              // 趋势线EMA周期
-  trendMinSlope: 0.15,            // EMA99斜率>0.15%才认为有趋势（<0.15%=横盘，放行）
-  trendBlockStrongCounter: true,  // 强趋势逆势开仓直接拦截
-  trendBlockThreshold: 0.5,       // EMA99偏离>0.5%的强趋势中，逆势方向禁开仓
-  
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
   deliveryPauseMin: 60,     // 交割前1小时暂停
@@ -532,241 +516,6 @@ class Indicators {
     if (!currentBB || !prevBB) return false;
     return currentBB.bandwidth > prevBB.bandwidth;
   }
-
-  // ═══ 波动率过滤指标 ═══
-
-  // 5m K线振幅 (high-low)/close * 100
-  static klineAmplitude(kline) {
-    if (!kline || kline.close === 0) return 0;
-    return (kline.high - kline.low) / kline.close * 100;
-  }
-
-  // 最近N根K线振幅统计：中位数 + P90
-  static amplitudeStats(klines, lookback = 100) {
-    if (klines.length < 20) return null;
-    const slice = klines.slice(-Math.min(lookback, klines.length));
-    const amps = slice.map(k => this.klineAmplitude(k)).sort((a, b) => a - b);
-    const mid = amps[Math.floor(amps.length / 2)];
-    const p90 = amps[Math.floor(amps.length * 0.9)];
-    const max = amps[amps.length - 1];
-    return { median: mid, p90, max, count: amps.length };
-  }
-
-  // 波动率过滤：返回 { passed, reason, stats }
-  static volatilityCheck(klines, config) {
-    if (!config.volatilityFilterEnabled) return { passed: true, reason: '波动率过滤未启用' };
-
-    const stats = this.amplitudeStats(klines, config.volatilityLookback);
-    if (!stats) return { passed: false, reason: '振幅数据不足' };
-
-    // 检查1：5m振幅中位数
-    if (stats.median > config.maxMedian5mAmp) {
-      return {
-        passed: false,
-        reason: `5m振幅中位数${stats.median.toFixed(2)}%>${config.maxMedian5mAmp}% — 高波动币禁开仓`,
-        stats
-      };
-    }
-
-    // 检查2：5m振幅P90
-    if (stats.p90 > config.maxP905mAmp) {
-      return {
-        passed: false,
-        reason: `5m振幅P90=${stats.p90.toFixed(2)}%>${config.maxP905mAmp}% — 极端波动禁开仓`,
-        stats
-      };
-    }
-
-    return { passed: true, reason: `振幅中位${stats.median.toFixed(2)}% P90=${stats.p90.toFixed(2)}%`, stats };
-  }
-
-  // ═══ 补仓方向检查指标 ═══
-
-  // 计算近期趋势方向（用MA7 vs MA20）
-  // 返回: 'UP' | 'DOWN' | 'FLAT'
-  static shortTermTrend(klines) {
-    if (klines.length < 20) return 'FLAT';
-    const closes = klines.map(k => k.close);
-    const ma7 = this.sma(closes, 7);
-    const ma20 = this.sma(closes, 20);
-    if (ma7 === null || ma20 === null) return 'FLAT';
-    const diff = (ma7 - ma20) / ma20 * 100;
-    if (diff > 0.3) return 'UP';   // MA7在MA20上方>0.3%
-    if (diff < -0.3) return 'DOWN'; // MA7在MA20下方>0.3%
-    return 'FLAT';
-  }
-
-  // 补仓方向检查：判断补仓是否逆势
-  // pos.side = 'LONG' or 'SHORT'
-  // 返回: { allow, ratio, reason }
-  static replenishDirectionCheck(klines, pos) {
-    const trend = this.shortTermTrend(klines);
-
-    // 多头持仓 + 趋势向下 = 逆势补仓
-    if (pos.side === 'LONG' && trend === 'DOWN') {
-      return { allow: true, ratio: 0.5, reason: `⚠️逆势补仓: 多头但趋势向下(MA7<MA20)，补仓比例减半`, trend };
-    }
-    // 空头持仓 + 趋势向上 = 逆势补仓
-    if (pos.side === 'SHORT' && trend === 'UP') {
-      return { allow: true, ratio: 0.5, reason: `⚠️逆势补仓: 空头但趋势向上(MA7>MA20)，补仓比例减半`, trend };
-    }
-
-    // 顺势或横盘，正常补仓
-    return { allow: true, ratio: 1.0, reason: `趋势${trend}，正常补仓`, trend };
-  }
-
-  // ═══ 趋势过滤指标（从A策略移植）═══
-
-  // EMA计算
-  static ema(values, period) {
-    if (values.length < period) return null;
-    const k = 2 / (period + 1);
-    let ema = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    for (let i = period; i < values.length; i++) {
-      ema = values[i] * k + ema * (1 - k);
-    }
-    return ema;
-  }
-
-  // EMA序列（返回最后N个EMA值，用于算斜率）
-  static emaSeries(values, period, count = 5) {
-    if (values.length < period + count) return null;
-    const k = 2 / (period + 1);
-    let ema = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    const series = [ema];
-    for (let i = period; i < values.length; i++) {
-      ema = values[i] * k + ema * (1 - k);
-      series.push(ema);
-    }
-    return series.slice(-count);
-  }
-
-  // ADX计算（简化版，判断趋势强度）
-  // 返回 0-100，>25 认为有趋势
-  static adx(klines, period = 14) {
-    if (klines.length < period * 2 + 10) return 0;
-    const highs = klines.map(k => k.high);
-    const lows = klines.map(k => k.low);
-    const closes = klines.map(k => k.close);
-    
-    const plusDM = [];
-    const minusDM = [];
-    const tr = [];
-    
-    for (let i = 1; i < klines.length; i++) {
-      const upMove = highs[i] - highs[i - 1];
-      const downMove = lows[i - 1] - lows[i];
-      plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
-      minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
-      const trueRange = Math.max(
-        highs[i] - lows[i],
-        Math.abs(highs[i] - closes[i - 1]),
-        Math.abs(lows[i] - closes[i - 1])
-      );
-      tr.push(trueRange);
-    }
-    
-    // Wilder平滑
-    const smooth = (arr, p) => {
-      if (arr.length < p) return [];
-      let val = arr.slice(0, p).reduce((a, b) => a + b, 0);
-      const result = [val];
-      for (let i = p; i < arr.length; i++) {
-        val = val - val / p + arr[i];
-        result.push(val);
-      }
-      return result;
-    };
-    
-    const trS = smooth(tr, period);
-    const plusDMS = smooth(plusDM, period);
-    const minusDMS = smooth(minusDM, period);
-    
-    const dx = [];
-    for (let i = 0; i < trS.length; i++) {
-      if (trS[i] === 0) continue;
-      const plusDI = 100 * plusDMS[i] / trS[i];
-      const minusDI = 100 * minusDMS[i] / trS[i];
-      const sum = plusDI + minusDI;
-      if (sum > 0) dx.push(100 * Math.abs(plusDI - minusDI) / sum);
-    }
-    
-    if (dx.length < period) return 0;
-    // ADX = DX的Wilder平滑
-    const adxVal = dx.slice(-period).reduce((a, b) => a + b, 0) / period;
-    return adxVal;
-  }
-
-  // 趋势过滤：开仓前检查趋势方向是否与开仓方向严重逆向
-  // direction: 'LONG' 或 'SHORT'
-  // 返回: { passed, reason, trendInfo }
-  static trendCheck(klines, direction, config) {
-    if (!config.trendFilterEnabled) return { passed: true, reason: '趋势过滤未启用' };
-
-    const closes = klines.map(k => k.close);
-    if (closes.length < config.trendEmaTrend + 5) {
-      return { passed: true, reason: 'K线数据不足，趋势过滤放行' };
-    }
-
-    const ema7 = this.ema(closes, config.trendEmaFast);
-    const ema25 = this.ema(closes, config.trendEmaSlow);
-    const ema99 = this.ema(closes, config.trendEmaTrend);
-    const lastClose = closes[closes.length - 1];
-    
-    if (ema7 === null || ema25 === null || ema99 === null) {
-      return { passed: true, reason: 'EMA数据不足，放行' };
-    }
-
-    // EMA99斜率（最近5根的变化率）
-    const ema99Series = this.emaSeries(closes, config.trendEmaTrend, 5);
-    let slope = 0;
-    if (ema99Series && ema99Series.length >= 2) {
-      const oldVal = ema99Series[0];
-      const newVal = ema99Series[ema99Series.length - 1];
-      slope = oldVal > 0 ? (newVal - oldVal) / oldVal * 100 : 0;
-    }
-
-    // 价格偏离EMA99的百分比
-    const deviation = (lastClose - ema99) / ema99 * 100;
-
-    // ADX趋势强度
-    const adxVal = this.adx(klines, 14);
-
-    const trendInfo = {
-      ema7, ema25, ema99, slope, deviation, adx: adxVal,
-      direction: slope > config.trendMinSlope ? 'UP' : (slope < -config.trendMinSlope ? 'DOWN' : 'FLAT')
-    };
-
-    // 横盘市场（EMA99斜率很小）— 放行，布林带均值回归在横盘效果最好
-    if (Math.abs(slope) < config.trendMinSlope) {
-      return { passed: true, reason: `横盘市场(EMA99斜率${slope.toFixed(3)}%)，趋势过滤放行`, trendInfo };
-    }
-
-    // 有明确趋势时检查方向
-    // 强趋势定义：ADX > 25 且价格偏离EMA99 > threshold%
-    const isStrongTrend = adxVal > 25 && Math.abs(deviation) > config.trendBlockThreshold;
-
-    if (config.trendBlockStrongCounter && isStrongTrend) {
-      // 强趋势向上 + 要开空 → 拦截
-      if (trendInfo.direction === 'UP' && direction === 'SHORT') {
-        return {
-          passed: false,
-          reason: `强趋势向上(ADX=${adxVal.toFixed(0)} EMA99偏离${deviation.toFixed(2)}%) — 禁止逆势做空`,
-          trendInfo
-        };
-      }
-      // 强趋势向下 + 要开多 → 拦截
-      if (trendInfo.direction === 'DOWN' && direction === 'LONG') {
-        return {
-          passed: false,
-          reason: `强趋势向下(ADX=${adxVal.toFixed(0)} EMA99偏离${deviation.toFixed(2)}%) — 禁止逆势做多`,
-          trendInfo
-        };
-      }
-    }
-
-    return { passed: true, reason: `趋势${trendInfo.direction}(ADX=${adxVal.toFixed(0)} 斜率${slope.toFixed(3)}% 偏离${deviation.toFixed(2)}%) — 放行`, trendInfo };
-  }
 }
 
 // ════════════════════════════════════════
@@ -1056,16 +805,9 @@ class BBEngine {
       return { action: 'HOLD', reason: `收口后${pos.klinesSinceNarrow}/${CONFIG.replenishInterval}根K线` };
     }
 
-    // ═══ 补仓方向检查 ═══
-    // 检查当前趋势是否与持仓方向一致
-    const dirCheck = Indicators.replenishDirectionCheck(klines, pos);
-    
     // 间隔3根K线到了，执行补仓
-    const baseRatio = CONFIG.replenishRatios[pos.replenishCount];
-    // 逆势补仓时比例减半
-    const finalRatio = baseRatio * dirCheck.ratio;
-    const replenishAmount = pos.margin * finalRatio;
-    
+    const ratio = CONFIG.replenishRatios[pos.replenishCount];
+    const replenishAmount = pos.margin * ratio;
     pos.replenishCount++;
     pos.klinesSinceNarrow = 0;  // 重置计数，等下次收口
     pos.lastNarrowTime = null;   // 清除，等下次收口触发
@@ -1074,7 +816,7 @@ class BBEngine {
       action: 'REPLENISH', 
       amount: replenishAmount, 
       count: pos.replenishCount,
-      reason: `第${pos.replenishCount}次补仓 ${(finalRatio * 100).toFixed(0)}%=$${replenishAmount.toFixed(2)} (${dirCheck.reason})`
+      reason: `第${pos.replenishCount}次补仓 ${ratio * 100}%=$${replenishAmount.toFixed(2)}` 
     };
   }
 
@@ -1317,13 +1059,6 @@ class BBEngine {
           continue;
         }
 
-        // 波动率过滤 — 拒绝极端高波动币（如BANKUSDT）
-        const volCheck = Indicators.volatilityCheck(klines, CONFIG);
-        if (!volCheck.passed) {
-          this._log(`🔴 ${symbol} ${volCheck.reason} — 波动率过滤拦截`);
-          continue;
-        }
-
         // 开仓准入检查
         const openCheck = this.checkOpenCondition(klines);
         if (!openCheck.allowed) {
@@ -1331,15 +1066,8 @@ class BBEngine {
           continue;
         }
 
-        // 趋势过滤 — 从A策略移植，拦截强趋势逆势开仓（如BANKUSDT单边暴跌时做多）
-        const trendResult = Indicators.trendCheck(klines, openCheck.direction, CONFIG);
-        if (!trendResult.passed) {
-          this._log(`🔴 ${symbol} ${trendResult.reason} — 趋势过滤拦截`);
-          continue;
-        }
-
         // 执行开仓
-        this._log(`🟢 ${symbol} ${openCheck.direction} 信号: ${openCheck.reason} | 带宽分位=${openCheck.bwPercentile?.toFixed(0)}% | ${trendResult.reason}`);
+        this._log(`🟢 ${symbol} ${openCheck.direction} 信号: ${openCheck.reason} | 带宽分位=${openCheck.bwPercentile?.toFixed(0)}%`);
         await this._openPosition(symbol, openCheck.direction, klines);
 
       } catch (e) {
@@ -1364,13 +1092,6 @@ class BBEngine {
     // 余额不足时跳过开仓
     if (!this.balance || this.balance <= 0) {
       this._log(`⏭️ ${symbol} ${direction} 跳过开仓: 余额=$${(this.balance||0).toFixed(2)}`);
-      return;
-    }
-    
-    // 修复：开仓前再次检查持仓数（防御性双重检查，防止 _syncPositions 接管孤儿仓位后超限）
-    const currentCount = Object.keys(this.positions).length;
-    if (currentCount >= CONFIG.maxPositions) {
-      this._log(`📊 ${symbol} ${direction} 跳过开仓: 持仓${currentCount}/${CONFIG.maxPositions}已满`);
       return;
     }
     
@@ -1754,10 +1475,7 @@ class BBEngine {
       const remotePositions = await this.api.getPositions();
       this.balance = await this.api.getBalance();
 
-      // 修复：持仓数超过 maxPositions 时，不接管新孤儿仓位，也不平仓
-      // 已有持仓靠策略止盈自然减仓，减到 maxPositions 以下后才开新仓
-      // 这样既尊重策略逻辑（止盈平仓而非强制平仓），又防止仓位无限增长
-      const orphanSymbolsToSkip = [];
+      // 同步远程持仓的当前价格 + 接管孤儿仓位
       for (const rp of remotePositions) {
         const symbol = rp.symbol;
         const amt = parseFloat(rp.positionAmt);
@@ -1774,36 +1492,27 @@ class BBEngine {
             this.positions[symbol].qty = Math.abs(amt);
           }
         } else {
-          // 远程有但本地没有 → 孤儿仓位
-          const currentCount = Object.keys(this.positions).length;
-          if (currentCount >= CONFIG.maxPositions) {
-            // 持仓已满，记录孤儿仓位但不接管，等现有持仓止盈后再处理
-            this._log(`⏸️ ${symbol} 远程孤儿仓位存在，但持仓已满${currentCount}/${CONFIG.maxPositions} — 暂不接管，等止盈减仓后接管`);
-            orphanSymbolsToSkip.push(symbol);
-          } else {
-            this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${leverage}x`);
-            this.positions[symbol] = {
-              symbol,
-              side: amt > 0 ? 'LONG' : 'SHORT',
-              qty: Math.abs(amt),
-              entryPrice: entry,
-              margin: Math.abs(amt) * entry / leverage,
-              leverage,
-              openTime: 0,
-              replenishCount: 0,
-              lastNarrowTime: null,
-              klinesSinceNarrow: 0,
-              mode: '轨道',
-              atrTrailPrice: null,
-              currentPrice: markPrice,
-              _orphan: true,
-            };
-            this._saveState();
-          }
+          // 远程有但本地没有 → 孤儿仓位（可能是另一策略开的仓，或手动开的仓）→ 接管
+          this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${leverage}x`);
+          this.positions[symbol] = {
+            symbol,
+            side: amt > 0 ? 'LONG' : 'SHORT',
+            qty: Math.abs(amt),
+            entryPrice: entry,
+            margin: Math.abs(amt) * entry / leverage,
+            leverage,
+            openTime: 0,
+            replenishCount: 0,
+            lastNarrowTime: null,
+            klinesSinceNarrow: 0,
+            mode: '轨道',
+            atrTrailPrice: null,
+            currentPrice: markPrice,
+            _orphan: true,
+          };
+          this._saveState();
         }
       }
-      // 保存暂未接管的孤儿仓位列表，用于止盈减仓后接管
-      this._pendingOrphans = orphanSymbolsToSkip;
 
       // 清除远程已不存在的本地持仓
       // 修复：如果刚平仓失败（本地保留了仓位），给60秒宽限期再清除，避免与平仓重试矛盾
