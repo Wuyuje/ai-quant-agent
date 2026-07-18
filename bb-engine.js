@@ -1571,18 +1571,21 @@ class BBEngine {
             continue;
           }
 
-          // ═══ 强平亏损检测：查Binance income记录，如果是强平产生的亏损则记录到交易历史 ═══
+          // ═══ v122: 修正强平检测逻辑 ═══
+          // 原逻辑 bug: 只要 income 非零就记为强平，导致 CEXUserTrader 平仓后的仓位也被误判为强平
+          // 新逻辑: 只有 PnL < 0 才算强平（Binance 不会强平盈利仓位）
+          //         PnL > 0 说明是另一个策略止盈平仓了，本引擎不应该重复记录
           const pos = this.positions[symbol];
           if (pos && !pos._forceCloseRecorded) {
             try {
-              // 查最近5分钟的已实现盈亏
+              // 查最近 5 分钟的已实现盈亏
               const incomeStart = Math.max(pos.openTime || (now - 600000), now - 600000);
               const incomes = await this.api.getIncome(incomeStart, now);
               const symbolIncomes = (Array.isArray(incomes) ? incomes : []).filter(i => i.symbol === symbol);
               const totalPnl = symbolIncomes.reduce((s, i) => s + parseFloat(i.income || 0), 0);
               
-              if (symbolIncomes.length > 0 && totalPnl !== 0) {
-                // 有已实现盈亏 = 引擎停机期间被Binance强平了
+              if (symbolIncomes.length > 0 && totalPnl < 0) {
+                // v122: 只有 PnL < 0 才是真正的强平/止损
                 const avgClosePrice = pos.currentPrice || 0;
                 this._log(`🔴 ${symbol} 检测到强平亏损: ${symbolIncomes.length}笔 PnL=$${totalPnl.toFixed(4)} — 记录到交易历史`);
                 const forcedTrade = {
@@ -1605,6 +1608,9 @@ class BBEngine {
                 };
                 this._recordTrade(forcedTrade);
                 if (this.onPositionClosed) this.onPositionClosed(forcedTrade);
+              } else if (symbolIncomes.length > 0 && totalPnl > 0) {
+                // v122: PnL > 0 说明另一个策略止盈平仓了，本引擎不要重复记录
+                this._log(`✅ ${symbol} 远程仓位消失但有正盈亏 $${totalPnl.toFixed(2)} — 另一个策略已止盈，不重复记录`);
               }
             } catch (e) {
               this._log(`⚠️ ${symbol} 强平亏损查询失败: ${e.message}`);
