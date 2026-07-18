@@ -1107,9 +1107,9 @@ class BBEngine {
       return;
     }
     
-    // 修复：自愿打赏费暂停时不开新仓（余额不足或未授权）
+    // 修复：盖茨费暂停时不开新仓（余额不足或未授权）
     if (this.gatesFeePaused) {
-      this._log(`⏸️ ${symbol} ${direction} 跳过开仓: 自愿打赏费暂停(余额不足或未授权)，保留持仓监控`);
+      this._log(`⏸️ ${symbol} ${direction} 跳过开仓: 盖茨费暂停(余额不足或未授权)，保留持仓监控`);
       return;
     }
     
@@ -1273,134 +1273,129 @@ class BBEngine {
     await this._tryBatchFeeTransfer(walletKey);
   }
 
+  // ═══ 自愿打赏模式：不自动扣费，只记账+余额保护 ═══
+  // 原自动链上转账已禁用，用户需主动调用 /api/vault/tip 发起打赏
   async _tryBatchFeeTransfer(walletKey) {
     const pending = this._feeState.pending[walletKey] || [];
     if (pending.length === 0) return;
 
-    // 修复：跳过已收服务费的记录，避免重复扣取
     const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
     const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
     const totalFee = totalPlatform + totalEco;
 
     if (totalFee < BBEngine.FEE_CONFIG.FEE_THRESHOLD) {
-      this._log(`📊 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} < $${BBEngine.FEE_CONFIG.FEE_THRESHOLD} 阈值，继续积累`);
+      this._log(`📊 ${walletKey.slice(0,10)} 待打赏累计 $${totalFee.toFixed(2)} < $${BBEngine.FEE_CONFIG.FEE_THRESHOLD} 阈值，继续积累`);
       return;
     }
 
-    // 如果服务费已全部收过，只收生态费
-    if (totalPlatform === 0 && totalEco > 0) {
-      this._log(`💸 ${walletKey.slice(0,10)} 仅收生态费 $${totalEco.toFixed(2)} (服务费已收过)`);
-    } else {
-      this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，BSC链上扣费`);
+    // 自愿打赏模式：不主动链上转账，只做余额保护
+    // 如果用户余额不足，暂停开新仓（防止策略非预期亏损）
+    if (this.userDB) {
+      const user = this.userDB.get(walletKey.toLowerCase()) || {};
+      const balance = user.gatesFeeBalance || 0;
+      if (totalFee > balance && !user.gatesFeeLow) {
+        this.userDB.set(walletKey.toLowerCase(), {
+          ...user,
+          gatesFeeLow: true,
+          gatesFeeApproved: true,
+        });
+        this._log(`⚠️ ${walletKey.slice(0,10)} 待打赏 $${totalFee.toFixed(2)} 超过余额 $${balance.toFixed(2)}，暂停开新仓（自愿打赏模式）`);
+      }
+    }
+    // pending 保留不别除，等用户主动打赏后才清除
+  }
+
+  // ═══ 自愿打赏入口：用户主动调用 /api/vault/tip 时调用此方法 ═══
+  async processTip(walletKey, amount) {
+    const pending = this._feeState.pending[walletKey] || [];
+    if (pending.length === 0) {
+      return { ok: false, msg: '没有待打赏费用' };
     }
 
-    // ═══ 自动扣费模式：从Trader钱包直接transfer USDT（不需用户授权） ═══
-    // 用户充值到Trader钱包，系统自动从Trader钱包转出自愿打赏费到平台/生态钱包
+    const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
+    const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
+    const totalFee = totalPlatform + totalEco;
+
+    const tipAmount = Math.min(parseFloat(amount) || 0, totalFee);
+    if (tipAmount <= 0) return { ok: false, msg: '打赏金额无效' };
+
     const { PLATFORM_WALLET, ECO_FUND_WALLET } = BBEngine.FEE_CONFIG;
+    const { ethers } = require('ethers');
+    const BSC_RPC = 'https://bsc-rpc.publicnode.com';
+    const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
+    const traderPrivateKey = process.env.TRADER_PRIVATE_KEY;
+    if (!traderPrivateKey) return { ok: false, msg: 'TRADER_PRIVATE_KEY 未配置' };
 
-    this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} 达到阈值，Trader钱包自动扣费`);
+    const provider = new ethers.JsonRpcProvider(BSC_RPC);
+    const traderWallet = new ethers.Wallet(traderPrivateKey, provider);
+    const usdtContract = new ethers.Contract(USDT_ADDR, [
+      'function transfer(address to, uint256 amount) returns (bool)',
+      'function balanceOf(address) view returns (uint256)',
+    ], traderWallet);
 
-    let platformOk = false, ecoOk = false;
+    const traderBal = await usdtContract.balanceOf(traderWallet.address);
+    const tipWei = ethers.parseUnits(tipAmount.toFixed(6), 18);
+    if (BigInt(traderBal) < tipWei) {
+      return { ok: false, msg: `Trader钱包USDT不足 ($${Number(traderBal)/1e18})` };
+    }
+
+    // 按 2:1 比例分给平台/生态费
+    const platformAmount = tipAmount * 2 / 3;
+    const ecoAmount = tipAmount * 1 / 3;
+    const txs = [];
+
     try {
-      const { ethers } = require('ethers');
-      const BSC_RPC = 'https://bsc-rpc.publicnode.com';
-      const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
-      const traderPrivateKey = process.env.TRADER_PRIVATE_KEY;
-      if (!traderPrivateKey) {
-        this._log(`❌ ${walletKey.slice(0,10)} TRADER_PRIVATE_KEY 未配置，无法自动扣费`);
-        return;
+      if (platformAmount > 0) {
+        const platformWei = ethers.parseUnits(platformAmount.toFixed(6), 18);
+        this._log(`💰 ${walletKey.slice(0,10)} 用户自愿打赏服务费 $${platformAmount.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
+        const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
+        await tx1.wait();
+        txs.push({ type: 'platform', tx: tx1.hash, amount: platformAmount });
       }
-      const provider = new ethers.JsonRpcProvider(BSC_RPC);
-      const traderWallet = new ethers.Wallet(traderPrivateKey, provider);
-      const usdtContract = new ethers.Contract(USDT_ADDR, [
-        'function transfer(address to, uint256 amount) returns (bool)',
-        'function balanceOf(address) view returns (uint256)',
-      ], traderWallet);
-
-      // 检查Trader钱包USDT余额是否足够
-      const traderBal = await usdtContract.balanceOf(traderWallet.address);
-      const totalFeeWei = ethers.parseUnits(totalFee.toFixed(6), 18);
-      if (BigInt(traderBal) < totalFeeWei) {
-        this._log(`❌ ${walletKey.slice(0,10)} Trader钱包USDT不足 ($${Number(traderBal)/1e18})，需要 $${totalFee.toFixed(2)}`);
-        return;
+      if (ecoAmount > 0) {
+        const ecoWei = ethers.parseUnits(ecoAmount.toFixed(6), 18);
+        const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
+        await tx2.wait();
+        txs.push({ type: 'ecoFund', tx: tx2.hash, amount: ecoAmount });
       }
 
-      // Step 1: 转服务费到平台钱包（跳过已收服务费=0的情况）
-      if (totalPlatform > 0) {
-        try {
-          const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
-          this._log(`💸 ${walletKey.slice(0,10)} 自愿打赏费-服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
-          const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
-          await tx1.wait();
-          this._log(`✅ 自愿打赏费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
-          platformOk = true;
-        } catch (e) {
-          this._log(`❌ 自愿打赏费-服务费链上转账失败: ${e.message.slice(0,80)}`);
+      // 清除 pending（按比例）
+      const ratio = tipAmount / totalFee;
+      if (ratio >= 0.99) {
+        const removed = pending.splice(0, pending.length);
+        for (const record of removed) {
+          record.status = 'tip-collected';
+          record.collectedAt = Date.now();
+          if (!this._feeState.collected[walletKey]) this._feeState.collected[walletKey] = [];
+          this._feeState.collected[walletKey].push(record);
         }
       } else {
-        // 服务费已收过，直接标记为true，只收生态费
-        platformOk = true;
+        pending.forEach(r => {
+          r.platformFee = (parseFloat(r.platformFee) * (1 - ratio)).toFixed(6);
+          r.ecoFund = (parseFloat(r.ecoFund) * (1 - ratio)).toFixed(6);
+        });
       }
 
-      // Step 2: 转生态费到生态费钱包（仅当服务费已成功，避免部分成功后重复扣服务费）
-      if (platformOk) {
-        try {
-          const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
-          this._log(`💸 ${walletKey.slice(0,10)} 自愿打赏费-生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
-          const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
-          await tx2.wait();
-          this._log(`✅ 自愿打赏费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
-          ecoOk = true;
-        } catch (e) {
-          this._log(`❌ 自愿打赏费-生态费链上转账失败: ${e.message.slice(0,80)}`);
-        }
-      }
-
-      // 更新用户记账余额（Trader钱包共用，按用户记账）
-      if (platformOk && ecoOk && this.userDB) {
-        const existing = this.userDB.get(walletKey.toLowerCase()) || {};
-        const oldBalance = existing.gatesFeeBalance || 0;
-        const newBalance = Math.max(0, oldBalance - totalFee);
-        const collected = (existing.gatesFeeCollected || 0) + totalFee;
+      // 更新用户余额
+      if (this.userDB) {
+        const user = this.userDB.get(walletKey.toLowerCase()) || {};
+        const newBalance = Math.max(0, (user.gatesFeeBalance || 0) - tipAmount);
         this.userDB.set(walletKey.toLowerCase(), {
-          ...existing,
+          ...user,
           gatesFeeBalance: newBalance,
           gatesFeeLow: newBalance < 5,
-          gatesFeeCollected: collected,
-          gatesFeeApproved: true, // 自动扣费模式，永远视为已授权
+          gatesFeeCollected: (user.gatesFeeCollected || 0) + tipAmount,
+          gatesFeeApproved: true,
         });
-        this._log(`✅ ${walletKey.slice(0,10)} 记账余额: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计扣费 $${collected.toFixed(2)}`);
+        this._log(`✅ ${walletKey.slice(0,10)} 自愿打赏成功 $${tipAmount.toFixed(2)}，余额 $${newBalance.toFixed(2)}`);
       }
 
+      this._saveFeeState();
+      return { ok: true, tipAmount, txs, msg: '打赏成功' };
     } catch (e) {
-      this._log(`❌ ${walletKey.slice(0,10)} 自愿打赏费链上扣费异常: ${e.message.slice(0,80)}`);
+      this._log(`❌ ${walletKey.slice(0,10)} 自愿打赏失败: ${e.message.slice(0,100)}`);
+      return { ok: false, msg: e.message };
     }
-
-    // ═══ 按实际成功情况从 pending 移除已完成的记录 ═══
-    // 修复：之前部分成功也保留全部pending → 重复扣费
-    // 现在：服务费+生态费都成功 → 移除全部
-    //       只有服务费成功 → 从pending记录中减去已收的服务费，保留生态费部分
-    //       都失败 → 保留全部pending
-    if (platformOk && ecoOk) {
-      const removed = pending.splice(0, pending.length);
-      for (const record of removed) {
-        record.status = 'auto-collected';
-        record.collectedAt = Date.now();
-        if (!this._feeState.collected[walletKey]) this._feeState.collected[walletKey] = [];
-        this._feeState.collected[walletKey].push(record);
-      }
-      this._log(`✅ ${walletKey.slice(0,10)} 批量费用链上转账完成，已收取 ${removed.length} 笔`);
-    } else if (platformOk && !ecoOk) {
-      // 服务费已成功，生态费失败 → 标记pending中已收服务费，下次只收生态费
-      for (const record of pending) {
-        record.platformCollected = true;
-        record.platformCollectedAt = Date.now();
-      }
-      this._log(`⚠️ ${walletKey.slice(0,10)} 服务费已收但生态费失败，下次只收生态费 ${pending.length} 笔`);
-    } else {
-      this._log(`⚠️ ${walletKey.slice(0,10)} 转账失败，费用保留在 pending 中下次重试`);
-    }
-    this._saveFeeState();
   }
 
   // ═══ 平仓执行 ═══
@@ -1466,9 +1461,9 @@ class BBEngine {
 
   // ═══ 补仓执行 ═══
   async _replenishPosition(symbol, pos, amountUsd) {
-    // 修复：自愿打赏费暂停时不补仓（余额不足或未授权）
+    // 修复：盖茨费暂停时不补仓（余额不足或未授权）
     if (this.gatesFeePaused) {
-      this._log(`⏸️ ${symbol} 跳过补仓: 自愿打赏费暂停，保留持仓监控`);
+      this._log(`⏸️ ${symbol} 跳过补仓: 盖茨费暂停，保留持仓监控`);
       return;
     }
     // 修复：补仓前检查余额

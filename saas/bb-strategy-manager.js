@@ -318,7 +318,7 @@ class UserBBEngine extends BBEngine {
       return;
     }
 
-    // 盖茨费不足时不开新仓，只管理现有持仓
+    // 自愿打赏费不足时不开新仓，只管理现有持仓
     if (this.gatesFeePaused) {
       this._saveState();
       return;
@@ -634,14 +634,14 @@ class BBStrategyManager {
       // DEX 模式用户不走 BB 引擎（由 DexTrader 管理）
       if (u.exchangeMode === 'dex') continue;
       if (!u.binanceApiKey || !u.binanceSecret) continue;
-      // 必须同意盖茨费模式
+      // 必须同意自愿打赏费模式
       if (!u.withdrawConsent) continue;
       // ═══ 自动扣费模式：只检查记账余额，不检查授权 ═══
       // 用户充值到Trader钱包，系统自动transfer扣费
       // gatesFeeLow=true时暂停开新仓，但继续监控现有持仓
       if (u.gatesFeeLow) {
         if (this._cycleCount % 10 === 0) {
-          this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费记账余额不足($${(u.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
+          this._log(`⏸️ ${wallet.slice(0,10)}... 自愿打赏费记账余额不足($${(u.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
         }
         u._gatesFeePaused = true;
       } else {
@@ -681,7 +681,7 @@ class BBStrategyManager {
 
     this._log(`第${this._cycleCount}轮: ${bbUsers.length}个BB策略用户`);
 
-    // ═══ 链上盖茨费检查（7/17恢复）═══
+    // ═══ 链上自愿打赏费检查（7/17恢复）═══
     // 每10轮检查一次用户BSC钱包USDT余额和approve授权状态
     if (this._cycleCount % 10 === 0) {
       await this._checkGatesFeeBalance(bbUsers);
@@ -725,12 +725,12 @@ class BBStrategyManager {
       // 检查是否需要重启（API Key 变了）
       // 简单处理：如果引擎在跑就不动
       if (engine.running) {
-        // 同步盖茨费暂停状态
+        // 同步自愿打赏费暂停状态
         engine.gatesFeePaused = !!(userData._gatesFeePaused);
         // 同步fallback余额
         engine._fallbackBalance = parseFloat(userData.usdtBalance) || engine._fallbackBalance || 0;
         engine._tradeAmount = parseFloat(userData.tradeAmount) || engine._tradeAmount || 0;
-        // 同步BSC钱包地址和userDB（用于链上transferFrom扣盖茨费）
+        // 同步BSC钱包地址和userDB（用于链上transferFrom扣自愿打赏费）
         engine.bscWalletAddr = userData.bscWalletAddr || wallet;
         engine.userDB = this.userDB;
         return;
@@ -760,7 +760,7 @@ class BBStrategyManager {
     // 设置fallback余额（API查询失败时用）
     engine._fallbackBalance = parseFloat(userData.usdtBalance) || 0;
     engine._tradeAmount = parseFloat(userData.tradeAmount) || 0;
-    // BSC钱包地址和userDB — 用于链上transferFrom扣盖茨费
+    // BSC钱包地址和userDB — 用于链上transferFrom扣自愿打赏费
     engine.bscWalletAddr = userData.bscWalletAddr || wallet;
     engine.userDB = this.userDB;
     this._engines[wallet] = engine;
@@ -790,13 +790,13 @@ class BBStrategyManager {
   }
 
   // 获取所有用户的BB策略状态（管理员仪表盘用）
-  // ═══ 盖茨费：检查用户记账余额（自动扣费模式） ═══
+  // ═══ 自愿打赏费：检查用户记账余额（自动扣费模式） ═══
   // 用户充值到Trader钱包，系统自动transfer扣费，这里只检查记账余额
   async _checkGatesFeeBalance(bbUsers) {
     const GATES_FEE_THRESHOLD = 5; // 记账余额低于$5视为不足
 
     for (const [wallet, u] of bbUsers) {
-      // 管理员跳过盖茨费检查
+      // 管理员跳过自愿打赏费检查
       if (this.ADMIN_WALLETS.some(w => w.toLowerCase() === wallet.toLowerCase())) continue;
 
       // 自动扣费模式：只检查记账余额，不查链上
@@ -815,9 +815,9 @@ class BBStrategyManager {
       }
 
       if (oldLow && !newLow) {
-        this._log(`✅ ${wallet.slice(0,10)}... 盖茨费记账余额已充足 $${balance.toFixed(2)}，恢复交易`);
+        this._log(`✅ ${wallet.slice(0,10)}... 自愿打赏费记账余额已充足 $${balance.toFixed(2)}，恢复交易`);
       } else if (!oldLow && newLow) {
-        this._log(`⚠️ ${wallet.slice(0,10)}... 盖茨费记账余额不足 $${balance.toFixed(2)} < $${GATES_FEE_THRESHOLD}，暂停交易（请充值到Trader钱包）`);
+        this._log(`⚠️ ${wallet.slice(0,10)}... 自愿打赏费记账余额不足 $${balance.toFixed(2)} < $${GATES_FEE_THRESHOLD}，暂停交易（请充值到Trader钱包）`);
       }
     }
   }

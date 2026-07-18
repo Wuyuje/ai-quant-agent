@@ -968,7 +968,7 @@ class Dashboard {
             recentTrades: userCexTrades.slice(-5).reverse(),
             hasApiKey: !!u.binanceApiKey,
             cexApiKeyValid: cexApiKeyValid,
-            // 盖茨费状态
+            // 自愿打赏费状态
             bscWalletAddr: u.bscWalletAddr || null,
             gatesFeeBalance: u.gatesFeeBalance || 0,
             gatesFeeApproved: u.gatesFeeApproved || false,

@@ -7,7 +7,7 @@
  *  执行流程：
  *    1. 检查部署者钱包余额
  *    2. 部署 AgentVaultFactoryV2（新版本，含 RevenueDistribution 集成）
- *    3. 部署 RevenueDistribution（盖茨费自动分配合约）
+ *    3. 部署 RevenueDistribution（自愿打赏费自动分配合约）
  *    4. Factory.setRevenueDistributor(revenueAddr) 关联两个合约
  *    5. RevenueDistribution.approveVaults() 授权所有用户 Vault
  *    6. 为所有没有 Vault 的用户 deployVault
@@ -317,7 +317,7 @@ async function main() {
     },
 
     feeConfig: {
-      gatesFeeBps: 3000,       // 30% 盖茨费
+      gatesFeeBps: 3000,       // 30% 自愿打赏费
       platformFeeBps: 2000,    // 20% 服务费
       ecoFundBps: 1000,        // 10% 生态费
       userShareBps: 7000,      // 70% 用户实得
@@ -352,8 +352,8 @@ async function main() {
   for (const v of allVaults) {
     console.log(`  ${v.user.slice(0,10)}... → ${v.vault}`);
   }
-  console.log(`\n盖茨费分配:`);
-  console.log(`  盈利 × 30% = 盖茨费`);
+  console.log(`\n自愿打赏费分配:`);
+  console.log(`  盈利 × 30% = 自愿打赏费`);
   console.log(`    20% 服务费 → ${PLATFORM_WALLET}`);
   console.log(`    10% 生态费 → ${ECO_FUND_WALLET}`);
   console.log(`    70% 用户实得`);

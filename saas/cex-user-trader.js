@@ -515,7 +515,7 @@ class CEXUserTrader {
 
     this._loadState();
     this._loadFeeState();
-    this._log('CEXUserTrader v74 — 盖茨费模式 (BSC链上授权扣费)');
+    this._log('CEXUserTrader v74 — 自愿打赏费模式 (BSC链上授权扣费)');
   }
 
   _log(msg) {
@@ -689,14 +689,14 @@ class CEXUserTrader {
       return;
     }
 
-    // ═══ 盖茨费检查（方案A：充值到Trader钱包，记账余额） ═══
+    // ═══ 自愿打赏费检查（方案A：充值到Trader钱包，记账余额） ═══
     let _gatesFeePaused = false;
     if (this._isAdmin(wallet)) {
-      // 管理员跳过盖茨费检查
+      // 管理员跳过自愿打赏费检查
     } else if (userData.gatesFeeLow) {
       _gatesFeePaused = true;
       if (this._cycleCount % 10 === 0) {
-        this._log(`⏸️ ${wallet.slice(0, 10)}... 盖茨费余额不足($${(userData.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
+        this._log(`⏸️ ${wallet.slice(0, 10)}... 自愿打赏费余额不足($${(userData.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
       }
     }
 
@@ -996,9 +996,9 @@ class CEXUserTrader {
     this._log(`[trade] ${wallet.slice(0,10)} 候选=${candidates.map(c=>c.symbol+'='+c.score).join(',')} 过滤后=${filtered.length} slots=${remainingSlots}`);
     if (filtered.length === 0) return;
 
-    // 盖茨费暂停检查
+    // 自愿打赏费暂停检查
     if (_gatesFeePaused) {
-      this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费不足，跳过开仓`);
+      this._log(`⏸️ ${wallet.slice(0,10)}... 自愿打赏费不足，跳过开仓`);
       return;
     }
 
@@ -1540,7 +1540,7 @@ class CEXUserTrader {
     const pending = this._feeState.pending[wallet] || [];
     if (pending.length === 0) return;
 
-    // ═══ 盖茨费模式：从用户BSC钱包链上扣费 ═══
+    // ═══ 自愿打赏费模式：从用户BSC钱包链上扣费 ═══
     let userMeta = this.userDB?.get?.(wallet) || null;
     if (!userMeta) {
       try {
@@ -1552,7 +1552,7 @@ class CEXUserTrader {
 
     // 必须有BSC钱包地址
     if (!userMeta.bscWalletAddr) {
-      this._log(`⏸️ ${wallet.slice(0,8)} 未绑定BSC钱包地址，盖茨费继续记账`);
+      this._log(`⏸️ ${wallet.slice(0,8)} 未绑定BSC钱包地址，自愿打赏费继续记账`);
       return;
     }
 
@@ -1562,11 +1562,11 @@ class CEXUserTrader {
       const elapsed = Date.now() - cooldown.lastFailAt;
       if (elapsed < this.TRANSFER_COOLDOWN_MS) {
         const remainMin = Math.ceil((this.TRANSFER_COOLDOWN_MS - elapsed) / 60000);
-        this._log(`⏳ ${wallet.slice(0,8)} 盖茨费转账冷却中，${remainMin}分钟后可重试 (已失败${cooldown.failCount}次)`);
+        this._log(`⏳ ${wallet.slice(0,8)} 自愿打赏费转账冷却中，${remainMin}分钟后可重试 (已失败${cooldown.failCount}次)`);
         return;
       }
       if (cooldown.failCount >= this.TRANSFER_MAX_FAIL) {
-        this._log(`⛔ ${wallet.slice(0,8)} 盖茨费连续转账失败${cooldown.failCount}次，已停止。请检查BSC钱包授权和余额`);
+        this._log(`⛔ ${wallet.slice(0,8)} 自愿打赏费连续转账失败${cooldown.failCount}次，已停止。请检查BSC钱包授权和余额`);
         return;
       }
     }
@@ -1577,7 +1577,7 @@ class CEXUserTrader {
     const totalFee = totalPlatform + totalEco;
 
     if (totalFee < (this.FEE_TRANSFER_THRESHOLD || 5)) {
-      this._log(`📊 ${wallet.slice(0,8)} 盖茨费累计 $${totalFee.toFixed(2)} < $${this.FEE_TRANSFER_THRESHOLD || 5} 阈值 (${pending.length}笔)，继续积累`);
+      this._log(`📊 ${wallet.slice(0,8)} 自愿打赏费累计 $${totalFee.toFixed(2)} < $${this.FEE_TRANSFER_THRESHOLD || 5} 阈值 (${pending.length}笔)，继续积累`);
       return;
     }
 
@@ -1585,7 +1585,7 @@ class CEXUserTrader {
     if (totalPlatform === 0 && totalEco > 0) {
       this._log(`💸 ${wallet.slice(0,8)} 仅收生态费 $${totalEco.toFixed(2)} (服务费已收过)`);
     } else {
-      this._log(`💸 ${wallet.slice(0,8)} 盖茨费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，开始BSC链上扣费`);
+      this._log(`💸 ${wallet.slice(0,8)} 自愿打赏费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，开始BSC链上扣费`);
     }
 
     // ═══ 方案A：用 trader 私钥从 trader 钱包直接 transfer USDT ═══
@@ -1606,13 +1606,13 @@ class CEXUserTrader {
       if (totalPlatform > 0) {
         try {
           const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
-          this._log(`💸 ${wallet.slice(0,8)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${this.PLATFORM_WALLET.slice(0,10)}...`);
+          this._log(`💸 ${wallet.slice(0,8)} 自愿打赏费-服务费 $${totalPlatform.toFixed(2)} → ${this.PLATFORM_WALLET.slice(0,10)}...`);
           const tx1 = await usdtContract.transfer(this.PLATFORM_WALLET, platformWei);
           await tx1.wait();
-          this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+          this._log(`✅ 自愿打赏费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
           platformOk = true;
         } catch (e) {
-          this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message?.slice(0,80)}`);
+          this._log(`❌ 自愿打赏费-服务费链上转账失败: ${e.message?.slice(0,80)}`);
         }
       } else {
         platformOk = true;
@@ -1622,13 +1622,13 @@ class CEXUserTrader {
       if (platformOk) {
         try {
           const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
-          this._log(`💸 ${wallet.slice(0,8)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${this.ECO_FUND_WALLET.slice(0,10)}...`);
+          this._log(`💸 ${wallet.slice(0,8)} 自愿打赏费-生态费 $${totalEco.toFixed(2)} → ${this.ECO_FUND_WALLET.slice(0,10)}...`);
           const tx2 = await usdtContract.transfer(this.ECO_FUND_WALLET, ecoWei);
           await tx2.wait();
-          this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
+          this._log(`✅ 自愿打赏费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
           ecoOk = true;
         } catch (e) {
-          this._log(`❌ 盖茨费-生态费链上转账失败: ${e.message?.slice(0,80)}`);
+          this._log(`❌ 自愿打赏费-生态费链上转账失败: ${e.message?.slice(0,80)}`);
         }
       }
 
@@ -1646,11 +1646,11 @@ class CEXUserTrader {
             gatesFeeCollected: collected,
             gatesFeeApproved: true,
           });
-          this._log(`✅ ${wallet.slice(0,8)} 盖茨费完成: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计 $${collected.toFixed(2)}`);
+          this._log(`✅ ${wallet.slice(0,8)} 自愿打赏费完成: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计 $${collected.toFixed(2)}`);
         }
       }
     } catch (e) {
-      this._log(`❌ ${wallet.slice(0,8)} 盖茨费链上转账异常: ${e.message?.slice(0,80)}`);
+      this._log(`❌ ${wallet.slice(0,8)} 自愿打赏费链上转账异常: ${e.message?.slice(0,80)}`);
     }
 
     // ═══ 按实际成功情况从 pending 移除已完成的记录 ═══
@@ -1664,7 +1664,7 @@ class CEXUserTrader {
         this._feeState.collected[wallet].push(record);
       }
       delete this._transferFailCooldown[wallet];
-      this._log(`✅ ${wallet.slice(0,8)} 盖茨费收取完成: ${removed.length}笔, 服务费 $${totalPlatform.toFixed(2)}, 生态费 $${totalEco.toFixed(2)}`);
+      this._log(`✅ ${wallet.slice(0,8)} 自愿打赏费收取完成: ${removed.length}笔, 服务费 $${totalPlatform.toFixed(2)}, 生态费 $${totalEco.toFixed(2)}`);
     } else if (platformOk && !ecoOk) {
       // 服务费已成功，生态费失败 → 标记pending中已收服务费，下次只收生态费
       for (const record of pending) {
@@ -1680,9 +1680,9 @@ class CEXUserTrader {
       this._transferFailCooldown[wallet].failCount++;
       const fc = this._transferFailCooldown[wallet].failCount;
       if (fc >= this.TRANSFER_MAX_FAIL) {
-        this._log(`⛔ ${wallet.slice(0,8)} 盖茨费连续失败${fc}次，已停止。请检查BSC钱包授权和余额`);
+        this._log(`⛔ ${wallet.slice(0,8)} 自愿打赏费连续失败${fc}次，已停止。请检查BSC钱包授权和余额`);
       } else {
-        this._log(`⚠️ ${wallet.slice(0,8)} 盖茨费部分失败（服务费=${platformOk}, 生态费=${ecoOk}），保留 pending。30分钟后再试 (失败${fc}/${this.TRANSFER_MAX_FAIL})`);
+        this._log(`⚠️ ${wallet.slice(0,8)} 自愿打赏费部分失败（服务费=${platformOk}, 生态费=${ecoOk}），保留 pending。30分钟后再试 (失败${fc}/${this.TRANSFER_MAX_FAIL})`);
       }
     }
 

@@ -1,14 +1,14 @@
 /**
- * SaaS Platform v92 — 纯 CEX 模式
+ * SaaS Platform v92 - 纯 CEX 模式
  *
- * 用户流程：
- *   1. 注册账号（钱包地址+密码）
+ * 用户流程:
+ *   1. 注册账号(钱包地址+密码)
  *   2. 绑定 Binance API Key
  *   3. 充值 USDT 到 Binance 合约账户
  *   4. 开启自动交易
  *   5. 全自动交易
  *
- * v92: 链上合约已分离，后期新合约部署后可重新接入
+ * v92: 链上合约已分离,后期新合约部署后可重新接入
  */
 
 const express = require('express');
@@ -18,7 +18,7 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 
-// ═══ AES-256-GCM 加密/解密（用于 API Key 存储）═══
+// ═══ AES-256-GCM 加密/解密(用于 API Key 存储)═══
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || process.env.ENCRYPT_KEY; // 统一用 ENCRYPTION_KEY
 if (!ENCRYPTION_KEY) { console.error('[FATAL] ENCRYPTION_KEY not set in .env'); process.exit(1); }
 function encryptText(plaintext) {
@@ -34,7 +34,7 @@ function encryptText(plaintext) {
 }
 function decryptText(ciphertext) {
   if (!ENCRYPTION_KEY || !ciphertext) return ciphertext;
-  // 如果不是加密格式（旧数据明文），直接返回
+  // 如果不是加密格式(旧数据明文),直接返回
   const parts = ciphertext.split(':');
   if (parts.length !== 3) return ciphertext;
   try {
@@ -64,7 +64,7 @@ function markNonceUsed(nonce) {
     for (const [k, v] of _usedNonces) { if (v < now) _usedNonces.delete(k); }
   }
 }
-// [audit#16] 定时清理 nonce，防止内存泄漏
+// [audit#16] 定时清理 nonce,防止内存泄漏
 setInterval(() => {
   if (_usedNonces.size > 0) {
     const now = Date.now();
@@ -96,7 +96,7 @@ function checkAccountLock(username) {
     return { locked: true, remainMin };
   }
   if (entry.lockUntil && Date.now() >= entry.lockUntil) {
-    _loginFailures.delete(username); // 锁定过期，清除
+    _loginFailures.delete(username); // 锁定过期,清除
     return { locked: false };
   }
   return { locked: false };
@@ -121,7 +121,7 @@ setInterval(() => {
   }
 }, 300000);
 
-// ─── 待充值列表（部署失败时记录，充值成功后清除） ───
+// ─── 待充值列表(部署失败时记录,充值成功后清除) ───
 const pendingFundRequests = new Map(); // userAddress → { wallet, amount, reason, timestamp }
 
 // ─── 配置 ───
@@ -152,25 +152,25 @@ const WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
 const ARK_TOKEN = '0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D';
 const PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 服务费直接转管理员钱包
 const PLATFORM_FEE_BPS = 2000; // 20%
-// Vault Factory 合约（V3: 完全修复版 — encodePacked bug + 18位小数 + ownership 归用户）
+// Vault Factory 合约(V3: 完全修复版 - encodePacked bug + 18位小数 + ownership 归用户)
 const VAULT_FACTORY = process.env.VAULT_FACTORY_ADDRESS || '0x2A38B82Dd59cBDF8DE7e61338f88B3dA225b8A3d';
-// RevenueDistribution 合约（盖茨费自动分配: 20%服务费 + 10%生态费）
+// RevenueDistribution 合约(自愿打赏费自动分配: 20%服务费 + 10%生态费)
 const REVENUE_DISTRIBUTION = process.env.REVENUE_DISTRIBUTION_ADDRESS || '';
-// 生态基金钱包（直接转管理员钱包）
+// 生态基金钱包(直接转管理员钱包)
 const ECO_FUND_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';
-// 平台执行器私钥（用于签名交易，存在环境变量里）
-// [SECURITY#1-HIGH] 私钥不应硬编码在源码中，生产环境必须通过环境变量注入
+// 平台执行器私钥(用于签名交易,存在环境变量里)
+// [SECURITY#1-HIGH] 私钥不应硬编码在源码中,生产环境必须通过环境变量注入
 const TRADER_PRIVATE_KEY = process.env.TRADER_PRIVATE_KEY;
 if (!TRADER_PRIVATE_KEY) { console.error('[FATAL] TRADER_PRIVATE_KEY not set in .env'); process.exit(1); }
-if (!TRADER_PRIVATE_KEY) { console.error('❌ TRADER_PRIVATE_KEY 未配置！请设置环境变量。'); }
+if (!TRADER_PRIVATE_KEY) { console.error('❌ TRADER_PRIVATE_KEY 未配置!请设置环境变量。'); }
 // v16: 管理员密钥
-// [SECURITY#2-MEDIUM] 管理员密钥硬编码，生产环境应改用JWT+数据库存储
+// [SECURITY#2-MEDIUM] 管理员密钥硬编码,生产环境应改用JWT+数据库存储
 const ADMIN_KEY = process.env.ADMIN_KEY;
 if (!ADMIN_KEY) { console.error('[FATAL] ADMIN_KEY not set in .env'); process.exit(1); }
 
 // 用户数据库
 const USER_DB = path.join(__dirname, '..', 'data', 'saas-users.json');
-// v83: DataStore 抽象层（JSON ↔ Redis 无缝切换）
+// v83: DataStore 抽象层(JSON ↔ Redis 无缝切换)
 const { getDataStore } = require('./data-store');
 const _store = getDataStore({ dir: path.join(__dirname, '..', 'data') });
 
@@ -217,7 +217,7 @@ async function erc20Balance(token, wallet, rpcUrl) {
   return BigInt(raw);
 }
 
-// [audit#3] 余额查询缓存（10秒TTL，避免RPC限频）
+// [audit#3] 余额查询缓存(10秒TTL,避免RPC限频)
 const _balanceCache = new Map(); // key: `${wallet}:${token}` → { data, expireAt }
 async function cachedErc20Balance(token, wallet, rpcUrl, ttlMs = 10000) {
   const key = `${wallet.toLowerCase()}:${token}`;
@@ -237,17 +237,17 @@ async function cachedBnbBalance(wallet, ttlMs = 10000) {
   return data;
 }
 
-// ethers v6 地址 checksum 兼容：先把地址统一成小写再 checksum，避免 INVALID_ARGUMENT
+// ethers v6 地址 checksum 兼容:先把地址统一成小写再 checksum,避免 INVALID_ARGUMENT
 function fixAddr(addr) {
   if (!addr || typeof addr !== 'string') return addr;
   try { return require('ethers').getAddress(addr); } catch { return addr; }
 }
-// 递归修复 args 中的所有地址字符串（0x 开头 42 字符）
+// 递归修复 args 中的所有地址字符串(0x 开头 42 字符)
 function fixArgs(args) {
   return (args || []).map(a => (typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a)) ? fixAddr(a) : a);
 }
 
-// 查询合约方法（view/pure）
+// 查询合约方法(view/pure)
 async function callContract(to, iface, method, args) {
   const { ethers } = require('ethers');
   const coder = new ethers.Interface(iface);
@@ -256,7 +256,7 @@ async function callContract(to, iface, method, args) {
   return coder.decodeFunctionResult(method, raw);
 }
 
-// 发送交易（需要私钥）
+// 发送交易(需要私钥)
 // [audit#23] 全局交易并发限制
 const _sendTxQueue = [];
 let _sendTxActive = 0;
@@ -339,10 +339,10 @@ class UserDB {
   }
   async _load() {
     try {
-      // v83: 优先用 DataStore（Redis/JSON）
+      // v83: 优先用 DataStore(Redis/JSON)
       const data = await _store.get('saas-users');
       if (data) { this.users = data; return; }
-      // 回退：兼容旧文件
+      // 回退:兼容旧文件
       if (fs.existsSync(USER_DB)) {
         this.users = JSON.parse(fs.readFileSync(USER_DB, 'utf8'));
         await _store.set('saas-users', this.users);
@@ -350,7 +350,7 @@ class UserDB {
     } catch (e) { console.error(`[SaaS] UserDB._load FAILED: ${e.message}`); }
   }
   async _save() {
-    // v83: 通过 DataStore 保存（支持 JSON/Redis）
+    // v83: 通过 DataStore 保存(支持 JSON/Redis)
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(async () => {
       try {
@@ -380,7 +380,7 @@ class UserDB {
     return null;
   }
   createWithAuth(username, salt, hash, token, walletAddress) {
-    // 如果没有提供钱包地址，生成一个虚拟地址用于标识
+    // 如果没有提供钱包地址,生成一个虚拟地址用于标识
     const addr = (walletAddress || '0x' + crypto.randomBytes(20).toString('hex')).toLowerCase();
     this.users[addr] = {
       createdAt: Date.now(),
@@ -389,7 +389,7 @@ class UserDB {
       passwordHash: hash,
       authToken: token,
       walletAddress: addr,
-      // 注册的钱包地址自动作为BSC钱包地址（用于盖茨费）
+      // 注册的钱包地址自动作为BSC钱包地址(用于自愿打赏费)
       bscWalletAddr: addr,
       strategy: 'bb',
       tradingEnabled: false,
@@ -410,7 +410,7 @@ class UserDB {
 }
 
 // ═══════════════════════════════════
-// Session 管理（v17: 文件持久化）
+// Session 管理(v17: 文件持久化)
 // ═══════════════════════════════════
 const SESSION_FILE = path.join(__dirname, '..', 'data', 'saas-sessions.json');
 const sessions = new Map();
@@ -427,7 +427,7 @@ async function _loadSessions() {
       console.log(`[SaaS] 恢复 ${sessions.size} 个 session`);
       return;
     }
-    // 回退：兼容旧文件
+    // 回退:兼容旧文件
     if (fs.existsSync(SESSION_FILE)) {
       const data2 = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
       const now = Date.now();
@@ -446,7 +446,7 @@ function _saveSessions(debounceMs = 5000) {
     _doSaveSessions();
   }, debounceMs);
 }
-// [audit#5] 立即写入（用于登录/登出等关键操作）
+// [audit#5] 立即写入(用于登录/登出等关键操作)
 function _saveSessionsImmediate() {
   if (_sessionSaveTimer) clearTimeout(_sessionSaveTimer);
   _sessionSaveTimer = null;
@@ -462,7 +462,7 @@ async function _doSaveSessions() {
 }
 _loadSessions().catch(e => console.error('[SaaS] session init error:', e.message));
 
-// v18: 定时清理过期 session（每 10 分钟）
+// v18: 定时清理过期 session(每 10 分钟)
 setInterval(() => {
   const now = Date.now();
   const maxAge = 30 * 24 * 60 * 60 * 1000;
@@ -487,7 +487,7 @@ function getSession(token) {
   return s;
 }
 
-// v113.66: 暴露 getSession 到全局，让 dashboard/server.js 也能验证用户 token
+// v113.66: 暴露 getSession 到全局,让 dashboard/server.js 也能验证用户 token
 global.getSession = getSession;
 global._saasSessions = sessions;
 
@@ -503,9 +503,9 @@ function verifyEthereumSignature(message, signature, expectedAddress) {
     }
     const expected = expectedAddress.toLowerCase();
 
-    // v19: 增强签名验证 — 支持所有主流钱包（TP/MetaMask/OKX/BSC Wallet/Trust）
+    // v19: 增强签名验证 - 支持所有主流钱包(TP/MetaMask/OKX/BSC Wallet/Trust)
 
-    // 方法1: ethers v6 verifyMessage（标准 EIP-191 personal_sign）
+    // 方法1: ethers v6 verifyMessage(标准 EIP-191 personal_sign)
     // MetaMask personal_sign、Trust Wallet、新版 TP 都用这个
     try {
       const recovered = ethers.verifyMessage(message, signature);
@@ -515,8 +515,8 @@ function verifyEthereumSignature(message, signature, expectedAddress) {
       }
     } catch(e) { /* 继续 */ }
 
-    // 方法2: 有些 TP/OKX 钱包会返回带 v=0/1（而非 v=27/28）的签名
-    // ethers 会自动处理，但如果方法1失败，尝试调整 v 值
+    // 方法2: 有些 TP/OKX 钱包会返回带 v=0/1(而非 v=27/28)的签名
+    // ethers 会自动处理,但如果方法1失败,尝试调整 v 值
     try {
       const sigBytes = ethers.getBytes(signature);
       if (sigBytes.length === 65) {
@@ -532,7 +532,7 @@ function verifyEthereumSignature(message, signature, expectedAddress) {
       }
     } catch(e) { /* 继续 */ }
 
-    // 方法3: 部分老钱包用 eth_sign（对消息的 hash 签名，不加 EIP-191 前缀）
+    // 方法3: 部分老钱包用 eth_sign(对消息的 hash 签名,不加 EIP-191 前缀)
     // 即: sig = sign(keccak256(message))
     try {
       const msgHash = ethers.id(message);  // keccak256(message)
@@ -556,7 +556,7 @@ function verifyEthereumSignature(message, signature, expectedAddress) {
       }
     } catch(e) { /* 继续 */ }
 
-    // 方法5: 部分钱包可能对 trimmed message（去掉了换行符）签名
+    // 方法5: 部分钱包可能对 trimmed message(去掉了换行符)签名
     try {
       const trimmed = message.replace(/\r\n/g, '\n').trim();
       if (trimmed !== message) {
@@ -581,7 +581,7 @@ function verifyEthereumSignature(message, signature, expectedAddress) {
 }
 
 // ═══════════════════════════════════
-// 交易执行器（为用户在 PancakeSwap 上交易）
+// 交易执行器(为用户在 PancakeSwap 上交易)
 // ═══════════════════════════════════
 class SwapExecutor {
   constructor() {
@@ -614,11 +614,11 @@ class SwapExecutor {
     // ⚠️ 参数顺序必须和合约一致: executeSwap(dex, tokenIn, tokenOut, amountIn, minAmountOut)
     const coder = new ethers.Interface(vaultABI);
     const data = coder.encodeFunctionData('executeSwap', [
-      this.router,   // dex（第1个参数）
-      tokenIn,       // tokenIn（第2个参数）
-      tokenOut,      // tokenOut（第3个参数）
-      amountIn,      // amountIn（第4个参数）
-      minOut,        // minAmountOut（第5个参数）
+      this.router,   // dex(第1个参数)
+      tokenIn,       // tokenIn(第2个参数)
+      tokenOut,      // tokenOut(第3个参数)
+      amountIn,      // amountIn(第4个参数)
+      minOut,        // minAmountOut(第5个参数)
     ]);
     return sendTx(vaultAddress, data);
   }
@@ -644,18 +644,9 @@ class SaasServer {
   start() {
     this._setupRoutes();
     this._setupArkieRoutes();
-
-    // ═══ 境外云部署安全：默认只监听 127.0.0.1（私有访问模式） ═══
-    // PRIVATE_ACCESS=yes 才绑定到 0.0.0.0 公开访问（不推荐）
-    // 公网访问请用 SSH 隧道：ssh -L 10020:127.0.0.1:10020 user@your-server
-    const privateAccess = (process.env.PRIVATE_ACCESS || 'yes').toLowerCase();
-    const bindHost = privateAccess === 'yes' ? '127.0.0.1' : '0.0.0.0';
-    const allowedIps = (process.env.ALLOWED_IPS || '').split(',').map(s => s.trim()).filter(Boolean);
-    this.server = this.app.listen(this.port, bindHost, () => {
-      this.log(`🌐 SaaS Platform v3.0: http://${bindHost}:${this.port}`);
-      this.log(`🔒 私有访问模式: ${bindHost === '127.0.0.1' ? 'ON (仅本机/SSH隧道可访问)' : 'OFF (公网暴露!)'}`);
-      if (allowedIps.length > 0) this.log(`📋 IP 白名单: ${allowedIps.join(', ')}`);
-      this.log(`💰 智能合约钱包模式 — 用户无需 API Key`);
+    this.server = this.app.listen(this.port, () => {
+      this.log(`🌐 SaaS Platform v3.0: http://localhost:${this.port}`);
+      this.log(`💰 智能合约钱包模式 - 用户无需 API Key`);
     });
   }
 
@@ -677,7 +668,7 @@ class SaasServer {
         const result = await arkie.chat(message, { userId: userId || wallet || 'admin', wallet, isAdmin });
         res.json(result);
       } catch (e) {
-        res.json({ reply: `出错了：${e.message}`, name: 'Arkie', ts: Date.now() });
+        res.json({ reply: `出错了:${e.message}`, name: 'Arkie', ts: Date.now() });
       }
     });
 
@@ -695,31 +686,17 @@ class SaasServer {
     this.app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false, setHeaders: (res) => { res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } }));
     this.app.use(express.json({ limit: '1mb' }));
 
-    // ═══ 境外云部署安全：IP 白名单中间件（可选） ═══
-    // 通过 ALLOWED_IPS=1.2.3.4,5.6.7.8 限制可访问的客户端 IP
-    // 注意：如果走 SSH 隧道，客户端 IP 会是 127.0.0.1，白名单可不用
-    const allowedIps = (process.env.ALLOWED_IPS || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (allowedIps.length > 0) {
-      this.app.use((req, res, next) => {
-        const clientIp = req.ip || req.connection?.remoteAddress || '';
-        const ip = clientIp.replace(/^::ffff:/, '');
-        if (ip === '127.0.0.1' || ip === '::1' || allowedIps.includes(ip)) return next();
-        this.log(`⛔ IP 拒绝访问: ${ip} ${req.method} ${req.path}`);
-        res.status(403).json({ error: 'Forbidden' });
-      });
-    }
-
-    // [audit#2] CORS 头（限制允许的源，不再用 *)
-    // [SECURITY#3-MEDIUM] 空origin时不应返回通配符*，改为不设置CORS头
+    // [audit#2] CORS 头（限制允许的源，不再用 *）
+    // [SECURITY#3-MEDIUM] 空origin时不应返回通配符*,改为不设置CORS头
     this.app.use((req, res, next) => {
       const origin = req.headers.origin || '';
-      // 允许 localhost（开发）和公网地址、以及空 origin（同源请求/TP钱包）
+      // 允许 localhost(开发)和公网地址、以及空 origin(同源请求/TP钱包)
       const isDev = /^http:\/\/localhost(:\d+)?$/i.test(origin);
       const isTPOrWallet = origin.startsWith('dapp://') || origin.includes('tokenpocket');
       if (isDev || isTPOrWallet) {
         res.header('Access-Control-Allow-Origin', origin);
       } else if (!origin) {
-        // 同源请求不设置CORS头（浏览器默认允许）
+        // 同源请求不设置CORS头(浏览器默认允许)
       }
       res.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Admin-Key');
       res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -732,23 +709,23 @@ class SaasServer {
     // v19: 账号密码注册
     this.app.post('/api/auth/register', async (req, res) => {
       try {
-        // [audit#10] 注册限流：每IP 60秒内最多3次
+        // [audit#10] 注册限流:每IP 60秒内最多3次
         const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
         if (!rateLimit(`register:${clientIp}`, 3, 60000)) {
-          return res.status(429).json({ error: '注册请求过于频繁，请稍后再试' });
+          return res.status(429).json({ error: '注册请求过于频繁,请稍后再试' });
         }
         const { username, password, walletAddress, inviteCode } = req.body;
-        // v106.4: 邀请码验证 — 防止未授权用户注册
+        // v106.4: 邀请码验证 - 防止未授权用户注册
         const VALID_INVITE = process.env.INVITE_CODE || 'ARK2026';
         if (!inviteCode || inviteCode !== VALID_INVITE) {
-          return res.status(403).json({ error: '邀请码无效，请联系管理员获取' });
+          return res.status(403).json({ error: '邀请码无效,请联系管理员获取' });
         }
         const actualUsername = username || walletAddress;
         if (!actualUsername || !password) {
           return res.status(400).json({ error: '请输入钱包地址和密码' });
         }
         if (password.length < 8) {
-          return res.status(400).json({ error: '密码至少 8 位，需含大小写字母和数字' });
+          return res.status(400).json({ error: '密码至少 8 位,需含大小写字母和数字' });
         }
         if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
           return res.status(400).json({ error: '密码需包含大写、小写字母和数字' });
@@ -756,14 +733,14 @@ class SaasServer {
         // 检查用户名是否已存在
         const existing = this.userDB.getByUsername(actualUsername);
         if (existing) {
-          return res.status(409).json({ error: '该账号已存在，请直接登录' });
+          return res.status(409).json({ error: '该账号已存在,请直接登录' });
         }
         // 创建用户
         const salt = crypto.randomBytes(16).toString('hex');
         const hash = crypto.scryptSync(password, salt, 64).toString('hex');
         const walletAddr = (walletAddress || actualUsername).toLowerCase();
         const user = this.userDB.createWithAuth(actualUsername, salt, hash, '', walletAddr);
-        // 注册成功后异步查余额（不阻塞注册响应）
+        // 注册成功后异步查余额(不阻塞注册响应)
         const sessionToken = createSession(walletAddr, {
           username: actualUsername,
           walletAddress: walletAddr,
@@ -783,10 +760,10 @@ class SaasServer {
     // v19: 账号密码登录
     this.app.post('/api/auth/login', async (req, res) => {
       try {
-        // [audit#9] 登录限流：每IP 60秒内最多5次
+        // [audit#9] 登录限流:每IP 60秒内最多5次
         const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
         if (!rateLimit(`login:${clientIp}`, 5, 60000)) {
-          return res.status(429).json({ error: '登录尝试过于频繁，请稍后再试' });
+          return res.status(429).json({ error: '登录尝试过于频繁,请稍后再试' });
         }
         const { username, password } = req.body;
         if (!username || !password) {
@@ -795,7 +772,7 @@ class SaasServer {
         // [SECURITY] 账号级暴力破解保护
         const lockInfo = checkAccountLock(username.toLowerCase());
         if (lockInfo.locked) {
-          return res.status(423).json({ error: `账号已锁定，请 ${lockInfo.remainMin} 分钟后再试` });
+          return res.status(423).json({ error: `账号已锁定,请 ${lockInfo.remainMin} 分钟后再试` });
         }
         const user = this.userDB.getByUsername(username);
         if (!user || !user.salt || !user.passwordHash) {
@@ -804,16 +781,16 @@ class SaasServer {
         }
         // 检查是否已注销
         if (user.deleted) {
-          return res.status(403).json({ error: '该账号已被注销，请联系管理员' });
+          return res.status(403).json({ error: '该账号已被注销,请联系管理员' });
         }
         const hash = crypto.scryptSync(password, user.salt, 64).toString('hex');
         if (hash !== user.passwordHash) {
           recordLoginFailure(username.toLowerCase());
           return res.status(401).json({ error: '用户名或密码错误' });
         }
-        // 登录成功，清除失败记录
+        // 登录成功,清除失败记录
         clearLoginFailure(username.toLowerCase());
-        // 🔍 直接查链上余额（无门槛限制）
+        // 🔍 直接查链上余额(无门槛限制)
         const walletAddr = (user.walletAddress || user.address || username).toLowerCase();
         const arkBalance = user.arkBalance || 0;
         const bnbBalance = user.bnbBalance || 0;
@@ -847,7 +824,7 @@ class SaasServer {
       }
     });
 
-    // 获取登录消息（前端让 TP 签名）
+    // 获取登录消息(前端让 TP 签名)
     this.app.get('/api/auth/nonce', (req, res) => {
       const address = req.query.address;
       if (!address || !address.startsWith('0x')) {
@@ -862,57 +839,57 @@ class SaasServer {
     // 验证签名 + ARK 门槛 + 部署/获取 Vault
     this.app.post('/api/auth/verify', async (req, res) => {
       try {
-        // v14: 限流 — 每 IP 60秒内最多10次认证尝试
+        // v14: 限流 - 每 IP 60秒内最多10次认证尝试
         const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
         if (!rateLimit(`auth:${clientIp}`, 10, 60000)) {
-          return res.status(429).json({ error: '认证请求过于频繁，请稍后再试' });
+          return res.status(429).json({ error: '认证请求过于频繁,请稍后再试' });
         }
         const { address, message, signature, chainId } = req.body;
         if (!address || !message || !signature) {
           return res.status(400).json({ error: '缺少参数' });
         }
 
-        // v19: 标准化地址 — 统一转小写比较，消除 checksum 大小写差异
+        // v19: 标准化地址 - 统一转小写比较,消除 checksum 大小写差异
         const normalizedAddress = address.toLowerCase();
         if (!/^0x[0-9a-f]{40}$/.test(normalizedAddress)) {
           return res.status(400).json({ error: '钱包地址格式无效' });
         }
 
-        // v14: 链 ID 验证 — 必须在 BSC 主网
+        // v14: 链 ID 验证 - 必须在 BSC 主网
         if (chainId && parseInt(chainId) !== 56) {
           return res.status(400).json({ error: '请切换到 BSC 主网 (Chain ID: 56)', expected: 56, received: parseInt(chainId) });
         }
 
-        // v19: 从消息中提取地址用于签名验证 — 确保与签名时的地址完全一致
+        // v19: 从消息中提取地址用于签名验证 - 确保与签名时的地址完全一致
         const msgAddrMatch = message.match(/地址:\s*(0x[0-9a-fA-F]{40})/);
         const msgAddress = msgAddrMatch ? msgAddrMatch[1] : address;
 
-        // v14: 验证消息时间戳（10分钟有效）+ nonce 防重放
+        // v14: 验证消息时间戳(10分钟有效)+ nonce 防重放
         const tsMatch = message.match(/时间:\s*(\d+)/);
         if (tsMatch) {
           const msgTime = parseInt(tsMatch[1]);
           if (Math.abs(Date.now() - msgTime) > 600000) {
-            return res.status(403).json({ error: '签名已过期，请重新签名' });
+            return res.status(403).json({ error: '签名已过期,请重新签名' });
           }
         }
 
-        // v19: 签名验证 — 先验证签名，通过后再标记 nonce（防止 ARK 不足时浪费 nonce）
+        // v19: 签名验证 - 先验证签名,通过后再标记 nonce(防止 ARK 不足时浪费 nonce)
         const valid = verifyEthereumSignature(message, signature, msgAddress);
         if (!valid) {
           return res.status(403).json({ error: '签名验证失败' });
         }
 
-        // 签名验证通过后才标记 nonce（避免无效操作消耗 nonce）
+        // 签名验证通过后才标记 nonce(避免无效操作消耗 nonce)
         const nonceMatch = message.match(/Nonce:\s*([a-f0-9]+)/);
         if (nonceMatch) {
           const nonce = nonceMatch[1];
           if (isNonceUsed(nonce)) {
-            return res.status(403).json({ error: '签名已使用（重放攻击）' });
+            return res.status(403).json({ error: '签名已使用(重放攻击)' });
           }
           markNonceUsed(nonce);
         }
 
-        // 2. 查链上余额（无门槛限制）
+        // 2. 查链上余额(无门槛限制)
         let arkBalance = 0, bnbBalance = 0;
         try { arkBalance = Number(await erc20Balance(ARK_TOKEN, address)) / 1e18; } catch(e) {}
         try {
@@ -924,7 +901,7 @@ class SaasServer {
         let user = this.userDB.get(address);
         let vaultAddress = user?.vaultAddress || null;
 
-        // 如果有 Factory 合约，查链上是否已有 Vault
+        // 如果有 Factory 合约,查链上是否已有 Vault
         if (VAULT_FACTORY && !vaultAddress) {
           try {
             const result = await callContract(
@@ -974,7 +951,7 @@ class SaasServer {
       }
     });
 
-    // 登出（销毁 session）
+    // 登出(销毁 session)
     this.app.post('/api/auth/logout', (req, res) => {
       const token = (req.headers.authorization || '').replace('Bearer ', '');
       if (token) { sessions.delete(token); _saveSessionsImmediate(); } // [audit#5] 登出立即写入
@@ -994,7 +971,7 @@ class SaasServer {
       if (!vaultAddress) {
         return res.json({
           deployed: false,
-          message: '尚未部署 Vault，请先部署',
+          message: '尚未部署 Vault,请先部署',
         });
       }
 
@@ -1065,7 +1042,7 @@ class SaasServer {
           const vaultTrader = result[0];
           if (vaultTrader.toLowerCase() !== traderAddr.toLowerCase()) {
             // 自动调用 setTrader 授权
-            this.log(`⚙️ ${session.wallet.slice(0, 10)}... Vault trader 不匹配，自动授权...`);
+            this.log(`⚙️ ${session.wallet.slice(0, 10)}... Vault trader 不匹配,自动授权...`);
             const vaultABI = ['function setTrader(address _trader)'];
             const coder = new ethers.Interface(vaultABI);
             const data = coder.encodeFunctionData('setTrader', fixArgs([traderAddr]));
@@ -1095,7 +1072,7 @@ class SaasServer {
       res.json({ success: true, strategy });
     });
 
-    // 设置交易金额（用户想让机器人拿多少钱交易）
+    // 设置交易金额(用户想让机器人拿多少钱交易)
     this.app.post('/api/vault/trade-amount', (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1109,7 +1086,7 @@ class SaasServer {
       res.json({ success: true, tradeAmount: amt });
     });
 
-    // 获取用户设置（包含交易金额）
+    // 获取用户设置(包含交易金额)
     this.app.get('/api/vault/user-settings', (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1123,13 +1100,13 @@ class SaasServer {
       });
     });
 
-    // ═══ 交易所切换 (用户独立，互不干扰) ═══
+    // ═══ 交易所切换 (用户独立,互不干扰) ═══
     this.app.post('/api/vault/exchange-mode', (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
       const { exchangeMode } = req.body;
       if (!['cex', 'dex'].includes(exchangeMode)) {
-        return res.status(400).json({ error: '无效模式，只支持 cex 或 dex' });
+        return res.status(400).json({ error: '无效模式,只支持 cex 或 dex' });
       }
       this.userDB.set(session.wallet, { exchangeMode });
       this.log(`🔄 ${session.wallet.slice(0,10)}... 交易所切换为 ${exchangeMode.toUpperCase()}`);
@@ -1170,7 +1147,7 @@ class SaasServer {
       }
     });
 
-    // Vault approve — V3 合约已自动 approve Router，此端点仅做查询
+    // Vault approve - V3 合约已自动 approve Router,此端点仅做查询
     this.app.post('/api/vault/approve-router', async (req, res) => {
       res.json({ success: true, message: 'v92: 链上合约已迁移至CEX模式', migrated: true });
     });
@@ -1192,7 +1169,7 @@ class SaasServer {
         await sendTx(user.vaultAddress, data);
         this.userDB.set(session.wallet, { tradingEnabled: false });
         this.log(`🛑 ${session.wallet.slice(0, 10)}... 紧急撤销 trader 权限`);
-        res.json({ success: true, message: '已撤销交易权限，机器人将停止操作您的资金' });
+        res.json({ success: true, message: '已撤销交易权限,机器人将停止操作您的资金' });
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
@@ -1206,19 +1183,19 @@ class SaasServer {
       if (!session) return res.status(401).json({ error: '未登录' });
       return res.json({ success: true, migrated: true, message: 'v92: 请绑定 Binance API Key 开始交易', redirect: '/api/vault/cex-key' });
 
-      // === 以下为链上合约代码，已废弃（v92迁移到CEX）===
+      // === 以下为链上合约代码,已废弃(v92迁移到CEX)===
       const user = this.userDB.get(session.wallet);
       if (user?.vaultAddress) {
         return res.status(400).json({ error: 'Vault 已部署', vaultAddress: user.vaultAddress });
       }
       if (!TRADER_PRIVATE_KEY) {
-        return res.status(500).json({ error: '平台交易器未配置，请联系管理员' });
+        return res.status(500).json({ error: '平台交易器未配置,请联系管理员' });
       }
       if (!VAULT_FACTORY) {
-        return res.status(500).json({ error: 'Vault Factory 未部署，请联系管理员' });
+        return res.status(500).json({ error: 'Vault Factory 未部署,请联系管理员' });
       }
 
-      // P1修复：部署前检查交易器钱包 BNB 余额，不足则直接记录待充值
+      // P1修复:部署前检查交易器钱包 BNB 余额,不足则直接记录待充值
       try {
         const traderWallet = new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address;
         const rawBnb = await bscRpc('eth_getBalance', [traderWallet, 'latest']);
@@ -1227,15 +1204,15 @@ class SaasServer {
           this.log(`⚠️ 交易器钱包 BNB 不足: ${traderBnb.toFixed(6)} BNB`);
           pendingFundRequests.set(session.wallet, {
             wallet: traderWallet,
-            reason: `Vault 部署需要 gas 费（BNB），交易器余额仅 ${traderBnb.toFixed(6)} BNB`,
+            reason: `Vault 部署需要 gas 费(BNB),交易器余额仅 ${traderBnb.toFixed(6)} BNB`,
             userAddress: session.wallet,
             timestamp: Date.now(),
           });
-          return res.status(402).json({ error: '平台交易器钱包余额不足，请联系管理员充值后重试', traderWallet, traderBnb: traderBnb.toFixed(6) });
+          return res.status(402).json({ error: '平台交易器钱包余额不足,请联系管理员充值后重试', traderWallet, traderBnb: traderBnb.toFixed(6) });
         }
-        this.log(`💰 交易器钱包余额: ${traderBnb.toFixed(6)} BNB — 足够部署`);
+        this.log(`💰 交易器钱包余额: ${traderBnb.toFixed(6)} BNB - 足够部署`);
       } catch (e) {
-        this.log(`⚠️ 交易器余额检查失败（继续部署）: ${e.message}`);
+        this.log(`⚠️ 交易器余额检查失败(继续部署): ${e.message}`);
       }
 
       try {
@@ -1261,7 +1238,7 @@ class SaasServer {
         const vaultAddress = result[0];
 
         if (vaultAddress === '0x0000000000000000000000000000000000000000') {
-          throw new Error('Vault 部署失败：链上未找到');
+          throw new Error('Vault 部署失败:链上未找到');
         }
 
         // 保存到数据库
@@ -1270,14 +1247,14 @@ class SaasServer {
         this.log(`🚀 ${session.wallet.slice(0, 10)}... Vault 已部署: ${vaultAddress}`);
         res.json({ success: true, vaultAddress });
       } catch (e) {
-        // [audit#13] 移除调试日志中的完整堆栈，只保留摘要
+        // [audit#13] 移除调试日志中的完整堆栈,只保留摘要
         this.log(`❌ 部署失败: ${e.message}`);
         // 记录到待充值列表
         if (e.message && (e.message.includes('insufficient') || e.message.includes('gas') || e.message.includes('insufficient funds') || e.message.includes('not enough'))) {
           const user = this.userDB.get(session.wallet);
           pendingFundRequests.set(session.wallet, {
             wallet: TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : 'unknown',
-            reason: 'Vault 部署需要 gas 费（BNB）',
+            reason: 'Vault 部署需要 gas 费(BNB)',
             userAddress: session.wallet,
             timestamp: Date.now(),
           });
@@ -1288,7 +1265,7 @@ class SaasServer {
     });
 
     // ═══════ Vault 前端链上部署后同步 ═══════
-    // 用户通过 TP 钱包在前端直接调用 Factory 部署，成功后同步到后端
+    // 用户通过 TP 钱包在前端直接调用 Factory 部署,成功后同步到后端
     // v92: sync路由保留但CEX模式下不需要
     this.app.post('/api/vault/sync', async (req, res) => {
       const session = this._auth(req);
@@ -1297,7 +1274,7 @@ class SaasServer {
       if (!vaultAddress || vaultAddress === '0x0000000000000000000000000000000000000000') {
         return res.status(400).json({ error: '无效的 Vault 地址' });
       }
-      // v92: CEX模式下同步 vault 地址（兼容旧前端）
+      // v92: CEX模式下同步 vault 地址(兼容旧前端)
       this.userDB.set(session.wallet, { vaultAddress });
       return res.json({ success: true, vaultAddress });
 
@@ -1315,7 +1292,7 @@ class SaasServer {
         }
       } catch (e) {
         this.log(`⚠️ Vault 链上验证失败: ${e.message}`);
-        return res.status(400).json({ error: 'Vault 链上验证失败，请确认合约地址正确' });
+        return res.status(400).json({ error: 'Vault 链上验证失败,请确认合约地址正确' });
       }
 
       const user = this.userDB.get(session.wallet) || {};
@@ -1328,20 +1305,20 @@ class SaasServer {
 
     // ═══════ Vault 入金 API ═══════
 
-    // 查询 Vault 地址（用户用来在 TP 钱包里入金）
+    // 查询 Vault 地址(用户用来在 TP 钱包里入金)
     this.app.get('/api/vault/address', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
       const user = this.userDB.get(session.wallet);
       if (!user?.vaultAddress) {
-        return res.status(404).json({ error: 'Vault 不存在，请先部署' });
+        return res.status(404).json({ error: 'Vault 不存在,请先部署' });
       }
       res.json({ vaultAddress: user.vaultAddress, owner: session.wallet });
     });
 
-    // ═══════ Vault 提现 API（V2: 用户自己签名提现）═══════
+    // ═══════ Vault 提现 API(V2: 用户自己签名提现)═══════
 
-    // 提取资金（V2: 用户 TP 钱包直接调用合约，不需要后端代签）
+    // 提取资金(V2: 用户 TP 钱包直接调用合约,不需要后端代签)
     // 前端直接调用 Vault.withdrawAllUSDT() / withdrawAllBNB()
     // 后端只做余额查询和验证
     this.app.post('/api/vault/withdraw', async (req, res) => {
@@ -1355,7 +1332,7 @@ class SaasServer {
 
       const user = this.userDB.get(session.wallet);
       if (!user?.vaultAddress) {
-        return res.status(400).json({ error: 'Vault 不存在，请先部署' });
+        return res.status(400).json({ error: 'Vault 不存在,请先部署' });
       }
 
       try {
@@ -1367,8 +1344,8 @@ class SaasServer {
           const ownerResult = await callContract(user.vaultAddress, ownerAbi, 'owner', []);
           const vaultOwner = ownerResult[0];
           if (vaultOwner.toLowerCase() !== session.wallet.toLowerCase()) {
-            // 旧合约兼容：如果 owner 不是用户，尝试用 trader 代签
-            this.log(`⚠️ Vault owner 不是用户，尝试 trader 代签提现`);
+            // 旧合约兼容:如果 owner 不是用户,尝试用 trader 代签
+            this.log(`⚠️ Vault owner 不是用户,尝试 trader 代签提现`);
             if (type === 'USDT') {
               const vaultABI = ['function withdrawAllUSDT()'];
               const coder = new ethers.Interface(vaultABI);
@@ -1384,8 +1361,8 @@ class SaasServer {
             return res.json({ success: true, message: `${type} 已提取`, method: 'trader-signed' });
           }
         } catch (e) {
-          this.log(`⚠️ owner 验证失败: ${e.message}，尝试 trader 代签`);
-          // 兼容旧合约：继续用 trader 代签
+          this.log(`⚠️ owner 验证失败: ${e.message},尝试 trader 代签`);
+          // 兼容旧合约:继续用 trader 代签
           if (type === 'USDT') {
             const vaultABI = ['function withdrawAllUSDT()'];
             const coder = new ethers.Interface(vaultABI);
@@ -1400,7 +1377,7 @@ class SaasServer {
           return res.json({ success: true, message: `${type} 已提取`, method: 'trader-signed' });
         }
 
-        // V2: 用户是 owner → 返回合约信息，让前端用 TP 钱包直接签
+        // V2: 用户是 owner → 返回合约信息,让前端用 TP 钱包直接签
         res.json({
           success: true,
           message: '请在 TP 钱包中确认提现交易',
@@ -1414,44 +1391,9 @@ class SaasServer {
       }
     });
 
-    // ═══════ 自愿打赏 API（替代原盖茨费自动扣费） ═══════
-    // 用户主动调用，平台才发起链上转账到平台/生态费钱包
-    this.app.post('/api/vault/tip', async (req, res) => {
-      const session = this._auth(req);
-      if (!session) return res.status(401).json({ error: '未登录' });
-      const { amount } = req.body;
-      const amt = parseFloat(amount);
-      if (!amt || amt <= 0) return res.status(400).json({ error: '打赏金额必须 > 0' });
-      if (amt > 1000) return res.status(400).json({ error: '单次打赏不得超过 $1000' });
 
-      try {
-        // 优先调用 BB 引擎的 processTip，回退到 DEX trader
-        const wallet = session.wallet;
-        let result = null;
-        if (this.bbStrategyManager?.bbEngine?.processTip) {
-          result = await this.bbStrategyManager.bbEngine.processTip(wallet, amt);
-        } else if (this.bbStrategyManager?._bbEngine?.processTip) {
-          result = await this.bbStrategyManager._bbEngine.processTip(wallet, amt);
-        } else if (this.userTrader?.processTip) {
-          result = await this.userTrader.processTip(wallet, amt);
-        } else if (this.cexTrader?.processTip) {
-          result = await this.cexTrader.processTip(wallet, amt);
-        } else {
-          return res.status(503).json({ error: '打赏服务不可用，请稍后重试' });
-        }
-        if (result.ok) {
-          this.log(`💰 ${wallet.slice(0,10)}... 自愿打赏 $${result.tipAmount.toFixed(2)} (${result.txs?.length || 0} 笔链上转账)`);
-          res.json(result);
-        } else {
-          res.status(400).json({ error: result.msg || '打赏失败' });
-        }
-      } catch (e) {
-        this.log(`❌ 自愿打赏异常: ${e.message}`);
-        res.status(500).json({ error: '打赏异常: ' + e.message });
-      }
-    });
 
-    // ═══════ 旧 Vault 迁移 API（用户将资金从旧 Vault 转到新 Vault）═══════
+    // ═══════ 旧 Vault 迁移 API(用户将资金从旧 Vault 转到新 Vault)═══════
     this.app.post('/api/vault/migrate', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1461,21 +1403,21 @@ class SaasServer {
 
       try {
         const { ethers } = require('ethers');
-        
+
         // 检查当前 Vault owner
         const ownerAbi = ['function owner() view returns (address)'];
         const ownerResult = await callContract(user.vaultAddress, ownerAbi, 'owner', []);
         const vaultOwner = ownerResult[0];
 
-        // 如果 owner 已经是用户，不需要迁移
+        // 如果 owner 已经是用户,不需要迁移
         if (vaultOwner.toLowerCase() === session.wallet.toLowerCase()) {
-          return res.json({ success: true, message: 'Vault owner 已经是您，无需迁移', vaultAddress: user.vaultAddress });
+          return res.json({ success: true, message: 'Vault owner 已经是您,无需迁移', vaultAddress: user.vaultAddress });
         }
 
-        // owner 不是用户 → 旧合约，需要迁移
-        // 方案：后端用 trader 私钥调用旧 Vault 的 withdrawAllUSDT/withdrawAllBNB（如果 trader 有权限的话）
-        // 实际上旧合约中 trader 不是 owner，所以无法代签提现
-        // 因此只能：创建新的 V2 Vault，让用户自己从前端签名转账
+        // owner 不是用户 → 旧合约,需要迁移
+        // 方案:后端用 trader 私钥调用旧 Vault 的 withdrawAllUSDT/withdrawAllBNB(如果 trader 有权限的话)
+        // 实际上旧合约中 trader 不是 owner,所以无法代签提现
+        // 因此只能:创建新的 V2 Vault,让用户自己从前端签名转账
 
         // 检查是否已有新的 V2 Vault
         let newVault = null;
@@ -1500,7 +1442,7 @@ class SaasServer {
           const coder = new ethers.Interface(factoryABI);
           const data = coder.encodeFunctionData('deployVault', fixArgs([session.wallet]));
           const receipt = await sendTx(VAULT_FACTORY, data);
-          
+
           const result = await callContract(
             VAULT_FACTORY,
             ['function getVault(address) view returns (address)'],
@@ -1515,14 +1457,14 @@ class SaasServer {
 
         // 更新用户数据
         this.userDB.set(session.wallet, { vaultAddress: newVault });
-        
+
         this.log(`✅ ${session.wallet.slice(0,10)}... 已迁移到新 Vault: ${newVault}`);
         res.json({
           success: true,
-          message: '新 Vault 已创建，请将旧 Vault 中的资金手动转入新 Vault',
+          message: '新 Vault 已创建,请将旧 Vault 中的资金手动转入新 Vault',
           oldVault: user.vaultAddress,
           newVault: newVault,
-          note: '由于旧 Vault 的 owner 不是您，资金需要您手动从前端签名转账',
+          note: '由于旧 Vault 的 owner 不是您,资金需要您手动从前端签名转账',
         });
       } catch (e) {
         this.log(`❌ 迁移失败: ${e.message}`);
@@ -1537,11 +1479,11 @@ class SaasServer {
       if (!session) return res.status(401).json({ error: '未登录' });
 
       const user = this.userDB.get(session.wallet);
-      // userTrader 可能不存在（CEX-only模式），用可选链保护
+      // userTrader 可能不存在(CEX-only模式),用可选链保护
       const userState = this.userTrader?.getUserState?.(session.wallet) || {};
       const userTrades = this.userTrader?.getUserTrades?.(session.wallet, 10) || [];
 
-      // 🔍 三路余额：Vault合约 + 注册钱包 + 币安账户
+      // 🔍 三路余额:Vault合约 + 注册钱包 + 币安账户
       const walletAddr = session.wallet.toLowerCase();
       const vaultAddr = user?.vaultAddress?.toLowerCase();
       let walletUsdt = 0, walletBnb = 0, walletArk = 0;
@@ -1551,18 +1493,18 @@ class SaasServer {
       const cexSecret = user?.cexSecretKey || user?.binanceSecret;
       const hasCexKey = !!(cexKey && cexSecret);
       const withTimeout = (p, ms) => Promise.race([p, new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
-      
+
       // 1️⃣ 注册钱包地址余额
       try { walletArk = Number(await withTimeout(cachedErc20Balance(ARK_TOKEN, walletAddr), 8000)) / 1e18; } catch(e) {}
       try { walletBnb = await withTimeout(cachedBnbBalance(walletAddr), 8000); } catch(e) {}
       try { walletUsdt = Number(await withTimeout(cachedErc20Balance(USDT_ADDRESS, walletAddr), 8000)) / 1e18; } catch(e) {}
-      
-      // 2️⃣ Vault合约余额（部署了Vault的用户）
+
+      // 2️⃣ Vault合约余额(部署了Vault的用户)
       if (vaultAddr) {
         try { vaultUsdt = Number(await withTimeout(cachedErc20Balance(USDT_ADDRESS, vaultAddr), 8000)) / 1e18; } catch(e) {}
         try { vaultBnb = await withTimeout(cachedBnbBalance(vaultAddr), 8000); } catch(e) {}
       }
-      
+
       // 3️⃣ 币安账户余额
       if (hasCexKey) {
         try {
@@ -1597,7 +1539,7 @@ class SaasServer {
         };
       }
 
-      // v113.26: 合并CEX用户持仓 — 必须用 session.wallet 隔离，只显示自己的
+      // v113.26: 合并CEX用户持仓 - 必须用 session.wallet 隔离,只显示自己的
       const cexUserPositions = this.cexUserTrader?.getUserState?.(session.wallet)?.positions || {};
       for (const [sym, pos] of Object.entries(cexUserPositions)) {
         const md = this.dataBus?.marketData?.[sym] || {};
@@ -1620,7 +1562,7 @@ class SaasServer {
         };
       }
 
-      // v72: CEX模式状态（hasCexKey已在上方声明）
+      // v72: CEX模式状态(hasCexKey已在上方声明)
       const cexUserState = this.cexUserTrader?.getUserState(session.wallet) || {};
       const cexMode = hasCexKey && (cexUserState.trading || user?.cexMode);
 
@@ -1642,7 +1584,7 @@ class SaasServer {
       let canWithdraw = user?.canWithdraw || false;
       let feeTransferStatus = null;
       if (this.cexUserTrader) {
-        // 从磁盘读取最新用户数据（dashboard绑定路径直接写文件）
+        // 从磁盘读取最新用户数据(dashboard绑定路径直接写文件)
         try {
           const freshUsers = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'saas-users.json'), 'utf8'));
           const freshUser = freshUsers[walletAddr] || freshUsers[walletAddr?.toLowerCase()] || {};
@@ -1667,20 +1609,20 @@ class SaasServer {
         };
       }
 
-      // ═══ 盖茨费余额：数据库记账 + 链上差额检测 ═══
-      // 用户充值到Trader钱包后，系统自动检测链上余额差额
-      // 有差额时前端显示"确认到账"提示，用户点按钮后入账
+      // ═══ 自愿打赏费余额:数据库记账 + 链上差额检测 ═══
+      // 用户充值到Trader钱包后,系统自动检测链上余额差额
+      // 有差额时前端显示"确认到账"提示,用户点按钮后入账
       let _gatesFeeBalance = user?.gatesFeeBalance ?? 0;
       let _gatesFeeLow = user?.gatesFeeLow ?? false;
       let _pendingRecharge = 0; // 链上检测到的未入账金额
       let _traderOnchainBalance = 0;
       let _dbTotal = 0;
-      
+
       // 计算数据库总额
       for (const [, _u] of Object.entries(this.userDB.users || {})) {
         if (_u && typeof _u.gatesFeeBalance === 'number') _dbTotal += _u.gatesFeeBalance;
       }
-      
+
       // 查 Trader 钱包链上 USDT 余额
       try {
         const traderAddr = TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
@@ -1696,11 +1638,11 @@ class SaasServer {
         clearTimeout(_to);
         const _json = await _resp.json();
         _traderOnchainBalance = _json.result ? Number(BigInt(_json.result)) / 1e18 : 0;
-        // 差额 = 链上余额 - 数据库总额（>1 才显示，避免精度误差）
+        // 差额 = 链上余额 - 数据库总额(>1 才显示,避免精度误差)
         _pendingRecharge = Math.max(0, _traderOnchainBalance - _dbTotal);
         if (_pendingRecharge < 1) _pendingRecharge = 0; // < $1 不显示
       } catch(e) {
-        // 链上查询失败，不影响显示
+        // 链上查询失败,不影响显示
         console.log('[GatesFee] 链上余额查询失败:', e.message);
       }
 
@@ -1714,7 +1656,7 @@ class SaasServer {
           // v121: 提现权限 + 费用转账状态
           canWithdraw,
           feeTransferStatus,
-          // 盖茨费状态（方案A：用户充值到Trader钱包，记账余额）
+          // 自愿打赏费状态(方案A:用户充值到Trader钱包,记账余额)
           gatesFee: {
             bscWalletAddr: user?.bscWalletAddr || walletAddr,
             balance: _gatesFeeBalance,
@@ -1816,8 +1758,8 @@ class SaasServer {
       res.json({ success: true, paused });
     });
 
-    // ═══════ 用户 CEX API Key 绑定（v121: 强制检查提现权限）═══════
-    // ═══ 盖茨费：绑定BSC钱包地址（在绑定API Key之前）═══
+    // ═══════ 用户 CEX API Key 绑定(v121: 强制检查提现权限)═══════
+    // ═══ 自愿打赏费:绑定BSC钱包地址(在绑定API Key之前)═══
     this.app.post('/api/vault/bsc-wallet', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1862,7 +1804,7 @@ class SaasServer {
       });
     });
 
-    // ═══ 盖茨费：查询链上Approve授权状态 ═══
+    // ═══ 自愿打赏费:查询链上Approve授权状态 ═══
     this.app.get('/api/vault/gates-fee-status', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1900,7 +1842,7 @@ class SaasServer {
       });
     });
 
-    // ═══ 盖茨费：获取USDT授权参数（供前端MetaMask发送approve交易） ═══
+    // ═══ 自愿打赏费:获取USDT授权参数(供前端MetaMask发送approve交易) ═══
     this.app.get('/api/vault/approve-params', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1927,7 +1869,7 @@ class SaasServer {
       try {
         const { ethers } = require('ethers');
         const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
-        // 用直接 eth_call 查 allowance，避免 ethers.Contract 解码失败
+        // 用直接 eth_call 查 allowance,避免 ethers.Contract 解码失败
         const allowanceData = '0xdd62ed3e'
           + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
           + traderAddr.toLowerCase().replace('0x', '').padStart(64, '0');
@@ -1945,7 +1887,7 @@ class SaasServer {
           onChainAllowance = BigInt(_json.result).toString();
         }
       } catch(e) {}
-      // 修复：以链上 allowance 为准，而不只依赖数据库 gatesFeeApproved
+      // 修复:以链上 allowance 为准,而不只依赖数据库 gatesFeeApproved
       const actualApproved = BigInt(onChainAllowance) > BigInt(1000) * BigInt('1000000000000000000');
       res.json({
         success: true,
@@ -1954,7 +1896,7 @@ class SaasServer {
       });
     });
 
-    // ═══ 盖茨费：用户确认已充值 — 支持自动检测差额或手动输入金额 ═══
+    // ═══ 自愿打赏费:用户确认已充值 - 支持自动检测差额或手动输入金额 ═══
     this.app.post('/api/gates-fee/confirm-recharge', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1963,7 +1905,7 @@ class SaasServer {
 
       try {
         const { amount: inputAmount, auto: autoMode } = req.body;
-        
+
         // 用 fetch + eth_call 查 Trader 钱包 USDT 余额
         const traderAddr = new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address;
         const _data = '0x70a08231' + '000000000000000000000000' + traderAddr.toLowerCase().replace('0x','');
@@ -1984,13 +1926,13 @@ class SaasServer {
         for (const [, _u] of Object.entries(this.userDB.users || {})) {
           if (_u && typeof _u.gatesFeeBalance === 'number') dbTotal += _u.gatesFeeBalance;
         }
-        
-        // 链上差额（未入账的充值总额）
+
+        // 链上差额(未入账的充值总额)
         const pendingDiff = Math.max(0, traderBalance - dbTotal);
-        
+
         let amount;
         if (autoMode) {
-          // 自动模式：直接用链上差额
+          // 自动模式:直接用链上差额
           amount = pendingDiff;
           if (amount < 1) {
             return res.json({
@@ -2001,12 +1943,12 @@ class SaasServer {
             });
           }
         } else {
-          // 手动模式：用户输入金额
+          // 手动模式:用户输入金额
           amount = parseFloat(inputAmount);
           if (!amount || amount <= 0) {
             return res.json({ success: false, message: '请输入有效的充值金额' });
           }
-          // 验证：链上差额 >= 用户申报金额（用户不能申报超过实际差额的金额）
+          // 验证:链上差额 >= 用户申报金额(用户不能申报超过实际差额的金额)
           if (amount > pendingDiff + 0.5) {
             return res.json({
               success: false,
@@ -2030,7 +1972,7 @@ class SaasServer {
         console.log(`[GatesFee] ✅ ${session.wallet.slice(0,10)}... 确认充值 $${amount.toFixed(2)} → 余额: $${newBalance.toFixed(2)} (Trader总余额: $${traderBalance.toFixed(2)}, DB总额: $${dbTotal.toFixed(2)})`);
         res.json({
           success: true,
-          message: `充值确认成功！+$${amount.toFixed(2)}`,
+          message: `充值确认成功!+$${amount.toFixed(2)}`,
           oldBalance: oldBalance.toFixed(2),
           newBalance: newBalance.toFixed(2),
           traderBalance: traderBalance.toFixed(2),
@@ -2042,20 +1984,20 @@ class SaasServer {
       }
     });
 
-    // ═══ 盖茨费：用户在前端通过MetaMask签名approve后，通知后端更新状态 ═══
+    // ═══ 自愿打赏费:用户在前端通过MetaMask签名approve后,通知后端更新状态 ═══
     this.app.post('/api/vault/approve-confirmed', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
       const { txHash } = req.body;
-      
-      // 支持 already-approved：直接查链上 allowance（用 eth_call 避免 ethers.Contract 解码失败）
+
+      // 支持 already-approved:直接查链上 allowance(用 eth_call 避免 ethers.Contract 解码失败)
       if (txHash === 'already-approved') {
         try {
           const user = this.userDB.get(session.wallet) || {};
           const bscAddr = user.bscWalletAddr;
           if (!bscAddr) return res.status(400).json({ error: '请先绑定BSC钱包地址' });
           const traderAddr = new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address;
-          // 用直接 eth_call 查 allowance，避免 ethers.Contract RPC 解码问题
+          // 用直接 eth_call 查 allowance,避免 ethers.Contract RPC 解码问题
           const allowanceData = '0xdd62ed3e'
             + bscAddr.toLowerCase().replace('0x', '').padStart(64, '0')
             + traderAddr.toLowerCase().replace('0x', '').padStart(64, '0');
@@ -2070,49 +2012,49 @@ class SaasServer {
           clearTimeout(_to);
           const _json = await _resp.json();
           if (!_json.result || _json.result === '0x') {
-            return res.status(400).json({ error: '链上未找到授权记录(RPC返回空)，请在钱包中完成授权' });
+            return res.status(400).json({ error: '链上未找到授权记录(RPC返回空),请在钱包中完成授权' });
           }
           const allowance = BigInt(_json.result);
           if (allowance > BigInt(1000) * BigInt('1000000000000000000')) {
-            this.log(`✅ ${session.wallet.slice(0,10)}... 链上已授权 (allowance > 1000 USDT)，自动更新状态`);
+            this.log(`✅ ${session.wallet.slice(0,10)}... 链上已授权 (allowance > 1000 USDT),自动更新状态`);
             this.userDB.set(session.wallet, { ...user, gatesFeeApproved: true, gatesFeeLow: (user.gatesFeeBalance || 0) < 5 });
-            return res.json({ success: true, message: '链上已授权，盖茨费系统已激活' });
+            return res.json({ success: true, message: '链上已授权,自愿打赏费系统已激活' });
           } else {
-            return res.status(400).json({ error: `链上授权额度为 $${Number(allowance) / 1e18}，需要大于 $1000，请在钱包中重新授权` });
+            return res.status(400).json({ error: `链上授权额度为 $${Number(allowance) / 1e18},需要大于 $1000,请在钱包中重新授权` });
           }
         } catch (e) {
           return res.status(500).json({ error: '链上查询失败: ' + e.message.slice(0,80) });
         }
       }
-      
+
       if (!txHash || !/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
         return res.status(400).json({ error: '无效的交易哈希' });
       }
-      
-      // 修复：验证链上交易真实性，不直接信任前端提交的txHash
+
+      // 修复:验证链上交易真实性,不直接信任前端提交的txHash
       try {
         const { ethers } = require('ethers');
         const BSC_RPC = 'https://bsc-rpc.publicnode.com';
         const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
         const provider = new ethers.JsonRpcProvider(BSC_RPC);
         const receipt = await provider.getTransactionReceipt(txHash);
-        
+
         if (!receipt) {
-          return res.status(400).json({ error: '链上未找到此交易，请确认交易已上链' });
+          return res.status(400).json({ error: '链上未找到此交易,请确认交易已上链' });
         }
         if (receipt.status !== 1) {
           return res.status(400).json({ error: '交易执行失败' });
         }
-        
-        // 验证交易发起者是当前登录用户（兼容 session.wallet 和 user.bscWalletAddr）
+
+        // 验证交易发起者是当前登录用户(兼容 session.wallet 和 user.bscWalletAddr)
         const user = this.userDB.get(session.wallet) || {};
         const validWallets = [session.wallet.toLowerCase(), (user.bscWalletAddr || '').toLowerCase()].filter(Boolean);
         const txFrom = (receipt.from || '').toLowerCase();
         if (txFrom && !validWallets.includes(txFrom)) {
           return res.status(400).json({ error: '交易发起者与当前登录账号不匹配' });
         }
-        
-        // 验证交易是USDT approve，且授权者是当前登录用户
+
+        // 验证交易是USDT approve,且授权者是当前登录用户
         const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address.toLowerCase();
         let isApproveTx = false;
         for (const log of receipt.logs) {
@@ -2130,33 +2072,33 @@ class SaasServer {
             }
           }
         }
-        
+
         if (!isApproveTx) {
-          // 修复：移除宽松检查 — 必须严格验证 spender 是 Trader 地址
-          // 旧宽松检查只验证 owner 是用户就通过，不检查 spender，
+          // 修复:移除宽松检查 - 必须严格验证 spender 是 Trader 地址
+          // 旧宽松检查只验证 owner 是用户就通过,不检查 spender,
           // 导致用户授权给别的地址也被标记为已授权
-          return res.status(400).json({ error: '交易不是USDT授权交易或授权地址不匹配（spender 必须是 Trader 钱包）' });
+          return res.status(400).json({ error: '交易不是USDT授权交易或授权地址不匹配(spender 必须是 Trader 钱包)' });
         }
-        
-        // 修复：验证通过后，再查一次链上 allowance 确认实际授权额度 > 0
+
+        // 修复:验证通过后,再查一次链上 allowance 确认实际授权额度 > 0
         try {
           const usdtCheck = new ethers.Contract(USDT_ADDR, ['function allowance(address,address) view returns (uint256)'], provider);
           const actualAllowance = await usdtCheck.allowance(validWallets[0], traderAddr);
           if (BigInt(actualAllowance) === BigInt(0)) {
-            this.log(`⚠️ ${session.wallet.slice(0,10)}... txHash验证通过但allowance=0，可能授权被撤销`);
-            return res.status(400).json({ error: '链上授权额度为0，请确认授权交易已成功' });
+            this.log(`⚠️ ${session.wallet.slice(0,10)}... txHash验证通过但allowance=0,可能授权被撤销`);
+            return res.status(400).json({ error: '链上授权额度为0,请确认授权交易已成功' });
           }
         } catch (e) {
           this.log(`⚠️ ${session.wallet.slice(0,10)}... allowance二次验证失败(非致命): ${e.message.slice(0,60)}`);
         }
-        
+
         this.log(`✅ ${session.wallet.slice(0,10)}... USDT approve 链上验证通过: ${txHash.slice(0,16)}...`);
         const existingUser = this.userDB.get(session.wallet) || {};
         this.userDB.set(session.wallet, { ...existingUser, gatesFeeApproved: true });
-        res.json({ success: true, message: '授权成功，盖茨费系统已激活' });
+        res.json({ success: true, message: '授权成功,自愿打赏费系统已激活' });
       } catch (e) {
         this.log(`❌ approve-confirmed 链上验证失败: ${e.message.slice(0,80)}`);
-        res.status(500).json({ error: '链上验证失败，请稍后重试' });
+        res.status(500).json({ error: '链上验证失败,请稍后重试' });
       }
     });
 
@@ -2194,11 +2136,11 @@ class SaasServer {
         return res.json({ success: false, error: 'API Key 没有合约交易权限或验证失败: ' + (e.message || '') });
       }
 
-      // ═══ 盖茨费模式：不再要求币安提现权限 ═══
+      // ═══ 自愿打赏费模式:不再要求币安提现权限 ═══
       // 只需要合约+现货交易权限即可
-      // 盖茨费通过BSC钱包链上授权自动扣除
+      // 自愿打赏费通过BSC钱包链上授权自动扣除
 
-      // 获取用户已绑定的BSC钱包地址，如果没有则自动使用注册钱包地址
+      // 获取用户已绑定的BSC钱包地址,如果没有则自动使用注册钱包地址
       let bscWalletAddr = '';
       const existingUser = this.userDB.get(session.wallet);
       if (existingUser && existingUser.bscWalletAddr) {
@@ -2207,7 +2149,7 @@ class SaasServer {
         // 注册钱包地址就是BSC钱包地址
         bscWalletAddr = session.wallet.toLowerCase();
       }
-      // 如果请求中带了BSC钱包地址，使用请求中的
+      // 如果请求中带了BSC钱包地址,使用请求中的
       if (req.body.bscWalletAddr) {
         bscWalletAddr = req.body.bscWalletAddr;
       }
@@ -2216,12 +2158,12 @@ class SaasServer {
       if (!bscWalletAddr || !/^0x[a-fA-F0-9]{40}$/.test(bscWalletAddr)) {
         return res.json({
           success: false,
-          error: '请先绑定BSC钱包地址（用于支付盖茨费），再绑定币安API Key。',
+          error: '请先绑定BSC钱包地址(用于支付自愿打赏费),再绑定币安API Key。',
           needBscWallet: true,
         });
       }
 
-      // 检查BSC钱包USDT余额（盖茨费储备）
+      // 检查BSC钱包USDT余额(自愿打赏费储备)
       let gatesFeeBalance = 0;
       try {
         const rawBal = await erc20Balance(USDT_ADDRESS, bscWalletAddr);
@@ -2230,7 +2172,7 @@ class SaasServer {
         this.log(`⚠️ 查询BSC钱包USDT余额失败: ${e.message}`);
       }
 
-      // 检查链上Approve授权 — TRADER_WALLET 是否被授权从用户BSC钱包提取USDT
+      // 检查链上Approve授权 - TRADER_WALLET 是否被授权从用户BSC钱包提取USDT
       let gatesFeeApproved = false;
       try {
         const { ethers } = require('ethers');
@@ -2246,23 +2188,23 @@ class SaasServer {
         this.log(`⚠️ 查询链上Approve授权失败: ${e.message}`);
       }
 
-      // 加密存储 API Key，自动设为B策略
+      // 加密存储 API Key,自动设为B策略
       this.userDB.set(session.wallet, {
         binanceApiKey: encryptText(apiKey),
         binanceSecret: encryptText(secretKey),
         cexMode: true,
         tradingEnabled: true,
         canWithdraw: false, // 不再需要币安提现权限
-        withdrawConsent: true, // 同意盖茨费模式
-        bscWalletAddr: bscWalletAddr, // BSC钱包地址（用于支付盖茨费）
+        withdrawConsent: true, // 同意自愿打赏费模式
+        bscWalletAddr: bscWalletAddr, // BSC钱包地址(用于支付自愿打赏费)
         gatesFeeBalance: gatesFeeBalance, // BSC钱包USDT余额
         gatesFeeApproved: gatesFeeApproved, // 链上Approve授权状态
-        gatesFeeLow: gatesFeeBalance < 5, // 盖茨费余额不足标志
+        gatesFeeLow: gatesFeeBalance < 5, // 自愿打赏费余额不足标志
         strategy: 'bb',
         usdtBalance: usdtBalance,
         verifiedAt: Date.now(),
       });
-      this.log(`✅ ${session.wallet.slice(0,10)}... CEX API Key 已绑定 (盖茨费模式) BSC钱包: ${bscWalletAddr.slice(0,10)}... USDT余额: $${gatesFeeBalance.toFixed(2)}`);
+      this.log(`✅ ${session.wallet.slice(0,10)}... CEX API Key 已绑定 (自愿打赏费模式) BSC钱包: ${bscWalletAddr.slice(0,10)}... USDT余额: $${gatesFeeBalance.toFixed(2)}`);
 
       res.json({
         success: true,
@@ -2288,7 +2230,7 @@ class SaasServer {
       res.json({ success: true, cexMode: false });
     });
 
-    // ═══════ 管理员 API（需要密钥认证）═══════
+    // ═══════ 管理员 API(需要密钥认证)═══════
 
     // ═══════ 服务费管理 API ═══════
     // ═══════ 多市场持仓 API ═══════
@@ -2300,7 +2242,7 @@ class SaasServer {
       let totalPnl = 0;
       let totalUnrealized = 0;
 
-      // 1. CEX用户持仓（从cexUserTrader获取）
+      // 1. CEX用户持仓(从cexUserTrader获取)
       if (this.cexUserTrader) {
         const cexState = this.cexUserTrader.getUserState?.(wallet) || {};
         const cexPositions = cexState.positions || {};
@@ -2334,7 +2276,7 @@ class SaasServer {
         }
       }
 
-      // 3. DEX 持仓（PancakeSwap BSC链上）
+      // 3. DEX 持仓(PancakeSwap BSC链上)
       if (this.dexTrader) {
         const dexPositions = this.dexTrader.getUserPositions?.(wallet) || {};
         if (Object.keys(dexPositions).length > 0) {
@@ -2417,7 +2359,7 @@ class SaasServer {
       if (!session) return res.status(401).json({ error: '未登录' });
       const { symbol, action, rating, comment, strategy } = req.body;
       if (!symbol || !rating) return res.status(400).json({ error: '缺少参数' });
-      // [audit-final] 输入验证：symbol 长度限制、rating 范围、comment 长度限制
+      // [audit-final] 输入验证:symbol 长度限制、rating 范围、comment 长度限制
       if (typeof symbol !== 'string' || symbol.length > 20) return res.status(400).json({ error: 'symbol 无效' });
       const ratingNum = Number(rating);
       if (!Number.isFinite(ratingNum) || ratingNum < 1 || ratingNum > 5) return res.status(400).json({ error: 'rating 必须 1-5' });
@@ -2459,7 +2401,7 @@ class SaasServer {
       res.json({ totalFeedbacks: myFb.length, symbolStats });
     });
 
-    // ═══════ 回测 API（[audit#20] 缓存5分钟）═══════
+    // ═══════ 回测 API([audit#20] 缓存5分钟)═══════
     this.app.get('/api/backtest', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -2524,7 +2466,7 @@ class SaasServer {
       });
     });
 
-    // 管理员仪表盘数据 — 平台全局 + 管理员自己的持仓
+    // 管理员仪表盘数据 - 平台全局 + 管理员自己的持仓
     this.app.get('/api/admin/dashboard', adminAuth, async (req, res) => {
       try {
         const users = this.userDB.users || {};
@@ -2540,7 +2482,7 @@ class SaasServer {
           version: 'v3.0-v16',
         };
 
-        // 引擎状态（主引擎 = 管理员自己的交易）
+        // 引擎状态(主引擎 = 管理员自己的交易)
         const engine = this.engine;
         const engineState = engine?.engineState || {};
         const positions = (typeof engine?.guardian?.getAllPositions === 'function') ? engine.guardian.getAllPositions() : {};
@@ -2705,7 +2647,7 @@ class SaasServer {
       }
     });
 
-    // ═══════ 用户反馈统计（管理员） ═══════
+    // ═══════ 用户反馈统计(管理员) ═══════
     this.app.get('/api/admin/feedback', adminAuth, (req, res) => {
       try {
         const stats = require('./data-store')._store?.get?.('feedback-stats') || {};
@@ -2715,7 +2657,7 @@ class SaasServer {
       }
     });
 
-    // 极简注册/登录页面（兼容所有手机浏览器）
+    // 极简注册/登录页面(兼容所有手机浏览器)
     this.app.get('/reg', (req, res) => {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.send(`<!DOCTYPE html>
@@ -2747,7 +2689,7 @@ body{font-family:sans-serif;background:#0a0e17;color:#e0e0e0;min-height:100vh;di
   <button class="b bg" id="rb">\u6CE8\u518C\u65B0\u8D26\u53F7</button>
   <button class="b bb" id="lb">\u767B\u5F55</button>
   <div id="m"></div>
-  <div class="ft">输入你的 BSC 钱包地址和密码<br>平台服务费 20%（仅盈利时收取）</div>
+  <div class="ft">输入你的 BSC 钱包地址和密码<br>平台服务费 20%(仅盈利时收取)</div>
 </div>
 <script>
 function M(t,c){var m=document.getElementById('m');m.textContent=t;m.className=c==1?'ok':'er';}
@@ -2786,7 +2728,7 @@ document.getElementById('lb').onclick=L;
 </script></body></html>`);
     });
 
-    // 管理员仪表盘页面 — 先展示登录框，前端输入密钥后再请求数据
+    // 管理员仪表盘页面 - 先展示登录框,前端输入密钥后再请求数据
     this.app.get('/admin', (req, res) => {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(__dirname, 'admin.html'));
@@ -2798,8 +2740,8 @@ document.getElementById('lb').onclick=L;
       if (typeof feeBps !== 'number' || feeBps < 0 || feeBps > 5000) {
         return res.status(400).json({ error: '费率无效 (0-5000 bps)' });
       }
-      // 动态修改模块级变量（当前进程内生效）
-      // 注意：重启后恢复默认值，持久化需要写配置文件
+      // 动态修改模块级变量(当前进程内生效)
+      // 注意:重启后恢复默认值,持久化需要写配置文件
       this.log(`⚙️ 平台费率调整: ${PLATFORM_FEE_BPS / 100}% → ${feeBps / 100}%`);
       // 直接修改全局变量
       global._platformFeeBps = feeBps;
@@ -2818,7 +2760,7 @@ document.getElementById('lb').onclick=L;
       });
     });
 
-    // 前端获取 Factory 地址（公开接口）
+    // 前端获取 Factory 地址(公开接口)
     this.app.get('/api/config/factory', (req, res) => {
       res.json({ factoryAddress: VAULT_FACTORY || null });
     });
@@ -2857,42 +2799,42 @@ document.getElementById('lb').onclick=L;
   _runBacktest() {
     const INITIAL_CAPITAL = 10000; // $10,000
     const MAX_POSITION_PCT = 0.1; // 单仓最大 10%
-    const SL_PCT = 0.04;          // 止损 -4%（v16: 对应实际策略）
-    const TP_PCT = 0.08;          // 止盈 +8%（v16: 对应实际策略）
-    const LEVERAGE = 3;           // 杠杆 3x（v16: 降低杠杆）
+    const SL_PCT = 0.04;          // 止损 -4%(v16: 对应实际策略)
+    const TP_PCT = 0.08;          // 止盈 +8%(v16: 对应实际策略)
+    const LEVERAGE = 3;           // 杠杆 3x(v16: 降低杠杆)
     const FEE_COST = 0.0115;      // 双边手续费+滑点+gas ≈ 1.15%
     const symbols = ['ETHUSDT', 'SOLUSDT']; // v48: 只做 ETH/SOL
-    
+
     let capital = INITIAL_CAPITAL;
     let totalTrades = 0;
     let wins = 0;
     let losses = 0;
     let totalPnl = 0;
     const dailyReturns = [];
-    
+
     // 用最近 30 天 K 线回测
     for (const sym of symbols) {
       const klines = this.engine?.dataBus?.klines?.[sym];
       if (!klines || klines.length < 50) continue;
-      
+
       const closes = klines.map(k => k.close ?? k[4]).filter(Boolean);
       const highs = klines.map(k => k.high ?? k[2]).filter(Boolean);
       const lows = klines.map(k => k.low ?? k[3]).filter(Boolean);
-      
+
       for (let i = 25; i < closes.length - 1; i++) {
         const ma7 = this._sma(closes.slice(0, i + 1), 7);
         const ma25 = this._sma(closes.slice(0, i + 1), 25);
         const rsi = this._rsi(closes.slice(0, i + 1), 14);
-        
+
         if (!ma7 || !ma25 || !rsi) continue;
-        
-        // 买入条件：MA7 > MA25 且 RSI < 65
+
+        // 买入条件:MA7 > MA25 且 RSI < 65
         if (ma7 > ma25 && rsi < 65 && i + 5 < closes.length) {
           const entryPrice = closes[i];
           const positionSize = capital * MAX_POSITION_PCT;
           const sl = entryPrice * (1 - SL_PCT);
           const tp = entryPrice * (1 + TP_PCT);
-          
+
           // 模拟持仓 1-5 天
           let exitPrice = entryPrice;
           let exitIdx = i + 1;
@@ -2902,24 +2844,24 @@ document.getElementById('lb').onclick=L;
             exitPrice = closes[j];
             exitIdx = j;
           }
-          
+
           const pnl = (positionSize * (exitPrice - entryPrice) / entryPrice) * LEVERAGE - (positionSize * FEE_COST);
           totalTrades++;
           totalPnl += pnl;
           capital += pnl;
           if (pnl > 0) wins++;
           else losses++;
-          
+
           dailyReturns.push({ day: exitIdx, pnl, capital });
           i = exitIdx; // 跳过持仓期
         }
       }
     }
-    
+
     const winRate = totalTrades > 0 ? (wins / totalTrades * 100) : 0;
     const roi = ((capital - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100);
     const avgPnl = totalTrades > 0 ? totalPnl / totalTrades : 0;
-    
+
     return {
       initialCapital: INITIAL_CAPITAL,
       finalCapital: Math.round(capital * 100) / 100,
@@ -2932,7 +2874,7 @@ document.getElementById('lb').onclick=L;
       avgPnlPerTrade: Math.round(avgPnl * 100) / 100,
       symbols: symbols.join(', '),
       strategy: '趋势跟踪(MA7/25 + RSI) + 止损止盈',
-      disclaimer: '回测不代表未来收益，仅供参考',
+      disclaimer: '回测不代表未来收益,仅供参考',
     };
   }
 

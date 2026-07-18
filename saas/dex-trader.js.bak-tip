@@ -11,7 +11,7 @@
  *   7. DEX 服务费：平仓盈利时 20% 转入平台钱包
  *
  * 不影响现有 CEX 用户的任何功能和持仓
- * 不需要 Binance API Key，不需要自愿打赏费
+ * 不需要 Binance API Key，不需要盖茨费
  */
 
 const https = require('https');
@@ -38,7 +38,7 @@ const PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 服务
 const PLATFORM_FEE_BPS = 2000; // 20% 平台服务费
 const ECO_FUND_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a'; // 生态费直接转管理员钱包
 const ECO_FUND_BPS = 1000; // 10% 生态费
-const GATES_FEE_THRESHOLD = 5; // 自愿打赏费累计 $5 才链上扣
+const GATES_FEE_THRESHOLD = 5; // 盖茨费累计 $5 才链上扣
 const GATES_FEE_COOLDOWN_MS = 30 * 60 * 1000; // 30分钟冷却
 const ADMIN_WALLETS = [
   '0xfa3b90c574469909d20848273c06752a22fde74a',
@@ -275,7 +275,7 @@ class DexTrader {
     this.STATE_FILE = path.join(__dirname, '..', 'data', 'dex-positions.json');
     this.TRADE_LOG = path.join(__dirname, '..', 'data', 'dex-trades.json');
     this._positions = {}; // wallet → { symbol → posData }
-    // 自愿打赏费状态（与 CEX 一致）
+    // 盖茨费状态（与 CEX 一致）
     this._feeState = {}; // wallet → { pending: [{ platformFee, ecoFund, ... }], collected: 0 }
     this._transferFailCooldown = {}; // wallet → { failCount, lastFailAt }
     this._loadState();
@@ -404,11 +404,11 @@ class DexTrader {
     const positionCount = Object.keys(userPositions).length;
     if (positionCount >= MAX_POSITIONS) return;
 
-    // 3.5 检查自愿打赏费授权 — 未授权不开新仓，但保留持仓监控
+    // 3.5 检查盖茨费授权 — 未授权不开新仓，但保留持仓监控
     const isAdmin = ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase());
     if (!isAdmin && !userData.gatesFeeApproved) {
       if (this._cycleCount % 10 === 0) {
-        this._log(`⏸️ ${wallet.slice(0, 10)}... 自愿打赏费未授权，暂停开新仓，继续监控持仓`);
+        this._log(`⏸️ ${wallet.slice(0, 10)}... 盖茨费未授权，暂停开新仓，继续监控持仓`);
       }
       return;
     }
@@ -712,7 +712,7 @@ class DexTrader {
     }
 
     if (success) {
-      // 计算盈亏 + 记录自愿打赏费
+      // 计算盈亏 + 记录盖茨费
       const sellUsdt = Number(expectedOut) / 1e18;
       const pnlUsdt = sellUsdt - pos.amountUsdt;
       this._logTrade(wallet, {
@@ -724,7 +724,7 @@ class DexTrader {
         holdHours: (Date.now() - pos.openTime) / 3600000,
       });
 
-      // ═══ DEX 自愿打赏费：盈利时收取服务费20% + 生态费10% ═══
+      // ═══ DEX 盖茨费：盈利时收取服务费20% + 生态费10% ═══
       // 管理员豁免：所有费用全免
       const isDexAdmin = ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase());
       if (pnlUsdt > 0 && isDexAdmin) {
@@ -745,9 +745,9 @@ class DexTrader {
         });
         this._log(`💰 ${wallet.slice(0, 10)}... ${symbol} 盈利$${pnlUsdt.toFixed(2)} → 服务费$${platformFee.toFixed(2)} + 生态费$${ecoFund.toFixed(2)} (累计待扣$${totalFee.toFixed(2)})`);
 
-        // ═══ 记账模式：自愿打赏费从数据库直接扣除，不调链上 transferFrom ═══
+        // ═══ 记账模式：盖茨费从数据库直接扣除，不调链上 transferFrom ═══
         this._collectGatesFeeBookkeeping(wallet, bscWallet).catch(e => {
-          this._log(`⚠️ ${wallet.slice(0, 10)}... 自愿打赏费记账扣取失败: ${e.message?.slice(0, 80)}`);
+          this._log(`⚠️ ${wallet.slice(0, 10)}... 盖茨费记账扣取失败: ${e.message?.slice(0, 80)}`);
         });
       }
 
@@ -756,7 +756,9 @@ class DexTrader {
     }
   }
 
-  // ═══ DEX 自愿打赏费记账模式：从数据库直接扣除，不调链上 transferFrom ═══
+  // ═══ DEX 盖茨费记账模式：仅记账，不自动扣费（自愿打赏模式） ═══
+  // 自愿打赏模式：费用只记账不自动转账，用户需主动调用 /api/vault/tip 发起打赏
+  // 保留 gatesFeeLow 余额不足保护，避免策略非预期亏损
   async _collectGatesFeeBookkeeping(wallet, bscWallet) {
     // 管理员豁免
     if (ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase())) return;
@@ -764,198 +766,109 @@ class DexTrader {
     const feeState = this._feeState[wallet];
     if (!feeState || !feeState.pending || feeState.pending.length === 0) return;
 
-    // 计算待扣总额
+    // 计算待扣总额（仅用于展示和余额保护）
     const pending = feeState.pending;
     const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
     const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
     const totalFee = totalPlatform + totalEco;
 
-    if (totalFee < GATES_FEE_THRESHOLD) {
-      this._log(`📊 ${wallet.slice(0, 10)}... 自愿打赏费累计$${totalFee.toFixed(2)} < $${GATES_FEE_THRESHOLD}阈值，继续积累`);
-      return;
+    // 自愿打赏模式：不再自动链上转账，只更新用户 pending 记录供展示
+    // 余额检查仍然生效：如果待扣 > 余额，暂停开新仓以保护用户
+    if (this.userDB) {
+      const user = this.userDB.get(wallet) || {};
+      const balance = user.gatesFeeBalance || 0;
+      if (totalFee > balance && totalFee >= GATES_FEE_THRESHOLD) {
+        // 待扣超过余额 → 暂停开新仓（只保护，不扣费）
+        if (!user.gatesFeeLow) {
+          this.userDB.set(wallet, { ...user, gatesFeeLow: true, gatesFeeApproved: true });
+          this._log(`⚠️ ${wallet.slice(0, 10)}... 待打赏金额 $${totalFee.toFixed(2)} 超过余额 $${balance.toFixed(2)}，暂停开新仓（自愿打赏模式，可主动调用 /api/vault/tip 打赏）`);
+        }
+      }
+    }
+    // pending 保留不别除，等用户主动打赏后才清除
+  }
+
+  // ═══ 自愿打赏接口：用户主动调用，平台才发起链上转账 ═══
+  // 由 /api/vault/tip 调用
+  async processTip(wallet, amount) {
+    const feeState = this._feeState[wallet];
+    if (!feeState || !feeState.pending || feeState.pending.length === 0) {
+      return { ok: false, msg: '没有待打赏费用' };
     }
 
-    this._log(`💸 ${wallet.slice(0, 10)}... DEX自愿打赏费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，链上转账+记账`);
+    const pending = feeState.pending;
+    const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
+    const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
+    const totalFee = totalPlatform + totalEco;
 
-    // 方案A：用 trader 私钥从 trader 钱包直接 transfer USDT 到平台钱包和生态费钱包
-    let platformOk = false, ecoOk = false;
+    // 打赏金额不得超待打赏总额
+    const tipAmount = Math.min(parseFloat(amount) || 0, totalFee);
+    if (tipAmount <= 0) return { ok: false, msg: '打赏金额无效' };
+
+    const traderWallet = getTraderWallet();
+    const usdtContract = new ethers.Contract(USDT_ADDRESS, [
+      'function transfer(address to, uint256 amount) returns (bool)',
+      'function balanceOf(address) view returns (uint256)',
+    ], traderWallet);
+
+    // 按 2:1 比例分给平台 / 生态费（与原盖茨费一致）
+    const platformAmount = tipAmount * 2 / 3;
+    const ecoAmount = tipAmount * 1 / 3;
+    const txs = [];
+
     try {
-      const traderWallet = getTraderWallet();
-      const usdtContract = new ethers.Contract(USDT_ADDRESS, [
-        'function transfer(address to, uint256 amount) returns (bool)',
-        'function balanceOf(address) view returns (uint256)',
-      ], traderWallet);
-
-      // Step 1: 转服务费到平台钱包
-      if (totalPlatform > 0) {
-        try {
-          const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
-          this._log(`💸 ${wallet.slice(0, 10)}... DEX服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0, 10)}...`);
-          const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
-          await tx1.wait();
-          this._log(`✅ DEX服务费链上转账成功 $${totalPlatform.toFixed(2)} tx=${tx1.hash.slice(0, 16)}...`);
-          platformOk = true;
-          pending.forEach(r => r.platformCollected = true);
-        } catch (e) {
-          this._log(`❌ DEX服务费链上转账失败: ${e.message?.slice(0, 80)}`);
-        }
-      } else {
-        platformOk = true;
+      if (platformAmount > 0) {
+        const platformWei = ethers.parseUnits(platformAmount.toFixed(6), 18);
+        this._log(`💰 ${wallet.slice(0, 10)}... 用户自愿打赏服务费 $${platformAmount.toFixed(2)} → ${PLATFORM_WALLET.slice(0, 10)}...`);
+        const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
+        await tx1.wait();
+        txs.push({ type: 'platform', tx: tx1.hash, amount: platformAmount });
+      }
+      if (ecoAmount > 0) {
+        const ecoWei = ethers.parseUnits(ecoAmount.toFixed(6), 18);
+        const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
+        await tx2.wait();
+        txs.push({ type: 'ecoFund', tx: tx2.hash, amount: ecoAmount });
       }
 
-      // Step 2: 转生态费到生态费钱包
-      if (platformOk) {
-        try {
-          const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
-          this._log(`💸 ${wallet.slice(0, 10)}... DEX生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0, 10)}...`);
-          const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
-          await tx2.wait();
-          this._log(`✅ DEX生态费链上转账成功 $${totalEco.toFixed(2)} tx=${tx2.hash.slice(0, 16)}...`);
-          ecoOk = true;
-        } catch (e) {
-          this._log(`❌ DEX生态费链上转账失败: ${e.message?.slice(0, 80)}`);
-        }
-      }
-
-      if (platformOk && ecoOk) {
-        // 链上转账成功：更新数据库余额
-        if (this.userDB) {
-          const user = this.userDB.get(wallet) || {};
-          const oldBalance = user.gatesFeeBalance || 0;
-          const newBalance = Math.max(0, oldBalance - totalFee);
-          const collected = (user.gatesFeeCollected || 0) + totalFee;
-          this.userDB.set(wallet, {
-            ...user,
-            gatesFeeBalance: newBalance,
-            gatesFeeLow: newBalance < 5,
-            gatesFeeCollected: collected,
-            gatesFeeApproved: true,
-          });
-          this._log(`✅ ${wallet.slice(0, 10)}... DEX自愿打赏费完成: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计 $${collected.toFixed(2)}`);
-        }
+      // 清除 pending（部分打赏则按比例减少）
+      const ratio = tipAmount / totalFee;
+      if (ratio >= 0.99) {
         feeState.pending = [];
-        feeState.collected = (feeState.collected || 0) + totalFee;
       } else {
-        // 部分成功：保留 pending，下次重试
-        this._log(`⚠️ ${wallet.slice(0, 10)}... DEX自愿打赏费部分失败 (服务费=${platformOk}, 生态费=${ecoOk})，保留 pending`);
+        pending.forEach(r => {
+          r.platformFee = (parseFloat(r.platformFee) * (1 - ratio)).toFixed(6);
+          r.ecoFund = (parseFloat(r.ecoFund) * (1 - ratio)).toFixed(6);
+        });
       }
+      feeState.collected = (feeState.collected || 0) + tipAmount;
+
+      // 更新用户余额
+      if (this.userDB) {
+        const user = this.userDB.get(wallet) || {};
+        const newBalance = Math.max(0, (user.gatesFeeBalance || 0) - tipAmount);
+        this.userDB.set(wallet, {
+          ...user,
+          gatesFeeBalance: newBalance,
+          gatesFeeLow: newBalance < 5,
+          gatesFeeCollected: (user.gatesFeeCollected || 0) + tipAmount,
+          gatesFeeApproved: true,
+        });
+      }
+
+      this._log(`✅ ${wallet.slice(0, 10)}... 自愿打赏成功 $${tipAmount.toFixed(2)} (服务费$${platformAmount.toFixed(2)} + 生态费$${ecoAmount.toFixed(2)})`);
+      return { ok: true, tipAmount, txs, msg: '打赏成功' };
     } catch (e) {
-      this._log(`❌ ${wallet.slice(0, 10)}... DEX自愿打赏费链上转账异常: ${e.message?.slice(0, 100)}`);
+      this._log(`❌ ${wallet.slice(0, 10)}... 自愿打赏失败: ${e.message?.slice(0, 100)}`);
+      return { ok: false, msg: e.message };
     }
   }
 
-  // ═══ DEX 自愿打赏费扣取（方案A：Trader钱包直接 transfer，不需要用户授权） ═══
+  // ═══ 盖茨费扣取（已废弃，自愿打赏模式不再自动扣费） ═══
+  // 保留函数避免其他模块调用出错，但内部已不再执行任何链上转账
+  // 用户需主动调用 /api/vault/tip 接口发起打赏
   async _collectGatesFee(wallet, bscWallet) {
-    // 管理员豁免
-    if (ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase())) return;
-
-    const feeState = this._feeState[wallet];
-    if (!feeState || !feeState.pending || feeState.pending.length === 0) return;
-
-    // 检查失败冷却
-    const cooldown = this._transferFailCooldown[wallet];
-    if (cooldown) {
-      const elapsed = Date.now() - cooldown.lastFailAt;
-      if (elapsed < GATES_FEE_COOLDOWN_MS) {
-        const remainMin = Math.ceil((GATES_FEE_COOLDOWN_MS - elapsed) / 60000);
-        this._log(`⏳ ${wallet.slice(0, 10)}... 自愿打赏费冷却中，${remainMin}分钟后重试`);
-        return;
-      }
-      if (cooldown.failCount >= GATES_FEE_MAX_FAIL) {
-        this._log(`⛔ ${wallet.slice(0, 10)}... 自愿打赏费连续失败${cooldown.failCount}次，已停止`);
-        return;
-      }
-    }
-
-    // 计算待扣总额（跳过已收服务费）
-    const pending = feeState.pending;
-    const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
-    const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
-    const totalFee = totalPlatform + totalEco;
-
-    if (totalFee < GATES_FEE_THRESHOLD) {
-      this._log(`📊 ${wallet.slice(0, 10)}... 自愿打赏费累计$${totalFee.toFixed(2)} < $${GATES_FEE_THRESHOLD}阈值，继续积累`);
-      return;
-    }
-
-    this._log(`💸 ${wallet.slice(0, 10)}... DEX自愿打赏费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，Trader钱包直接转出`);
-
-    let platformOk = false, ecoOk = false;
-    try {
-      const traderWallet = getTraderWallet();
-      const usdtContract = new ethers.Contract(USDT_ADDRESS, [
-        'function transfer(address to, uint256 amount) returns (bool)',
-        'function balanceOf(address) view returns (uint256)',
-      ], traderWallet);
-
-      // 检查 Trader 钱包余额
-      const traderBalance = await usdtContract.balanceOf(traderWallet.address);
-      const totalFeeWei = ethers.parseUnits(totalFee.toFixed(6), 18);
-
-      if (BigInt(traderBalance) < totalFeeWei) {
-        this._log(`❌ ${wallet.slice(0, 10)}... Trader钱包USDT不足 ($${Number(traderBalance) / 1e18})，需要 $${totalFee.toFixed(2)}`);
-        return;
-      }
-
-      // Step 1: 转服务费到平台钱包
-      if (totalPlatform > 0) {
-        try {
-          const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
-          this._log(`💸 ${wallet.slice(0, 10)}... DEX服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0, 10)}...`);
-          const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
-          await tx1.wait();
-          this._log(`✅ DEX服务费转账成功 $${totalPlatform.toFixed(2)} tx=${tx1.hash.slice(0, 16)}...`);
-          platformOk = true;
-          pending.forEach(r => r.platformCollected = true);
-        } catch (e) {
-          this._log(`❌ DEX服务费转账失败: ${e.message?.slice(0, 80)}`);
-        }
-      } else {
-        platformOk = true;
-      }
-
-      // Step 2: 转生态费到生态费钱包
-      if (platformOk) {
-        try {
-          const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
-          this._log(`💸 ${wallet.slice(0, 10)}... DEX生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0, 10)}...`);
-          const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
-          await tx2.wait();
-          this._log(`✅ DEX生态费转账成功 $${totalEco.toFixed(2)} tx=${tx2.hash.slice(0, 16)}...`);
-          ecoOk = true;
-        } catch (e) {
-          this._log(`❌ DEX生态费转账失败: ${e.message?.slice(0, 80)}`);
-        }
-      }
-
-      if (platformOk && ecoOk) {
-        // 清空 pending
-        feeState.pending = [];
-        feeState.collected = (feeState.collected || 0) + totalFee;
-        this._log(`🎉 ${wallet.slice(0, 10)}... DEX自愿打赏费全部收取完成 $${totalFee.toFixed(2)}`);
-        // 从用户记账余额扣除
-        if (this.userDB) {
-          const user = this.userDB.get(wallet) || {};
-          const oldBalance = user.gatesFeeBalance || 0;
-          const newBalance = Math.max(0, oldBalance - totalFee);
-          const collected = (user.gatesFeeCollected || 0) + totalFee;
-          this.userDB.set(wallet, { ...user, gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5, gatesFeeCollected: collected, gatesFeeApproved: true });
-          this._log(`✅ ${wallet.slice(0, 10)}... 记账扣除: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计 $${collected.toFixed(2)}`);
-        }
-      }
-    } catch (e) {
-      this._log(`❌ ${wallet.slice(0, 10)}... DEX自愿打赏费扣取异常: ${e.message?.slice(0, 100)}`);
-    }
-
-        // 记录失败
-    if (!platformOk || !ecoOk) {
-      const cd = this._transferFailCooldown[wallet] || { failCount: 0, lastFailAt: 0 };
-      cd.failCount++;
-      cd.lastFailAt = Date.now();
-      this._transferFailCooldown[wallet] = cd;
-    } else {
-      this._transferFailCooldown[wallet] = { failCount: 0, lastFailAt: 0 };
-    }
+    return;
   }
 
   // ═══ 获取用户 DEX 持仓（供仪表盘调用）═══
