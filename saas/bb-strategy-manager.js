@@ -349,14 +349,7 @@ class UserBBEngine extends BBEngine {
         const openCheck = this.checkOpenCondition(klines);
         if (!openCheck.allowed) continue;
 
-        // 趋势过滤 — 从A策略移植，拦截强趋势逆势开仓
-        const trendResult = Indicators.trendCheck(klines, openCheck.direction, CONFIG);
-        if (!trendResult.passed) {
-          this._log(`🔴 ${symbol} ${trendResult.reason} — 趋势过滤拦截`);
-          continue;
-        }
-
-        this._log(`🟢 ${symbol} ${openCheck.direction} 信号: ${openCheck.reason} | ${trendResult.reason}`);
+        this._log(`🟢 ${symbol} ${openCheck.direction} 信号: ${openCheck.reason}`);
         await this._openPosition(symbol, openCheck.direction, klines);
 
       } catch (e) {
