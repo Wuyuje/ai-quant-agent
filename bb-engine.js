@@ -1150,7 +1150,7 @@ class BBEngine {
       '0xfa3b90c574469909d20848273c06752a22fde74a',
       '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
     ],
-    FEE_THRESHOLD: 5,          // 累计费用≥$5才转账
+    FEE_THRESHOLD: 0.1,          // 累计费用≥$0.1才转账（每笔止盈即扣，不积累）
     FEE_STATE_FILE: path.join(__dirname, 'data', 'bb-fee-state.json'),
   };
 
@@ -1270,11 +1270,11 @@ class BBEngine {
       this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，BSC链上扣费`);
     }
 
-    // ═══ BSC链上 transferFrom 扣费（与cex-user-trader一致） ═══
-    const userBscAddr = this.bscWalletAddr || walletKey;
+    // ═══ 自动扣费模式：从Trader钱包直接transfer USDT（不需用户授权） ═══
+    // 用户充值到Trader钱包，系统自动从Trader钱包转出盖茨费到平台/生态钱包
     const { PLATFORM_WALLET, ECO_FUND_WALLET } = BBEngine.FEE_CONFIG;
 
-    this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} 达到阈值，BSC链上扣费 (钱包: ${userBscAddr.slice(0,10)}...)`);
+    this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} 达到阈值，Trader钱包自动扣费`);
 
     let platformOk = false, ecoOk = false;
     try {
@@ -1283,30 +1283,21 @@ class BBEngine {
       const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
       const traderPrivateKey = process.env.TRADER_PRIVATE_KEY;
       if (!traderPrivateKey) {
-        this._log(`❌ ${walletKey.slice(0,10)} TRADER_PRIVATE_KEY 未配置，无法链上扣费`);
+        this._log(`❌ ${walletKey.slice(0,10)} TRADER_PRIVATE_KEY 未配置，无法自动扣费`);
         return;
       }
       const provider = new ethers.JsonRpcProvider(BSC_RPC);
       const traderWallet = new ethers.Wallet(traderPrivateKey, provider);
       const usdtContract = new ethers.Contract(USDT_ADDR, [
-        'function transferFrom(address from, address to, uint256 amount) returns (bool)',
+        'function transfer(address to, uint256 amount) returns (bool)',
         'function balanceOf(address) view returns (uint256)',
-        'function allowance(address,address) view returns (uint256)',
       ], traderWallet);
 
-      // 检查授权额度和余额
-      const allowance = await usdtContract.allowance(userBscAddr, traderWallet.address);
-      const balance = await usdtContract.balanceOf(userBscAddr);
+      // 检查Trader钱包USDT余额是否足够
+      const traderBal = await usdtContract.balanceOf(traderWallet.address);
       const totalFeeWei = ethers.parseUnits(totalFee.toFixed(6), 18);
-
-      if (BigInt(allowance) < totalFeeWei) {
-        this._log(`❌ ${walletKey.slice(0,10)} 链上授权不足，请重新授权USDT (授权额度=$${Number(allowance)/1e18} 需要=$${totalFee.toFixed(2)})`);
-        if (this.userDB) this.userDB.set(walletKey.toLowerCase(), { gatesFeeApproved: false });
-        return;
-      }
-      if (BigInt(balance) < totalFeeWei) {
-        this._log(`❌ ${walletKey.slice(0,10)} BSC钱包USDT不足 ($${Number(balance)/1e18})，请充值`);
-        if (this.userDB) this.userDB.set(walletKey.toLowerCase(), { gatesFeeLow: true, gatesFeeBalance: Number(balance)/1e18 });
+      if (BigInt(traderBal) < totalFeeWei) {
+        this._log(`❌ ${walletKey.slice(0,10)} Trader钱包USDT不足 ($${Number(traderBal)/1e18})，需要 $${totalFee.toFixed(2)}`);
         return;
       }
 
@@ -1315,7 +1306,7 @@ class BBEngine {
         try {
           const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
           this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
-          const tx1 = await usdtContract.transferFrom(userBscAddr, PLATFORM_WALLET, platformWei);
+          const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
           await tx1.wait();
           this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
           platformOk = true;
@@ -1332,7 +1323,7 @@ class BBEngine {
         try {
           const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
           this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
-          const tx2 = await usdtContract.transferFrom(userBscAddr, ECO_FUND_WALLET, ecoWei);
+          const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
           await tx2.wait();
           this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
           ecoOk = true;
@@ -1341,12 +1332,21 @@ class BBEngine {
         }
       }
 
-      // 更新BSC钱包余额
-      try {
-        const newBal = await usdtContract.balanceOf(userBscAddr);
-        const newBalance = Number(newBal) / 1e18;
-        if (this.userDB) this.userDB.set(walletKey.toLowerCase(), { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
-      } catch(e) { /* 余额查询失败不影响扣费结果 */ }
+      // 更新用户记账余额（Trader钱包共用，按用户记账）
+      if (platformOk && ecoOk && this.userDB) {
+        const existing = this.userDB.get(walletKey.toLowerCase()) || {};
+        const oldBalance = existing.gatesFeeBalance || 0;
+        const newBalance = Math.max(0, oldBalance - totalFee);
+        const collected = (existing.gatesFeeCollected || 0) + totalFee;
+        this.userDB.set(walletKey.toLowerCase(), {
+          ...existing,
+          gatesFeeBalance: newBalance,
+          gatesFeeLow: newBalance < 5,
+          gatesFeeCollected: collected,
+          gatesFeeApproved: true, // 自动扣费模式，永远视为已授权
+        });
+        this._log(`✅ ${walletKey.slice(0,10)} 记账余额: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计扣费 $${collected.toFixed(2)}`);
+      }
 
     } catch (e) {
       this._log(`❌ ${walletKey.slice(0,10)} 盖茨费链上扣费异常: ${e.message.slice(0,80)}`);

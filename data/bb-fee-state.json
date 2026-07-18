@@ -1,0 +1,419 @@
+{
+  "pending": {
+    "0x588ff823e3b50ebc4691c567cee23485b97d7025": [],
+    "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f": [],
+    "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": []
+  },
+  "collected": {
+    "0x588ff823e3b50ebc4691c567cee23485b97d7025": [
+      {
+        "symbol": "LABUSDT",
+        "pnlUsdt": "0.6046",
+        "platformFee": "0.1209",
+        "ecoFund": "0.0605",
+        "userShare": "0.4232",
+        "timestamp": 1784263607381,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "SUIUSDT",
+        "pnlUsdt": "0.9959",
+        "platformFee": "0.1992",
+        "ecoFund": "0.0996",
+        "userShare": "0.6971",
+        "timestamp": 1784266330956,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "XLMUSDT",
+        "pnlUsdt": "1.4125",
+        "platformFee": "0.2825",
+        "ecoFund": "0.1412",
+        "userShare": "0.9887",
+        "timestamp": 1784266921909,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "SOXLUSDT",
+        "pnlUsdt": "11.7202",
+        "platformFee": "2.3440",
+        "ecoFund": "1.1720",
+        "userShare": "8.2041",
+        "timestamp": 1784269352292,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "MRVLUSDT",
+        "pnlUsdt": "0.3370",
+        "platformFee": "0.0674",
+        "ecoFund": "0.0337",
+        "userShare": "0.2359",
+        "timestamp": 1784269732108,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "ZECUSDT",
+        "pnlUsdt": "1.3481",
+        "platformFee": "0.2696",
+        "ecoFund": "0.1348",
+        "userShare": "0.9437",
+        "timestamp": 1784271310544,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "NVDAUSDT",
+        "pnlUsdt": "3.9921",
+        "platformFee": "0.7984",
+        "ecoFund": "0.3992",
+        "userShare": "2.7945",
+        "timestamp": 1784272947987,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "BANKUSDT",
+        "pnlUsdt": "4.7666",
+        "platformFee": "0.9533",
+        "ecoFund": "0.4767",
+        "userShare": "3.3366",
+        "timestamp": 1784274648849,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "HYPEUSDT",
+        "pnlUsdt": "3.1671",
+        "platformFee": "0.6334",
+        "ecoFund": "0.3167",
+        "userShare": "2.2170",
+        "timestamp": 1784276442554,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "SUIUSDT",
+        "pnlUsdt": "2.9290",
+        "platformFee": "0.5858",
+        "ecoFund": "0.2929",
+        "userShare": "2.0503",
+        "timestamp": 1784282765747,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "HOMEUSDT",
+        "pnlUsdt": "4.1439",
+        "platformFee": "0.8288",
+        "ecoFund": "0.4144",
+        "userShare": "2.9007",
+        "timestamp": 1784287077845,
+        "status": "auto-collected",
+        "collectedAt": 1784287289853
+      },
+      {
+        "symbol": "BTCUSDT",
+        "pnlUsdt": "2.7556",
+        "platformFee": "0.5511",
+        "ecoFund": "0.2756",
+        "userShare": "1.9289",
+        "timestamp": 1784289885569,
+        "status": "auto-collected",
+        "collectedAt": 1784297028973
+      },
+      {
+        "symbol": "DEXEUSDT",
+        "pnlUsdt": "6.9020",
+        "platformFee": "1.3804",
+        "ecoFund": "0.6902",
+        "userShare": "4.8314",
+        "timestamp": 1784292362852,
+        "status": "auto-collected",
+        "collectedAt": 1784297028973
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "pnlUsdt": "3.9812",
+        "platformFee": "0.7962",
+        "ecoFund": "0.3981",
+        "userShare": "2.7869",
+        "timestamp": 1784295058824,
+        "status": "auto-collected",
+        "collectedAt": 1784297028973
+      },
+      {
+        "symbol": "MRVLUSDT",
+        "pnlUsdt": "2.4200",
+        "platformFee": "0.4840",
+        "ecoFund": "0.2420",
+        "userShare": "1.6940",
+        "timestamp": 1784295290735,
+        "status": "auto-collected",
+        "collectedAt": 1784297028973
+      },
+      {
+        "symbol": "XAGUSDT",
+        "pnlUsdt": "2.0999",
+        "platformFee": "0.4200",
+        "ecoFund": "0.2100",
+        "userShare": "1.4699",
+        "timestamp": 1784297021213,
+        "status": "auto-collected",
+        "collectedAt": 1784297028973
+      },
+      {
+        "symbol": "QQQUSDT",
+        "pnlUsdt": "5.7707",
+        "platformFee": "1.1541",
+        "ecoFund": "0.5771",
+        "userShare": "4.0395",
+        "timestamp": 1784304056066,
+        "status": "auto-collected",
+        "collectedAt": 1784314765857
+      },
+      {
+        "symbol": "ONDOUSDT",
+        "pnlUsdt": "1.5713",
+        "platformFee": "0.3143",
+        "ecoFund": "0.1571",
+        "userShare": "1.0999",
+        "timestamp": 1784310090589,
+        "status": "auto-collected",
+        "collectedAt": 1784314765857
+      },
+      {
+        "symbol": "NVDAUSDT",
+        "pnlUsdt": "2.0086",
+        "platformFee": "0.4017",
+        "ecoFund": "0.2009",
+        "userShare": "1.4060",
+        "timestamp": 1784311048498,
+        "status": "auto-collected",
+        "collectedAt": 1784314765857
+      },
+      {
+        "symbol": "KAITOUSDT",
+        "pnlUsdt": "5.8146",
+        "platformFee": "1.1629",
+        "ecoFund": "0.5815",
+        "userShare": "4.0702",
+        "timestamp": 1784311998628,
+        "status": "auto-collected",
+        "collectedAt": 1784314765857
+      },
+      {
+        "symbol": "SPCXUSDT",
+        "pnlUsdt": "2.6705",
+        "platformFee": "0.5341",
+        "ecoFund": "0.2671",
+        "userShare": "1.8694",
+        "timestamp": 1784314753817,
+        "status": "auto-collected",
+        "collectedAt": 1784314765857
+      },
+      {
+        "symbol": "ARBUSDT",
+        "pnlUsdt": "7.8150",
+        "platformFee": "1.5630",
+        "ecoFund": "0.7815",
+        "userShare": "5.4705",
+        "timestamp": 1784337323576,
+        "status": "auto-collected",
+        "collectedAt": 1784358438155
+      },
+      {
+        "symbol": "AAVEUSDT",
+        "pnlUsdt": "3.7890",
+        "platformFee": "0.7578",
+        "ecoFund": "0.3789",
+        "userShare": "2.6523",
+        "timestamp": 1784345323463,
+        "status": "auto-collected",
+        "collectedAt": 1784358438155
+      }
+    ],
+    "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f": [
+      {
+        "symbol": "NVDAUSDT",
+        "pnlUsdt": "1.3846",
+        "platformFee": "0.2769",
+        "ecoFund": "0.1385",
+        "userShare": "0.9692",
+        "timestamp": 1784272952889,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "BANKUSDT",
+        "pnlUsdt": "1.5649",
+        "platformFee": "0.3130",
+        "ecoFund": "0.1565",
+        "userShare": "1.0954",
+        "timestamp": 1784274495709,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "HYPEUSDT",
+        "pnlUsdt": "1.0877",
+        "platformFee": "0.2175",
+        "ecoFund": "0.1088",
+        "userShare": "0.7614",
+        "timestamp": 1784276464670,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "SUIUSDT",
+        "pnlUsdt": "1.0976",
+        "platformFee": "0.2195",
+        "ecoFund": "0.1098",
+        "userShare": "0.7683",
+        "timestamp": 1784282761546,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "HOMEUSDT",
+        "pnlUsdt": "1.1399",
+        "platformFee": "0.2280",
+        "ecoFund": "0.1140",
+        "userShare": "0.7980",
+        "timestamp": 1784287064719,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "pnlUsdt": "0.7623",
+        "platformFee": "0.1525",
+        "ecoFund": "0.0762",
+        "userShare": "0.5336",
+        "timestamp": 1784295054470,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "XAGUSDT",
+        "pnlUsdt": "0.1200",
+        "platformFee": "0.0240",
+        "ecoFund": "0.0120",
+        "userShare": "0.0840",
+        "timestamp": 1784297023565,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "QQQUSDT",
+        "pnlUsdt": "0.8694",
+        "platformFee": "0.1739",
+        "ecoFund": "0.0869",
+        "userShare": "0.6086",
+        "timestamp": 1784297452240,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "XAUUSDT",
+        "pnlUsdt": "0.7506",
+        "platformFee": "0.1501",
+        "ecoFund": "0.0751",
+        "userShare": "0.5254",
+        "timestamp": 1784303497184,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "CRCLUSDT",
+        "pnlUsdt": "2.6655",
+        "platformFee": "0.5331",
+        "ecoFund": "0.2666",
+        "userShare": "1.8659",
+        "timestamp": 1784303750371,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "ONDOUSDT",
+        "pnlUsdt": "0.8749",
+        "platformFee": "0.1750",
+        "ecoFund": "0.0875",
+        "userShare": "0.6124",
+        "timestamp": 1784310087790,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "NVDAUSDT",
+        "pnlUsdt": "1.0928",
+        "platformFee": "0.2186",
+        "ecoFund": "0.1093",
+        "userShare": "0.7650",
+        "timestamp": 1784311048708,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "KORUUSDT",
+        "pnlUsdt": "0.1781",
+        "platformFee": "0.0356",
+        "ecoFund": "0.0178",
+        "userShare": "0.1247",
+        "timestamp": 1784311787744,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      },
+      {
+        "symbol": "SPCXUSDT",
+        "pnlUsdt": "1.1019",
+        "platformFee": "0.2204",
+        "ecoFund": "0.1102",
+        "userShare": "0.7713",
+        "timestamp": 1784314736669,
+        "status": "auto-collected",
+        "collectedAt": 1784358445640
+      }
+    ],
+    "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": [
+      {
+        "symbol": "WIFUSDT",
+        "pnlUsdt": "0.6484",
+        "platformFee": "0.1297",
+        "ecoFund": "0.0648",
+        "userShare": "0.4539",
+        "timestamp": 1784335229321,
+        "status": "auto-collected",
+        "collectedAt": 1784358465187
+      },
+      {
+        "symbol": "ARBUSDT",
+        "pnlUsdt": "2.8669",
+        "platformFee": "0.5734",
+        "ecoFund": "0.2867",
+        "userShare": "2.0068",
+        "timestamp": 1784337305843,
+        "status": "auto-collected",
+        "collectedAt": 1784358465187
+      },
+      {
+        "symbol": "AAVEUSDT",
+        "pnlUsdt": "1.3480",
+        "platformFee": "0.2696",
+        "ecoFund": "0.1348",
+        "userShare": "0.9436",
+        "timestamp": 1784345316338,
+        "status": "auto-collected",
+        "collectedAt": 1784358465187
+      }
+    ]
+  },
+  "totalPlatformFee": 18.071059400000053,
+  "totalEcoFund": 9.035529700000026,
+  "resetAt": "2026-07-17T00:00:00Z",
+  "resetNote": "清除旧记账"
+}

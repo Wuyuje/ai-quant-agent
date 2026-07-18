@@ -636,17 +636,16 @@ class BBStrategyManager {
       if (!u.binanceApiKey || !u.binanceSecret) continue;
       // 必须同意盖茨费模式
       if (!u.withdrawConsent) continue;
-      // ═══ 记账模式：盖茨费继续记账，不暂停交易 ═══
-      // 未授权：继续交易，盖茨费照常累积到 pending
-      // 明天用户授权后，_tryBatchFeeTransfer 自动从 pending 扣取
-      // 只有授权通过且余额不足时才暂停（避免扣费失败浪费 gas）
-      if (u.gatesFeeApproved && u.gatesFeeLow) {
+      // ═══ 自动扣费模式：只检查记账余额，不检查授权 ═══
+      // 用户充值到Trader钱包，系统自动transfer扣费
+      // gatesFeeLow=true时暂停开新仓，但继续监控现有持仓
+      if (u.gatesFeeLow) {
         if (this._cycleCount % 10 === 0) {
-          this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费已授权但余额不足($${(u.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓，请充值BSC钱包`);
+          this._log(`⏸️ ${wallet.slice(0,10)}... 盖茨费记账余额不足($${(u.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
         }
         u._gatesFeePaused = true;
       } else {
-        u._gatesFeePaused = false; // 记账模式：不暂停
+        u._gatesFeePaused = false;
       }
       bbUsers.push([wallet, u]);
     }
@@ -791,56 +790,34 @@ class BBStrategyManager {
   }
 
   // 获取所有用户的BB策略状态（管理员仪表盘用）
-  // ═══ 盖茨费：检查用户BSC钱包USDT余额 ═══
+  // ═══ 盖茨费：检查用户记账余额（自动扣费模式） ═══
+  // 用户充值到Trader钱包，系统自动transfer扣费，这里只检查记账余额
   async _checkGatesFeeBalance(bbUsers) {
-    const { ethers } = require('ethers');
-    const BSC_RPC = 'https://bsc-rpc.publicnode.com';
-    const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
-    const GATES_FEE_THRESHOLD = 5; // 余额低于$5视为不足
-    const provider = new ethers.JsonRpcProvider(BSC_RPC);
-    const usdtContract = new ethers.Contract(USDT_ADDR, [
-      'function balanceOf(address) view returns (uint256)',
-      'function allowance(address,address) view returns (uint256)',
-    ], provider);
-    const traderWalletAddr = new ethers.Wallet(process.env.TRADER_PRIVATE_KEY).address;
+    const GATES_FEE_THRESHOLD = 5; // 记账余额低于$5视为不足
 
     for (const [wallet, u] of bbUsers) {
       // 管理员跳过盖茨费检查
       if (this.ADMIN_WALLETS.some(w => w.toLowerCase() === wallet.toLowerCase())) continue;
-      if (!u.bscWalletAddr) continue;
 
-      try {
-        const bal = await usdtContract.balanceOf(u.bscWalletAddr);
-        const balance = Number(bal) / 1e18;
-        const oldLow = u.gatesFeeLow || false;
-        const newLow = balance < GATES_FEE_THRESHOLD;
+      // 自动扣费模式：只检查记账余额，不查链上
+      const balance = u.gatesFeeBalance || 0;
+      const oldLow = u.gatesFeeLow || false;
+      const newLow = balance < GATES_FEE_THRESHOLD;
 
-        // 检查Approve授权
-        const allowance = await usdtContract.allowance(u.bscWalletAddr, traderWalletAddr);
-        const chainApproved = BigInt(allowance) > BigInt(1000 * 1e18);
+      if (this.userDB) {
+        const existing = this.userDB.get(wallet) || {};
+        this.userDB.set(wallet, {
+          ...existing,
+          gatesFeeBalance: balance,
+          gatesFeeLow: newLow,
+          gatesFeeApproved: true, // 自动扣费模式，永远视为已授权
+        });
+      }
 
-        // 更新用户数据
-        if (this.userDB) {
-          const existing = this.userDB.get(wallet) || {};
-          // 链上查到已授权 → true
-          // 链上查到未授权 → false（以链上数据为准，不做降级保护）
-          // 链上查询失败 → 保留原状态
-          const finalApproved = chainApproved;
-          this.userDB.set(wallet, {
-            ...existing,
-            gatesFeeBalance: balance,
-            gatesFeeLow: newLow,
-            gatesFeeApproved: finalApproved,
-          });
-        }
-
-        if (oldLow && !newLow) {
-          this._log(`✅ ${wallet.slice(0,10)}... 盖茨费已充值 $${balance.toFixed(2)}，恢复交易`);
-        } else if (!oldLow && newLow) {
-          this._log(`⚠️ ${wallet.slice(0,10)}... 盖茨费余额不足 $${balance.toFixed(2)} < $${GATES_FEE_THRESHOLD}，暂停交易`);
-        }
-      } catch (e) {
-        // 查询失败时不改变状态
+      if (oldLow && !newLow) {
+        this._log(`✅ ${wallet.slice(0,10)}... 盖茨费记账余额已充足 $${balance.toFixed(2)}，恢复交易`);
+      } else if (!oldLow && newLow) {
+        this._log(`⚠️ ${wallet.slice(0,10)}... 盖茨费记账余额不足 $${balance.toFixed(2)} < $${GATES_FEE_THRESHOLD}，暂停交易（请充值到Trader钱包）`);
       }
     }
   }
