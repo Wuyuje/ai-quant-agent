@@ -334,15 +334,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <span id="autoConfirmMsg" style="margin-left:10px;font-size:.75em;color:var(--muted)"></span>
       </div>
 
+      <!-- 自愿打赏区域（新增） -->
+      <div style="margin-top:12px;padding:12px 14px;background:rgba(63,185,80,.06);border:1px solid rgba(63,185,80,.25);border-radius:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 1 0 0 7h5a3.5 3.5 0 1 1 0 7H6"/></svg>
+            <span style="font-size:.8em;font-weight:700;color:var(--green)" data-i18n="gates.tipBtn">自愿打赏</span>
+          </div>
+          <span style="font-size:.7em;color:var(--muted)" data-i18n="gates.tipDesc">打赏金额将链上转给平台/生态费钱包</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="tipAmountInput" type="number" min="0" step="0.01" placeholder="5.00" style="flex:1;min-width:100px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--fg);font-size:.78em" data-i18n-placeholder="gates.tipPlaceholder" placeholder-orig="输入打赏金额">
+          <button onclick="submitTip()" style="padding:7px 18px;border:none;border-radius:6px;background:var(--green);color:#fff;font-size:.78em;font-weight:700;cursor:pointer;transition:all .15s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'" data-i18n="gates.tipSubmit">确认打赏</button>
+        </div>
+        <div id="tipMsg" style="font-size:.72em;color:var(--muted);margin-top:6px"></div>
+      </div>
+
       <!-- Info Footer -->
       <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:16px;flex-wrap:wrap;font-size:.72em;color:var(--muted)">
         <div style="display:flex;align-items:center;gap:4px">
           <span style="width:6px;height:6px;border-radius:50%;background:var(--green)"></span>
-          <span data-i18n="gates.info1">盈利时自动扣除</span>
+          <span data-i18n="gates.info1">盈利后记账不自动扣</span>
         </div>
         <div style="display:flex;align-items:center;gap:4px">
           <span style="width:6px;height:6px;border-radius:50%;background:var(--accent)"></span>
-          <span data-i18n="gates.info2">无盈利不收费</span>
+          <span data-i18n="gates.info2">打赏自愿随时可发起</span>
         </div>
         <div style="display:flex;align-items:center;gap:4px">
           <span style="width:6px;height:6px;border-radius:50%;background:var(--yellow)"></span>
@@ -493,8 +509,8 @@ zh:{lang:'中文',
   mk:{empty:'暂无持仓，开启交易后 AI 将自动开仓',crypto:'加密货币',gold:'黄金',forex:'外汇',commodities:'商品',bonds:'债券',stocks:'股票',
     noPos:'空仓',entry:'开仓价',mark:'标记价',size:'仓位',lev:'杠杆',pnl:'盈亏'},
   guide:{title:'币安 API Key 创建教程',s1:'打开币安APP（或访问 binance.com）→ 登录账户',s2:'点击右下角「用户中心」（人形图标）→ 向下滑动找到「API管理」',s3:'点击「创建API」→ 选择「系统生成」→ 输入标签名（如：quant）',s4:'权限设置：✅ 勾选「启用交易」  ❌ 不要勾选「启用提现」',s5:'完成安全验证 → 创建成功 → 点击「查看」→ 复制 API Key 和 Secret Key',s6:'回到本页面 → 点击「已有 Key，直接粘贴」→ 粘贴 Key 和 Secret → 点击「验证并绑定」',warn1:'安全提醒：不要勾选提现权限！AI 只需交易权限，不能动用您的资金。',openBinance:'直接打开币安 API 管理页面',tip:'如果无法打开，请使用 VPN 或在币安APP中操作'},
-  api:{title:'绑定 Binance API Key',desc:'绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。盖茨费只在盈利后收取，无盈利不收费。',c1t:'仅交易权限',c1d:'无需提现权限',c2t:'AI 7x24 交易',c2d:'自动买卖',c3t:'随时解绑',c3d:'一键停止',goto:'打开币安创建 API Key',paste:'已有 Key，直接粘贴',bind:'验证并绑定',connected:'已绑定 Binance API · CEX 模式已开启',binding:'绑定中...',bindOk:'绑定成功！',bindErr:'绑定失败，请检查 Key'},
-  gates:{title:'盖茨费余额',sub:'仅在盈利时收取，无盈利不收费',normal:'正常',warning:'余额偏低',lowTitle:'余额不足，已暂停',lowDesc:'请向以上充值地址转入 USDT (BEP-20)，充值后点击下方按钮确认。',confirmBtn:'我已充值，确认到账',needRecharge:'请尽快充值',threshold:'最低阈值',rechargeAddr:'充值地址 (BSC · USDT BEP-20)',copy:'复制',info1:'盈利时自动扣除',info2:'无盈利不收费',info3:'低于 $5 暂停开新仓'},
+  api:{title:'绑定 Binance API Key',desc:'绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。只在盈利后获配服务费，无盈利不收费。',c1t:'仅交易权限',c1d:'无需提现权限',c2t:'AI 7x24 交易',c2d:'自动买卖',c3t:'随时解绑',c3d:'一键停止',goto:'打开币安创建 API Key',paste:'已有 Key，直接粘贴',bind:'验证并绑定',connected:'已绑定 Binance API · CEX 模式已开启',binding:'绑定中...',bindOk:'绑定成功！',bindErr:'绑定失败，请检查 Key'},
+  gates:{title:'服务费待打赏',sub:'只在盈利后获配服务费，无盈利不收费，打赏自愿',normal:'正常',warning:'余额偏低',lowTitle:'待打赏超额，已暂停',lowDesc:'请向以上充值地址转入 USDT (BEP-20) 作为预存余额。充值后点击下方按钮确认。',confirmBtn:'我已充值，确认到账',needRecharge:'请尽快充值',threshold:'最低阈值',rechargeAddr:'预存地址 (BSC · USDT BEP-20)',copy:'复制',info1:'盈利后记账不自动扣',info2:'打赏自愿随时可发起',info3:'低于 $5 暂停开新仓',tipBtn:'自愿打赏',tipPlaceholder:'输入打赏金额',tipSubmit:'确认打赏',tipDesc:'打赏金额将链上转给平台/生态费钱包'},
   strat:{title:'交易策略',con:'保守',conD:'低风险 稳健',bal:'平衡',balD:'推荐 风险适中',agg:'激进',aggD:'高收益 高风险',pairs:'交易对',winRate:'胜率',maxDD:'最大回撤',holding:'持仓时间',risk:'风险等级',bt:'策略回测',btReturn:'30天收益',btWinRate:'胜率',btTrades:'交易次数',btProfit:'平均盈利',btRun:'运行回测',btRunning:'计算中...'},
   ctrl:{start:'开启交易',stop:'停止交易',refresh:'刷新'},
   set:{title:'交易设置',amount:'投入金额 (USDT)',strategy:'策略',maxSingle:'单笔限额 (USDT)',daily:'日限额 (USDT)',save:'保存',saved:'设置已保存'},
@@ -1209,6 +1225,44 @@ async function confirmRecharge() {
     if (msgEl) { msgEl.textContent = '❌ 网络错误，请重试'; msgEl.style.color = 'var(--red)'; }
     btn.disabled = false;
     btn.textContent = '我已充值，确认到账';
+  }
+}
+
+// ═══ 自愿打赏 — 用户主动发起，平台才转账 ═══
+async function submitTip() {
+  var input = document.getElementById('tipAmountInput');
+  var msgEl = document.getElementById('tipMsg');
+  if (!input) return;
+  var amount = parseFloat(input.value);
+  if (!amount || amount <= 0) {
+    if (msgEl) { msgEl.style.color = 'var(--red)'; msgEl.textContent = '请输入有效金额'; }
+    return;
+  }
+  if (amount > 1000) {
+    if (msgEl) { msgEl.style.color = 'var(--red)'; msgEl.textContent = '单次打赏不得超过 $1000'; }
+    return;
+  }
+  if (msgEl) { msgEl.style.color = 'var(--muted)'; msgEl.textContent = '处理中...'; }
+  try {
+    var sessionToken = localStorage.getItem('saas_token') || '';
+    var resp = await fetch('/api/vault/tip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionToken },
+      body: JSON.stringify({ amount: amount })
+    });
+    var data = await resp.json();
+    if (resp.ok && data.ok) {
+      if (msgEl) {
+        msgEl.style.color = 'var(--green)';
+        msgEl.textContent = '✅ 打赏成功 $' + (data.tipAmount || amount).toFixed(2) + '，已链上转账 ' + (data.txs ? data.txs.length : 0) + ' 笔';
+      }
+      input.value = '';
+      setTimeout(() => location.reload(), 2000);
+    } else {
+      if (msgEl) { msgEl.style.color = 'var(--red)'; msgEl.textContent = '❌ ' + (data.error || data.msg || '打赏失败'); }
+    }
+  } catch (e) {
+    if (msgEl) { msgEl.style.color = 'var(--red)'; msgEl.textContent = '网络错误: ' + e.message; }
   }
 }
 

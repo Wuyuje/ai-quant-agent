@@ -352,8 +352,12 @@ class MultiEngine {
       }
     });
 
-    this.apiServer.listen(PORT, () => {
-      this.log(`🌐 API Server: http://localhost:${PORT}`);
+    // ═══ 境外云部署安全：默认只监听 127.0.0.1 ═══
+    const privateAccess = (process.env.PRIVATE_ACCESS || 'yes').toLowerCase();
+    const bindHost = privateAccess === 'yes' ? '127.0.0.1' : undefined;
+    this.apiServer.listen(PORT, bindHost, () => {
+      this.log(`🌐 API Server: http://${bindHost || '0.0.0.0'}:${PORT}`);
+      if (bindHost === '127.0.0.1') this.log(`🔒 私有访问模式: 通过 SSH 隧道访问`);
     });
   }
 

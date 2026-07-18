@@ -2105,8 +2105,17 @@ class Dashboard {
     this._registerEvolutionRoutes(this.app);
     this._registerMultiMarketRoutes(this.app);
     this._registerArkieRoutes(this.app);
-    this.server = this.app.listen(this.port, () => {
-      console.log(`[Dashboard] Running on port ${this.port}`);
+
+    // ═══ 境外云部署安全：默认只监听 127.0.0.1 ═══
+    const privateAccess = (process.env.PRIVATE_ACCESS || 'yes').toLowerCase();
+    const bindHost = privateAccess === 'yes' ? '127.0.0.1' : '0.0.0.0';
+    this.server = this.app.listen(this.port, bindHost, () => {
+      console.log(`[Dashboard] Running on http://${bindHost}:${this.port}`);
+      if (bindHost === '127.0.0.1') {
+        console.log(`[Dashboard] 🔒 私有访问模式: 通过 SSH 隧道访问 ssh -L ${this.port}:127.0.0.1:${this.port} user@server`);
+      } else {
+        console.log(`[Dashboard] ⚠️ 公网暴露模式，请确保已配 IP 白名单 ALLOWED_IPS`);
+      }
     });
   }
 

@@ -103,8 +103,12 @@ class MultiEngine extends EventEmitter {
     this.riskIsolator.start();
     await this._loadUsersStream();
     this.server = http.createServer((req, res) => this._handleRequest(req, res));
-    await new Promise(resolve => this.server.listen(this.config.port, resolve));
-    this.log(`API 服务器启动 — 端口 ${this.config.port}`);
+    // ═══ 境外云部署安全：默认只监听 127.0.0.1 ═══
+    const privateAccess = (process.env.PRIVATE_ACCESS || 'yes').toLowerCase();
+    const bindHost = privateAccess === 'yes' ? '127.0.0.1' : undefined; // undefined = 0.0.0.0
+    await new Promise(resolve => this.server.listen(this.config.port, bindHost, resolve));
+    this.log(`API 服务器启动 — http://${bindHost || '0.0.0.0'}:${this.config.port}`);
+    if (bindHost === '127.0.0.1') this.log(`🔒 私有访问模式: 通过 SSH 隧道访问`);
     this.wsHub.start(this.server);
     this.log(`MultiEngine v3 初始化完成 — ${Object.keys(this.userEngines).length} 个用户引擎就绪`);
   }

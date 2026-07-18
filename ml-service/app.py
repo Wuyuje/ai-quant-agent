@@ -417,4 +417,8 @@ if __name__ == '__main__':
     
     load_trained_model()
     
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # ═══ 境外云部署安全：默认只监听 127.0.0.1 ═══
+    import os
+    private_access = os.environ.get('PRIVATE_ACCESS', 'yes').lower()
+    bind_host = '127.0.0.1' if private_access == 'yes' else '0.0.0.0'
+    app.run(host=bind_host, port=port, debug=False)

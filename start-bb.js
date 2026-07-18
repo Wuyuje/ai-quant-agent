@@ -119,8 +119,14 @@ ${positions || '<tr><td colspan="9" style="padding:30px;color:#666">无持仓</t
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`📊 BB Engine Dashboard: http://localhost:${PORT}`);
+// ═══ 境外云部署安全：默认只监听 127.0.0.1 ═══
+const PRIVATE_ACCESS = (process.env.PRIVATE_ACCESS || 'yes').toLowerCase();
+const BIND_HOST = PRIVATE_ACCESS === 'yes' ? '127.0.0.1' : '0.0.0.0';
+server.listen(PORT, BIND_HOST, () => {
+  console.log(`📊 BB Engine Dashboard: http://${BIND_HOST}:${PORT}`);
+  if (BIND_HOST === '127.0.0.1') {
+    console.log(`🔒 私有访问模式: 通过 SSH 隧道访问 ssh -L ${PORT}:127.0.0.1:${PORT} user@server`);
+  }
   console.log(`📋 API: http://localhost:${PORT}/api/positions`);
   console.log(`🛑 停止: http://localhost:${PORT}/api/stop`);
   console.log('');

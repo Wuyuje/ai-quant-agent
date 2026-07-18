@@ -376,7 +376,13 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`🌐 独立登录服务: http://localhost:${PORT}`);
+// ═══ 境外云部署安全：默认只监听 127.0.0.1 ═══
+const PRIVATE_ACCESS = (process.env.PRIVATE_ACCESS || 'yes').toLowerCase();
+const BIND_HOST = PRIVATE_ACCESS === 'yes' ? '127.0.0.1' : '0.0.0.0';
+app.listen(PORT, BIND_HOST, () => {
+  console.log(`🌐 独立登录服务: http://${BIND_HOST}:${PORT}`);
   console.log(`📊 用户数: ${Object.keys(users).length}`);
+  if (BIND_HOST === '127.0.0.1') {
+    console.log(`🔒 私有访问模式: 通过 SSH 隧道访问 ssh -L ${PORT}:127.0.0.1:${PORT} user@server`);
+  }
 });

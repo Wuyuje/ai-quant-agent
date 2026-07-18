@@ -644,8 +644,17 @@ class SaasServer {
   start() {
     this._setupRoutes();
     this._setupArkieRoutes();
-    this.server = this.app.listen(this.port, () => {
-      this.log(`🌐 SaaS Platform v3.0: http://localhost:${this.port}`);
+
+    // ═══ 境外云部署安全：默认只监听 127.0.0.1（私有访问模式） ═══
+    // PRIVATE_ACCESS=yes 才绑定到 0.0.0.0 公开访问（不推荐）
+    // 公网访问请用 SSH 隧道：ssh -L 10020:127.0.0.1:10020 user@your-server
+    const privateAccess = (process.env.PRIVATE_ACCESS || 'yes').toLowerCase();
+    const bindHost = privateAccess === 'yes' ? '127.0.0.1' : '0.0.0.0';
+    const allowedIps = (process.env.ALLOWED_IPS || '').split(',').map(s => s.trim()).filter(Boolean);
+    this.server = this.app.listen(this.port, bindHost, () => {
+      this.log(`🌐 SaaS Platform v3.0: http://${bindHost}:${this.port}`);
+      this.log(`🔒 私有访问模式: ${bindHost === '127.0.0.1' ? 'ON (仅本机/SSH隧道可访问)' : 'OFF (公网暴露!)'}`);
+      if (allowedIps.length > 0) this.log(`📋 IP 白名单: ${allowedIps.join(', ')}`);
       this.log(`💰 智能合约钱包模式 — 用户无需 API Key`);
     });
   }
@@ -685,6 +694,20 @@ class SaasServer {
     // 静态文件
     this.app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false, setHeaders: (res) => { res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } }));
     this.app.use(express.json({ limit: '1mb' }));
+
+    // ═══ 境外云部署安全：IP 白名单中间件（可选） ═══
+    // 通过 ALLOWED_IPS=1.2.3.4,5.6.7.8 限制可访问的客户端 IP
+    // 注意：如果走 SSH 隧道，客户端 IP 会是 127.0.0.1，白名单可不用
+    const allowedIps = (process.env.ALLOWED_IPS || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (allowedIps.length > 0) {
+      this.app.use((req, res, next) => {
+        const clientIp = req.ip || req.connection?.remoteAddress || '';
+        const ip = clientIp.replace(/^::ffff:/, '');
+        if (ip === '127.0.0.1' || ip === '::1' || allowedIps.includes(ip)) return next();
+        this.log(`⛔ IP 拒绝访问: ${ip} ${req.method} ${req.path}`);
+        res.status(403).json({ error: 'Forbidden' });
+      });
+    }
 
     // [audit#2] CORS 头（限制允许的源，不再用 *)
     // [SECURITY#3-MEDIUM] 空origin时不应返回通配符*，改为不设置CORS头
@@ -1388,6 +1411,43 @@ class SaasServer {
       } catch (e) {
         this.log(`❌ 提现失败: ${e.message}`);
         res.status(500).json({ error: '提现失败: ' + e.message });
+      }
+    });
+
+    // ═══════ 自愿打赏 API（替代原盖茨费自动扣费） ═══════
+    // 用户主动调用，平台才发起链上转账到平台/生态费钱包
+    this.app.post('/api/vault/tip', async (req, res) => {
+      const session = this._auth(req);
+      if (!session) return res.status(401).json({ error: '未登录' });
+      const { amount } = req.body;
+      const amt = parseFloat(amount);
+      if (!amt || amt <= 0) return res.status(400).json({ error: '打赏金额必须 > 0' });
+      if (amt > 1000) return res.status(400).json({ error: '单次打赏不得超过 $1000' });
+
+      try {
+        // 优先调用 BB 引擎的 processTip，回退到 DEX trader
+        const wallet = session.wallet;
+        let result = null;
+        if (this.bbStrategyManager?.bbEngine?.processTip) {
+          result = await this.bbStrategyManager.bbEngine.processTip(wallet, amt);
+        } else if (this.bbStrategyManager?._bbEngine?.processTip) {
+          result = await this.bbStrategyManager._bbEngine.processTip(wallet, amt);
+        } else if (this.userTrader?.processTip) {
+          result = await this.userTrader.processTip(wallet, amt);
+        } else if (this.cexTrader?.processTip) {
+          result = await this.cexTrader.processTip(wallet, amt);
+        } else {
+          return res.status(503).json({ error: '打赏服务不可用，请稍后重试' });
+        }
+        if (result.ok) {
+          this.log(`💰 ${wallet.slice(0,10)}... 自愿打赏 $${result.tipAmount.toFixed(2)} (${result.txs?.length || 0} 笔链上转账)`);
+          res.json(result);
+        } else {
+          res.status(400).json({ error: result.msg || '打赏失败' });
+        }
+      } catch (e) {
+        this.log(`❌ 自愿打赏异常: ${e.message}`);
+        res.status(500).json({ error: '打赏异常: ' + e.message });
       }
     });
 
