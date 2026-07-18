@@ -61,8 +61,10 @@ const CONFIG = {
   replenishRatios: [0.50, 0.30, 0.20], // 50% 30% 20%
   
   // 止损
-  singleKLossPct: 20,       // 单K浮亏≥本金20%止损
-  ultimateLossPct: 70,       // 总浮亏≥70%终极止损
+  singleKLossPct: 8,        // v123: 单K浮亏≥本金8%止损（原20%太宽，仓位拖到强平才动）
+  ultimateLossPct: 50,       // v123: 总浮亏≥50%终极止损（原70%太宽）
+  // v123: 浮亏警戒线，超过后不再加仓只等止盈/止损
+  floatLossWarnPct: 3,      // 单仓位浮亏 ≥3% 进入警戒，不再补仓
   
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
@@ -798,6 +800,22 @@ class BBEngine {
       return { action: 'HOLD', reason: '已补完3次' };
     }
 
+    // ═══ v123 硬性防御：孤儿仓位永不补仓 ═══
+    // 孤儿仓位是手动/其他系统开的，BB 不应该补仓放大风险
+    if (pos._orphan) {
+      return { action: 'HOLD', reason: '孤儿仓位不补仓（v123 安全防御）' };
+    }
+
+    // ═══ v123 浮亏警戒：仓位已亏损 ≥3% 不补仓，等止损线触发 ═══
+    if (pos.currentPrice && pos.entryPrice) {
+      const cur = pos.currentPrice;
+      const entry = pos.entryPrice;
+      const floatPct = pos.side === 'LONG' ? (cur - entry) / entry * 100 : (entry - cur) / entry * 100;
+      if (floatPct <= -(CONFIG.floatLossWarnPct || 3)) {
+        return { action: 'HOLD', reason: `浮亏${floatPct.toFixed(2)}%超过警戒线，不补仓等止损` };
+      }
+    }
+
     // 补仓前提：布林带收口后间隔3根K线
     if (!pos.lastNarrowTime) {
       // 第一次补仓：需要检测到收口
@@ -1525,22 +1543,29 @@ class BBEngine {
             // 修复：持仓数超过 maxPositions 时，不接管新孤儿仓位，已有持仓靠策略止盈自然减仓
             this._log(`⏸️ ${symbol} 远程孤儿仓位存在，但持仓已满${currentCount}/${CONFIG.maxPositions} — 暂不接管，等止盈减仓后接管`);
           } else {
-            this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${leverage}x`);
+            // ═══ v123: 孤儿仓位安全接管 — 不补仓，只监控止盈止损 ═══
+            // 修复：以前孤儿仓位 replenishCount=0 会触发 3 次补仓，把手动开的仓位放大近一倍 → 强平
+            // 现在：孤儿仓位直接置 replenishCount=maxReplenish（3），永不补仓，只等止盈/止损
+            const orphanLev = parseInt(rp.leverage) || CONFIG.leverage;
+            if (orphanLev !== CONFIG.leverage) {
+              this._log(`⚠️ ${symbol} 孤儿仓位杠杆 ${orphanLev}x 与默认 ${CONFIG.leverage}x 不一致，按实际杠杆管理`);
+            }
+            this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${orphanLev}x（不补仓，只等止盈/止损）`);
             this.positions[symbol] = {
               symbol,
               side: amt > 0 ? 'LONG' : 'SHORT',
               qty: Math.abs(amt),
               entryPrice: entry,
-              margin: Math.abs(amt) * entry / leverage,
-              leverage,
+              margin: Math.abs(amt) * entry / orphanLev,
+              leverage: orphanLev,
               openTime: 0,
-              replenishCount: 0,
+              replenishCount: CONFIG.maxReplenish, // 🔑 v123: 直接置满，永不补仓
               lastNarrowTime: null,
               klinesSinceNarrow: 0,
               mode: '轨道',
               atrTrailPrice: null,
               currentPrice: markPrice,
-              _orphan: true,
+              _orphan: true, // 🔑 孤儿仓位标记，补仓逻辑中绝对跳过
             };
             this._saveState();
           }
