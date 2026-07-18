@@ -61,10 +61,8 @@ const CONFIG = {
   replenishRatios: [0.50, 0.30, 0.20], // 50% 30% 20%
   
   // 止损
-  singleKLossPct: 8,        // v123: 单K浮亏≥本金8%止损（原20%太宽，仓位拖到强平才动）
-  ultimateLossPct: 50,       // v123: 总浮亏≥50%终极止损（原70%太宽）
-  // v123: 浮亏警戒线，超过后不再加仓只等止盈/止损
-  floatLossWarnPct: 3,      // 单仓位浮亏 ≥3% 进入警戒，不再补仓
+  singleKLossPct: 20,       // 单K浮亏≥本金20%止损
+  ultimateLossPct: 70,       // 总浮亏≥70%终极止损
   
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
@@ -804,16 +802,6 @@ class BBEngine {
     // 孤儿仓位是手动/其他系统开的，BB 不应该补仓放大风险
     if (pos._orphan) {
       return { action: 'HOLD', reason: '孤儿仓位不补仓（v123 安全防御）' };
-    }
-
-    // ═══ v123 浮亏警戒：仓位已亏损 ≥3% 不补仓，等止损线触发 ═══
-    if (pos.currentPrice && pos.entryPrice) {
-      const cur = pos.currentPrice;
-      const entry = pos.entryPrice;
-      const floatPct = pos.side === 'LONG' ? (cur - entry) / entry * 100 : (entry - cur) / entry * 100;
-      if (floatPct <= -(CONFIG.floatLossWarnPct || 3)) {
-        return { action: 'HOLD', reason: `浮亏${floatPct.toFixed(2)}%超过警戒线，不补仓等止损` };
-      }
     }
 
     // 补仓前提：布林带收口后间隔3根K线
