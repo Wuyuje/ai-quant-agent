@@ -1367,6 +1367,13 @@ class BBEngine {
       return;
     }
     
+    // 修复：开仓前再次检查持仓数（防御性双重检查，防止 _syncPositions 接管孤儿仓位后超限）
+    const currentCount = Object.keys(this.positions).length;
+    if (currentCount >= CONFIG.maxPositions) {
+      this._log(`📊 ${symbol} ${direction} 跳过开仓: 持仓${currentCount}/${CONFIG.maxPositions}已满`);
+      return;
+    }
+    
     // 计算仓位大小
     const positionMargin = this.balance * CONFIG.perPositionPct;
     const notional = positionMargin * CONFIG.leverage;
@@ -1747,7 +1754,10 @@ class BBEngine {
       const remotePositions = await this.api.getPositions();
       this.balance = await this.api.getBalance();
 
-      // 同步远程持仓的当前价格 + 接管孤儿仓位
+      // 修复：持仓数超过 maxPositions 时，不接管新孤儿仓位，也不平仓
+      // 已有持仓靠策略止盈自然减仓，减到 maxPositions 以下后才开新仓
+      // 这样既尊重策略逻辑（止盈平仓而非强制平仓），又防止仓位无限增长
+      const orphanSymbolsToSkip = [];
       for (const rp of remotePositions) {
         const symbol = rp.symbol;
         const amt = parseFloat(rp.positionAmt);
@@ -1764,27 +1774,36 @@ class BBEngine {
             this.positions[symbol].qty = Math.abs(amt);
           }
         } else {
-          // 远程有但本地没有 → 孤儿仓位（可能是另一策略开的仓，或手动开的仓）→ 接管
-          this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${leverage}x`);
-          this.positions[symbol] = {
-            symbol,
-            side: amt > 0 ? 'LONG' : 'SHORT',
-            qty: Math.abs(amt),
-            entryPrice: entry,
-            margin: Math.abs(amt) * entry / leverage,
-            leverage,
-            openTime: 0,
-            replenishCount: 0,
-            lastNarrowTime: null,
-            klinesSinceNarrow: 0,
-            mode: '轨道',
-            atrTrailPrice: null,
-            currentPrice: markPrice,
-            _orphan: true,
-          };
-          this._saveState();
+          // 远程有但本地没有 → 孤儿仓位
+          const currentCount = Object.keys(this.positions).length;
+          if (currentCount >= CONFIG.maxPositions) {
+            // 持仓已满，记录孤儿仓位但不接管，等现有持仓止盈后再处理
+            this._log(`⏸️ ${symbol} 远程孤儿仓位存在，但持仓已满${currentCount}/${CONFIG.maxPositions} — 暂不接管，等止盈减仓后接管`);
+            orphanSymbolsToSkip.push(symbol);
+          } else {
+            this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${leverage}x`);
+            this.positions[symbol] = {
+              symbol,
+              side: amt > 0 ? 'LONG' : 'SHORT',
+              qty: Math.abs(amt),
+              entryPrice: entry,
+              margin: Math.abs(amt) * entry / leverage,
+              leverage,
+              openTime: 0,
+              replenishCount: 0,
+              lastNarrowTime: null,
+              klinesSinceNarrow: 0,
+              mode: '轨道',
+              atrTrailPrice: null,
+              currentPrice: markPrice,
+              _orphan: true,
+            };
+            this._saveState();
+          }
         }
       }
+      // 保存暂未接管的孤儿仓位列表，用于止盈减仓后接管
+      this._pendingOrphans = orphanSymbolsToSkip;
 
       // 清除远程已不存在的本地持仓
       // 修复：如果刚平仓失败（本地保留了仓位），给60秒宽限期再清除，避免与平仓重试矛盾
