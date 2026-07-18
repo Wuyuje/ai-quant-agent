@@ -138,7 +138,10 @@ class Trader {
       precision = 3;
       step = 0.001;
     }
-    const fixed = Math.floor(qty / step) * step;
+    // v107: 修复浮点数精度问题 — 4134.9/0.1=41348.999... 导致 floor 得到 41348 而非 41349
+    // 用 round 替代 floor，避免浮点误差导致数量不匹配
+    const scaled = qty / step;
+    const fixed = (Math.abs(scaled - Math.round(scaled)) < 1e-9 ? Math.round(scaled) : Math.floor(scaled)) * step;
     return parseFloat(fixed.toFixed(precision));
   }
 
@@ -146,7 +149,8 @@ class Trader {
     const pair = this.pairConfig[symbol];
     if (!pair) return price;
     const step = Math.pow(10, -this._getPricePrecision(pair.tickSize));
-    const fixed = Math.floor(price / step) * step;
+    const scaled = price / step;
+    const fixed = (Math.abs(scaled - Math.round(scaled)) < 1e-9 ? Math.round(scaled) : Math.floor(scaled)) * step;
     return parseFloat(fixed.toFixed(this._getPricePrecision(pair.tickSize)));
   }
 

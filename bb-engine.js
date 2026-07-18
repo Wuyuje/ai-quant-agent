@@ -291,7 +291,9 @@ class BinanceAPI {
     const step = parseFloat(info.stepSize);
     if (step > 0) {
       // 用字符串避免浮点精度溢出 (5.52/0.01=551.9999 → 5.51 的 bug)
-      const rounded = Math.floor(parseFloat((qty / step).toFixed(8))) * step;
+      // v107: 修复浮点数精度问题
+      const scaled = qty / step;
+      const rounded = (Math.abs(scaled - Math.round(scaled)) < 1e-9 ? Math.round(scaled) : Math.floor(scaled)) * step;
       const p = info.qtyPrecision ?? 3;
       return parseFloat(rounded.toFixed(p));
     }
