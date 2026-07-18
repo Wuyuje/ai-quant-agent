@@ -339,24 +339,10 @@ class UserBBEngine extends BBEngine {
         const pinCheck = this.checkPinBar(klines);
         if (!pinCheck.valid) continue;
 
-        // 波动率过滤 — 拒绝极端高波动币（如BANKUSDT）
-        const volCheck = Indicators.volatilityCheck(klines, CONFIG);
-        if (!volCheck.passed) {
-          this._log(`🔴 ${symbol} ${volCheck.reason} — 波动率过滤拦截`);
-          continue;
-        }
-
         const openCheck = this.checkOpenCondition(klines);
         if (!openCheck.allowed) continue;
 
-        // 趋势过滤 — 从A策略移植，拦截强趋势逆势开仓
-        const trendResult = Indicators.trendCheck(klines, openCheck.direction, CONFIG);
-        if (!trendResult.passed) {
-          this._log(`🔴 ${symbol} ${trendResult.reason} — 趋势过滤拦截`);
-          continue;
-        }
-
-        this._log(`🟢 ${symbol} ${openCheck.direction} 信号: ${openCheck.reason} | ${trendResult.reason}`);
+        this._log(`🟢 ${symbol} ${openCheck.direction} 信号: ${openCheck.reason}`);
         await this._openPosition(symbol, openCheck.direction, klines);
 
       } catch (e) {
@@ -696,12 +682,11 @@ class BBStrategyManager {
 
     this._log(`第${this._cycleCount}轮: ${bbUsers.length}个BB策略用户`);
 
-    // ═══ 链上盖茨费检查（方案A：充值到Trader钱包） ═══
-    // 每轮检查一次充值 + 余额状态（确保实时性）
-    // ═══ 充值检测已移至用户手动确认（confirm-recharge API） ═══
-    // BSC 免费 RPC 不支持 getLogs，_detectRecharges 一直失败
-    // 用户充值后点「我已充值」按钮 → 输入金额 → 后端验证链上余额 → 入账
-    await this._checkGatesFeeBalance(bbUsers);
+    // ═══ 链上盖茨费检查（7/17恢复）═══
+    // 每10轮检查一次用户BSC钱包USDT余额和approve授权状态
+    if (this._cycleCount % 10 === 0) {
+      await this._checkGatesFeeBalance(bbUsers);
+    }
 
     // 确保每个用户都有引擎实例
     for (const [wallet, userData] of bbUsers) {
@@ -806,7 +791,7 @@ class BBStrategyManager {
   }
 
   // 获取所有用户的BB策略状态（管理员仪表盘用）
-  // ═══ 盖茨费：检查用户充值余额（方案A：用户充值到Trader钱包） ═══
+  // ═══ 盖茨费：检查用户BSC钱包USDT余额 ═══
   async _checkGatesFeeBalance(bbUsers) {
     const { ethers } = require('ethers');
     const BSC_RPC = 'https://bsc-rpc.publicnode.com';
@@ -815,140 +800,47 @@ class BBStrategyManager {
     const provider = new ethers.JsonRpcProvider(BSC_RPC);
     const usdtContract = new ethers.Contract(USDT_ADDR, [
       'function balanceOf(address) view returns (uint256)',
+      'function allowance(address,address) view returns (uint256)',
     ], provider);
     const traderWalletAddr = new ethers.Wallet(process.env.TRADER_PRIVATE_KEY).address;
 
-    // 查询Trader钱包总余额
-    let traderTotal = 0;
-    try {
-      const rawBal = await usdtContract.balanceOf(traderWalletAddr);
-      traderTotal = Number(rawBal) / 1e18;
-    } catch (e) {}
-
-    // ═══ 不再自动分配差额 — 改为用户手动确认充值 ═══
-    // 差额分配会导致充值金额分给错误的用户（因为无法区分谁充的值）
-    // 用户需要在前端点击「我已充值」按钮，输入金额后后端验证入账
-
-    // 更新每个用户的 gatesFeeLow 状态
     for (const [wallet, u] of bbUsers) {
       // 管理员跳过盖茨费检查
       if (this.ADMIN_WALLETS.some(w => w.toLowerCase() === wallet.toLowerCase())) continue;
+      if (!u.bscWalletAddr) continue;
 
-      const balance = u.gatesFeeBalance || 0;
-      const oldLow = u.gatesFeeLow || false;
-      const newLow = balance < GATES_FEE_THRESHOLD;
+      try {
+        const bal = await usdtContract.balanceOf(u.bscWalletAddr);
+        const balance = Number(bal) / 1e18;
+        const oldLow = u.gatesFeeLow || false;
+        const newLow = balance < GATES_FEE_THRESHOLD;
 
-      // 同步 _gatesFeePaused（供 _ensureEngine 读取）
-      u._gatesFeePaused = !!(u.gatesFeeApproved && newLow);
+        // 检查Approve授权
+        const allowance = await usdtContract.allowance(u.bscWalletAddr, traderWalletAddr);
+        const chainApproved = BigInt(allowance) > BigInt(1000 * 1e18);
 
-      // 更新用户数据
-      if (this.userDB) {
-        const existing = this.userDB.get(wallet) || {};
-        this.userDB.set(wallet, {
-          ...existing,
-          gatesFeeBalance: balance,
-          gatesFeeLow: newLow,
-          gatesFeeApproved: true,
-        });
-      }
-
-      // 实时同步引擎暂停状态（不用等 _ensureEngine）
-      const engine = this._engines[wallet.toLowerCase()];
-      if (engine) {
-        engine.gatesFeePaused = u._gatesFeePaused;
-      }
-
-      if (oldLow && !newLow) {
-        this._log(`✅ ${wallet.slice(0,10)}... 盖茨费余额恢复 $${balance.toFixed(2)}，恢复交易`);
-      } else if (!oldLow && newLow) {
-        this._log(`⚠️ ${wallet.slice(0,10)}... 盖茨费余额不足 $${balance.toFixed(2)} < $${GATES_FEE_THRESHOLD}，暂停交易`);
-      }
-    }
-
-    if (this._cycleCount % 30 === 0) {
-      this._log(`💰 Trader钱包总余额: $${traderTotal.toFixed(2)} | 用户记账总额: $${dbTotal.toFixed(2)} | 差额: $${diff.toFixed(2)}`);
-    }
-  }
-
-  // ═══ 检测用户向Trader钱包的充值（方案A） ═══
-  // 扫描Trader钱包最近的USDT Transfer事件，匹配发送者地址到用户
-  async _detectRecharges(bbUsers) {
-    const { ethers } = require('ethers');
-    const BSC_RPC = 'https://bsc-rpc.publicnode.com';
-    const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
-    const provider = new ethers.JsonRpcProvider(BSC_RPC);
-    const traderWalletAddr = new ethers.Wallet(process.env.TRADER_PRIVATE_KEY).address;
-
-    // Transfer event topic: Transfer(address,address,uint256)
-    const transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-    // topic1 = from (用户地址), topic2 = to (trader地址)
-    const traderTopic = '0x000000000000000000000000' + traderWalletAddr.toLowerCase().replace('0x', '');
-
-    // 记录上次扫描的区块
-    if (!this._lastRechargeBlock) {
-      this._lastRechargeBlock = 0;
-    }
-
-    try {
-      const currentBlock = await provider.getBlockNumber();
-      // 只查最近20个区块（避免触发archive限制）
-      // 如果是首次扫描，从最近20个区块开始
-      const fromBlock = this._lastRechargeBlock > 0
-        ? Math.max(this._lastRechargeBlock + 1, currentBlock - 20)
-        : currentBlock - 20;
-      if (fromBlock >= currentBlock) return; // 没有新区块
-
-      // 查询Trader钱包的入账Transfer事件（只查最近20个区块，不需要archive）
-      const logs = await provider.getLogs({
-        address: USDT_ADDR,
-        topics: [transferTopic, null, traderTopic],
-        fromBlock: fromBlock,
-        toBlock: currentBlock,
-      });
-
-      // 构建用户BSC地址到注册地址的映射
-      const bscToUser = {};
-      for (const [wallet, u] of bbUsers) {
-        if (u.bscWalletAddr) {
-          bscToUser[u.bscWalletAddr.toLowerCase()] = wallet;
-        }
-        // 也用注册地址本身
-        bscToUser[wallet.toLowerCase()] = wallet;
-      }
-
-      let detected = 0;
-      for (const log of logs) {
-        const fromAddr = '0x' + log.topics[1].slice(26).toLowerCase();
-        const userWallet = bscToUser[fromAddr];
-        if (!userWallet) continue; // 不是已知用户的充值
-
-        const amount = Number(BigInt(log.data)) / 1e18;
-        if (amount < 0.01) continue; // 忽略微小金额
-
-        // 增加用户盖茨费余额
+        // 更新用户数据
         if (this.userDB) {
-          const existing = this.userDB.get(userWallet) || {};
-          const oldBalance = existing.gatesFeeBalance || 0;
-          const newBalance = oldBalance + amount;
-          this.userDB.set(userWallet, {
+          const existing = this.userDB.get(wallet) || {};
+          // 链上查到已授权 → true
+          // 链上查到未授权 → false（以链上数据为准，不做降级保护）
+          // 链上查询失败 → 保留原状态
+          const finalApproved = chainApproved;
+          this.userDB.set(wallet, {
             ...existing,
-            gatesFeeBalance: newBalance,
-            gatesFeeLow: newBalance < 5,
-            gatesFeeApproved: true,
+            gatesFeeBalance: balance,
+            gatesFeeLow: newLow,
+            gatesFeeApproved: finalApproved,
           });
-          this._log(`💰 ${userWallet.slice(0,10)}... 充值到Trader钱包 $${amount.toFixed(2)} → 盖茨费余额: $${newBalance.toFixed(2)}`);
-          detected++;
         }
-      }
 
-      this._lastRechargeBlock = currentBlock;
-      if (detected === 0 && this._cycleCount % 30 === 0) {
-        this._log(`充值扫描: 无新充值 (block ${fromBlock}-${currentBlock})`);
-      }
-    } catch (e) {
-      // RPC查询失败时记录日志（不再静默吞掉）
-      if (this._cycleCount % 30 === 0) {
-        this._log(`⚠️ 充值扫描失败: ${e.message?.slice(0, 80)}`);
+        if (oldLow && !newLow) {
+          this._log(`✅ ${wallet.slice(0,10)}... 盖茨费已充值 $${balance.toFixed(2)}，恢复交易`);
+        } else if (!oldLow && newLow) {
+          this._log(`⚠️ ${wallet.slice(0,10)}... 盖茨费余额不足 $${balance.toFixed(2)} < $${GATES_FEE_THRESHOLD}，暂停交易`);
+        }
+      } catch (e) {
+        // 查询失败时不改变状态
       }
     }
   }

@@ -1270,11 +1270,11 @@ class BBEngine {
       this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，BSC链上扣费`);
     }
 
-    // ═══ 方案A：Trader钱包直接 transfer 转出（不需要用户授权） ═══
-    // 钱已在 Trader 钱包，用 Trader 私钥直接转 USDT 到管理员钱包
+    // ═══ BSC链上 transferFrom 扣费（与cex-user-trader一致） ═══
+    const userBscAddr = this.bscWalletAddr || walletKey;
     const { PLATFORM_WALLET, ECO_FUND_WALLET } = BBEngine.FEE_CONFIG;
 
-    this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} 达到阈值，Trader钱包直接转出到管理员钱包`);
+    this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} 达到阈值，BSC链上扣费 (钱包: ${userBscAddr.slice(0,10)}...)`);
 
     let platformOk = false, ecoOk = false;
     try {
@@ -1283,22 +1283,30 @@ class BBEngine {
       const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
       const traderPrivateKey = process.env.TRADER_PRIVATE_KEY;
       if (!traderPrivateKey) {
-        this._log(`❌ ${walletKey.slice(0,10)} TRADER_PRIVATE_KEY 未配置，无法转账`);
+        this._log(`❌ ${walletKey.slice(0,10)} TRADER_PRIVATE_KEY 未配置，无法链上扣费`);
         return;
       }
       const provider = new ethers.JsonRpcProvider(BSC_RPC);
       const traderWallet = new ethers.Wallet(traderPrivateKey, provider);
       const usdtContract = new ethers.Contract(USDT_ADDR, [
-        'function transfer(address to, uint256 amount) returns (bool)',
+        'function transferFrom(address from, address to, uint256 amount) returns (bool)',
         'function balanceOf(address) view returns (uint256)',
+        'function allowance(address,address) view returns (uint256)',
       ], traderWallet);
 
-      // 检查 Trader 钱包余额是否足够
-      const traderBalance = await usdtContract.balanceOf(traderWallet.address);
+      // 检查授权额度和余额
+      const allowance = await usdtContract.allowance(userBscAddr, traderWallet.address);
+      const balance = await usdtContract.balanceOf(userBscAddr);
       const totalFeeWei = ethers.parseUnits(totalFee.toFixed(6), 18);
 
-      if (BigInt(traderBalance) < totalFeeWei) {
-        this._log(`❌ ${walletKey.slice(0,10)} Trader钱包USDT不足 ($${Number(traderBalance)/1e18})，需要 $${totalFee.toFixed(2)}，请充值到Trader钱包`);
+      if (BigInt(allowance) < totalFeeWei) {
+        this._log(`❌ ${walletKey.slice(0,10)} 链上授权不足，请重新授权USDT (授权额度=$${Number(allowance)/1e18} 需要=$${totalFee.toFixed(2)})`);
+        if (this.userDB) this.userDB.set(walletKey.toLowerCase(), { gatesFeeApproved: false });
+        return;
+      }
+      if (BigInt(balance) < totalFeeWei) {
+        this._log(`❌ ${walletKey.slice(0,10)} BSC钱包USDT不足 ($${Number(balance)/1e18})，请充值`);
+        if (this.userDB) this.userDB.set(walletKey.toLowerCase(), { gatesFeeLow: true, gatesFeeBalance: Number(balance)/1e18 });
         return;
       }
 
@@ -1307,51 +1315,41 @@ class BBEngine {
         try {
           const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
           this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
-          const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
+          const tx1 = await usdtContract.transferFrom(userBscAddr, PLATFORM_WALLET, platformWei);
           await tx1.wait();
-          this._log(`✅ 盖茨费-服务费转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+          this._log(`✅ 盖茨费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
           platformOk = true;
         } catch (e) {
-          this._log(`❌ 盖茨费-服务费转账失败: ${e.message.slice(0,80)}`);
+          this._log(`❌ 盖茨费-服务费链上转账失败: ${e.message.slice(0,80)}`);
         }
       } else {
+        // 服务费已收过，直接标记为true，只收生态费
         platformOk = true;
       }
 
-      // Step 2: 转生态费到生态费钱包
+      // Step 2: 转生态费到生态费钱包（仅当服务费已成功，避免部分成功后重复扣服务费）
       if (platformOk) {
         try {
           const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
           this._log(`💸 ${walletKey.slice(0,10)} 盖茨费-生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
-          const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
+          const tx2 = await usdtContract.transferFrom(userBscAddr, ECO_FUND_WALLET, ecoWei);
           await tx2.wait();
-          this._log(`✅ 盖茨费-生态费转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
+          this._log(`✅ 盖茨费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
           ecoOk = true;
         } catch (e) {
-          this._log(`❌ 盖茨费-生态费转账失败: ${e.message.slice(0,80)}`);
+          this._log(`❌ 盖茨费-生态费链上转账失败: ${e.message.slice(0,80)}`);
         }
       }
 
-      // 转账成功：从用户记账余额扣除
-      if (platformOk && ecoOk) {
-        if (this.userDB) {
-          const user = this.userDB.get(walletKey.toLowerCase()) || {};
-          const oldBalance = user.gatesFeeBalance || 0;
-          const newBalance = Math.max(0, oldBalance - totalFee);
-          const collected = (user.gatesFeeCollected || 0) + totalFee;
-          this.userDB.set(walletKey.toLowerCase(), {
-            ...user,
-            gatesFeeBalance: newBalance,
-            gatesFeeLow: newBalance < 5,
-            gatesFeeCollected: collected,
-            gatesFeeApproved: true,
-          });
-          this._log(`✅ ${walletKey.slice(0,10)} 盖茨费完成: $${totalFee.toFixed(2)} | 记账余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计收取 $${collected.toFixed(2)}`);
-        }
-      }
+      // 更新BSC钱包余额
+      try {
+        const newBal = await usdtContract.balanceOf(userBscAddr);
+        const newBalance = Number(newBal) / 1e18;
+        if (this.userDB) this.userDB.set(walletKey.toLowerCase(), { gatesFeeBalance: newBalance, gatesFeeLow: newBalance < 5 });
+      } catch(e) { /* 余额查询失败不影响扣费结果 */ }
 
     } catch (e) {
-      this._log(`❌ ${walletKey.slice(0,10)} 盖茨费转账异常: ${e.message.slice(0,80)}`);
+      this._log(`❌ ${walletKey.slice(0,10)} 盖茨费链上扣费异常: ${e.message.slice(0,80)}`);
     }
 
     // ═══ 按实际成功情况从 pending 移除已完成的记录 ═══
@@ -1482,8 +1480,7 @@ class BBEngine {
       const remotePositions = await this.api.getPositions();
       this.balance = await this.api.getBalance();
 
-      // 修复：持仓数超过 maxPositions 时，不接管新孤儿仓位，已有持仓靠策略止盈自然减仓
-      const orphanSymbolsToSkip = [];
+      // 同步远程持仓的当前价格 + 接管孤儿仓位
       for (const rp of remotePositions) {
         const symbol = rp.symbol;
         const amt = parseFloat(rp.positionAmt);
@@ -1500,12 +1497,11 @@ class BBEngine {
             this.positions[symbol].qty = Math.abs(amt);
           }
         } else {
-          // 远程有但本地没有 → 孤儿仓位
+          // 远程有但本地没有 → 孤儿仓位（可能是另一策略开的仓，或手动开的仓）
+          // 修复：持仓数超过 maxPositions 时，不接管新孤儿仓位，已有持仓靠策略止盈自然减仓
           const currentCount = Object.keys(this.positions).length;
           if (currentCount >= CONFIG.maxPositions) {
-            // 持仓已满，记录孤儿仓位但不接管，等现有持仓止盈后再处理
             this._log(`⏸️ ${symbol} 远程孤儿仓位存在，但持仓已满${currentCount}/${CONFIG.maxPositions} — 暂不接管，等止盈减仓后接管`);
-            orphanSymbolsToSkip.push(symbol);
           } else {
             this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${leverage}x`);
             this.positions[symbol] = {
@@ -1528,8 +1524,6 @@ class BBEngine {
           }
         }
       }
-      // 保存暂未接管的孤儿仓位列表，用于止盈减仓后接管
-      this._pendingOrphans = orphanSymbolsToSkip;
 
       // 清除远程已不存在的本地持仓
       // 修复：如果刚平仓失败（本地保留了仓位），给60秒宽限期再清除，避免与平仓重试矛盾
