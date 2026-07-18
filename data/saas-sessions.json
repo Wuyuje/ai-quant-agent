@@ -1219,17 +1219,6 @@
     "loginMethod": "password",
     "createdAt": 1784249297301
   },
-  "1baf2373264cb9a585918d191f14c7c7b84984655ceee30aafd458e225009370": {
-    "wallet": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
-    "username": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
-    "walletAddress": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
-    "arkBalance": 0,
-    "bnbBalance": 0.004544,
-    "usdtBalance": 14.07,
-    "vaultAddress": "0xC3f64204Dd8f170Dd163437DFf5e18Ab726BDBb2",
-    "loginMethod": "password",
-    "createdAt": 1784249422228
-  },
   "fd44577b9851a760fd720318e41fdc4f0b3252a309ae94051fb6b670f13da493": {
     "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
     "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
@@ -1241,18 +1230,7 @@
     "loginMethod": "password",
     "createdAt": 1784250986562
   },
-  "99baa73dc41d02da72f14faab15d59fbc3b47467e02861f136668449e222edfb": {
-    "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "walletAddress": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "arkBalance": 0,
-    "bnbBalance": 0,
-    "usdtBalance": 0,
-    "vaultAddress": null,
-    "loginMethod": "password",
-    "createdAt": 1784252759369
-  },
-  "0524450c367643310a9079505bf5c229003156598c08c0602b42e3ff49cfde9d": {
+  "75f8fbfe63eb48f7bb5421209930fb2c3d47ff02c0e44326afcb3cd383a47901": {
     "wallet": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
     "username": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
     "walletAddress": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
@@ -1261,9 +1239,9 @@
     "usdtBalance": 426,
     "vaultAddress": null,
     "loginMethod": "password",
-    "createdAt": 1784269962851
+    "createdAt": 1784361622200
   },
-  "e21f792688cd573d22eacd9f438ac807cee6e5c54c87f40bb64d84e5f3f0f87b": {
+  "c92c1347482a0614b336ca1d66d5ff7f387a2e14c3ffd9983afe4c6192eede1d": {
     "wallet": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
     "username": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
     "walletAddress": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
@@ -1272,6 +1250,39 @@
     "usdtBalance": 158.26443792,
     "vaultAddress": null,
     "loginMethod": "password",
-    "createdAt": 1784270201550
+    "createdAt": 1784362282492
+  },
+  "29cbc1425d48eaf4668ffd33928ec220465196622b6c70e404107d146594367b": {
+    "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "walletAddress": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 0,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1784363156762
+  },
+  "4a6b02925f938d732e9e08b300f5981dbad45b83a8e6e445b4e3d343389ea2fb": {
+    "wallet": "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005",
+    "username": "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005",
+    "walletAddress": "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 0,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1784390405794
+  },
+  "f84ca48980a68f7e6986330418ea4783786e66dbdf4503fb393ded75e881d270": {
+    "wallet": "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005",
+    "username": "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005",
+    "walletAddress": "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 0,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1784392947176
   }
 }

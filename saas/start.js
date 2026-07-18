@@ -76,6 +76,32 @@ async function main() {
   const dataDir = path.join(__dirname, '..', 'data');
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
+  // ═══ 防死机：检测 watchdog 写入的 crash state，自己优雅退出让 watchdog 重启 ═══
+  const crashStateFile = path.join(dataDir, 'engine-crash.state');
+  if (fs.existsSync(crashStateFile)) {
+    try {
+      const crashInfo = JSON.parse(fs.readFileSync(crashStateFile, 'utf-8'));
+      console.log(`[启动] 🚨 检测到 crash state (${crashInfo.reason})，本实例退出，让 watchdog 启动新实例`);
+      // 删除 state 文件后退出
+      fs.unlinkSync(crashStateFile);
+      process.exit(0);
+    } catch (e) { /* state 文件损坏，忽略 */ }
+  }
+
+  // ═══ 定期检测 crash state（5 秒检查一次，让 watchdog 能触发本实例退出） ═══
+  setInterval(() => {
+    try {
+      if (fs.existsSync(crashStateFile)) {
+        const crashInfo = JSON.parse(fs.readFileSync(crashStateFile, 'utf-8'));
+        console.log(`[运行中] 🚨 检测到 crash state (${crashInfo.reason})，本实例退出，watchdog 会重启`);
+        fs.unlinkSync(crashStateFile);
+        // 不调用 gracefulShutdown，直接退出（不平仓、不碰 Binance 持仓）
+        // Binance 上的仓位会原封不动保留，新实例启动后 Guardian 自动接管
+        setTimeout(() => process.exit(0), 500);
+      }
+    } catch (e) { /* ignore */ }
+  }, 5000);
+
   // ═══ 1. 共享 DataBus（行情数据） ═══
   console.log('[启动] 📡 连接 Binance 行情...');
   const dataBus = new DataBus(CONFIG);
@@ -488,12 +514,24 @@ async function main() {
   console.log('═══════════════════════════════');
   console.log('\n等待登录... 🔗\n');
 
-  // ═══ 防崩溃 ═══
+  // ═══ 防崩溃 v2 — 不吞错误，记到 state 文件后退出，让 watchdog 重启 ═══
   process.on('uncaughtException', (err) => {
     console.error('[FATAL] uncaughtException:', err.message, err.stack?.split('\n').slice(0,3).join('\n'));
+    // 写入崩溃状态文件，watchdog 检测后重启
+    try {
+      fs.writeFileSync(path.join(__dirname, '..', 'data', 'engine-crash.state'),
+        JSON.stringify({ reason: 'uncaughtException', msg: err.message, ts: Date.now() }));
+    } catch (e) { /* ignore */ }
+    // 3 秒后退出（让日志写入）
+    setTimeout(() => process.exit(1), 3000);
   });
   process.on('unhandledRejection', (reason, promise) => {
     console.error('[FATAL] unhandledRejection:', reason?.message || reason);
+    try {
+      fs.writeFileSync(path.join(__dirname, '..', 'data', 'engine-crash.state'),
+        JSON.stringify({ reason: 'unhandledRejection', msg: reason?.message || String(reason), ts: Date.now() }));
+    } catch (e) { /* ignore */ }
+    setTimeout(() => process.exit(1), 3000);
   });
 
   // ═══ 心跳保活 ═══
@@ -503,12 +541,14 @@ async function main() {
     console.log(`[HEARTBEAT] ⏰ ${new Date().toISOString().slice(11,19)} | MEM: ${mem}MB | Users: ${userCount}`);
   }, 5 * 60 * 1000);
 
-  // 优雅关闭
+  // 优雅关闭 — SIGINT/SIGTERM 触发关闭 + 退出，watchdog 会重启
   process.on('SIGINT', () => {
-    console.log('⚠️ SIGINT 忽略 — 引擎继续运行');
+    console.log('⚠️ SIGINT — 优雅关闭后退出，watchdog 会重启');
+    gracefulShutdown('SIGINT');
   });
   process.on('SIGTERM', () => {
-    console.log('⚠️ SIGTERM 忽略 — 引擎继续运行');
+    console.log('⚠️ SIGTERM — 优雅关闭后退出，watchdog 会重启');
+    gracefulShutdown('SIGTERM');
   });
 }
 
@@ -520,10 +560,12 @@ main().catch(e => {
 
 // ========== 防死机增强 ==========
 let _isShuttingDown = false;
+// ⚠️ 重要：gracefulShutdown 绝不碰 Binance 持仓
+// Binance 上的所有仓位原封不动保留，重启后 Guardian 同步机制会自动接管
 async function gracefulShutdown(reason) {
   if (_isShuttingDown) return;
   _isShuttingDown = true;
-  console.error(`🚨 [${reason}] 开始优雅关闭...`);
+  console.error(`🚨 [${reason}] 开始优雅关闭（Binance 持仓保留不动）...`);
   
   // 写入关闭状态文件（watchdog 可检测）
   try {
@@ -531,21 +573,21 @@ async function gracefulShutdown(reason) {
     fs.writeFileSync(stateFile, JSON.stringify({ reason, ts: Date.now() }));
   } catch (e) { /* ignore */ }
   
-  // 停止引擎循环
+  // 只停止引擎循环，不碰任何仓位
   try {
     if (_engine) { _engine.running = false; }
     if (_goldEngine) { _goldEngine.running = false; }
     if (_forexEngine) { _forexEngine.running = false; }
   } catch (e) { /* ignore */ }
   
-  // 关闭服务器
+  // 关闭 HTTP 服务器
   try {
     if (_server) { _server.close(); }
   } catch (e) { /* ignore */ }
   
-  // 等待 2 秒让持仓状态保存
+  // 等待 2 秒让持仓状态保存到本地 state 文件
   await new Promise(r => setTimeout(r, 2000));
-  console.error(`🚨 [${reason}] 优雅关闭完成，退出进程`);
+  console.error(`🚨 [${reason}] 优雅关闭完成，Binance 持仓保留，退出进程（watchdog 会启动新实例接管）`);
   process.exit(1);
 }
 

@@ -19,10 +19,11 @@
     "cexMode": false,
     "bscWalletAddr": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
     "exchangeMode": "cex",
-    "gatesFeeBalance": 6,
+    "gatesFeeBalance": 0.08,
     "gatesFeeApproved": true,
-    "gatesFeeLow": false,
-    "deleted": true
+    "gatesFeeLow": true,
+    "deleted": true,
+    "_gatesFeePaused": false
   },
   "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": {
     "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
@@ -40,12 +41,12 @@
     "binanceApiKey": "2b93b2de0f139cc3313ea06e:e3cb47e2c66b28a6be4b8fedfa6db2bc:ddaa5ad9ac2fe73747e563471ab866efaf9a81f147633c50dfd3e9a377db5f379e94270d75a4cb6c4ea1fdab289bd1dea834691f3a69dec8db1b8fd07f9ec670",
     "binanceSecret": "4963c191b72a0e4cf318b251:fbc1524c4434f0b988d2da3eb0693e8a:aebcb950c542632684b60f7d8dad1cbeef2a8022c64c12c768edbf4ffa2af5b98a586c014585aca154dc04cd6ea45075d6fb86737be848dc36277662c1c4b07b",
     "tradeAmount": 84,
-    "lastActive": 1784370487116,
+    "lastActive": 1784401094996,
     "authToken": "29cbc1425d48eaf4668ffd33928ec220465196622b6c70e404107d146594367b",
     "withdrawConsent": true,
     "canWithdraw": true,
     "bscWalletAddr": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "gatesFeeBalance": 10.01,
+    "gatesFeeBalance": 24.66,
     "gatesFeeLow": false,
     "gatesFeeApproved": true,
     "_gatesFeePaused": false,
@@ -65,7 +66,7 @@
     "exchangeMode": "cex",
     "gatesFeeApproved": true,
     "deleted": true,
-    "gatesFeeBalance": 2,
+    "gatesFeeBalance": 0,
     "gatesFeeLow": true
   },
   "0x588ff823e3b50ebc4691c567cee23485b97d7025": {
@@ -83,14 +84,14 @@
     "binanceSecret": "3617e102c3880f2f6f57319a:02ef2356eff2ab6bd7401c50aac3286e:01785d894d8e4c0f06273b55c1c436ce15a1dda972b941fe2ef93bb059a690cf5e3cd4c02a649603180e9faf54250bd1dd9fc4cc223f1eedbc96c96c6ed1e6e9",
     "cexMode": true,
     "canWithdraw": false,
-    "gatesFeeBalance": 0,
+    "gatesFeeBalance": 48.58,
     "gatesFeeApproved": true,
-    "gatesFeeLow": true,
+    "gatesFeeLow": false,
     "usdtBalance": 158.26443792,
     "verifiedAt": 1784032026858,
-    "lastActive": 1784370487116,
+    "lastActive": 1784401094996,
     "tradeAmount": 1000,
-    "_gatesFeePaused": true,
+    "_gatesFeePaused": false,
     "exchangeMode": "cex",
     "gatesFeeCollected": 21.4234
   },
@@ -106,7 +107,8 @@
     "tradingEnabled": false,
     "withdrawConsent": false,
     "gatesFeeApproved": true,
-    "gatesFeeLow": true
+    "gatesFeeLow": true,
+    "gatesFeeBalance": 0
   },
   "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f": {
     "createdAt": 1784127258896,
@@ -123,14 +125,26 @@
     "binanceSecret": "4aa33f50ba6b5fa8c31c4785:60ad92a6111e61eca92de9c1a1974a81:d8a2f9e5b84f772b822445048c681e5bd4ed60d3f26257491b888686d6e90c766b6f4e3d03d438325ae1e9cddb13b2cfe055d1298f3ee73076aa15ef4651c9c9",
     "cexMode": true,
     "canWithdraw": false,
-    "gatesFeeBalance": 9.615,
+    "gatesFeeBalance": 14.6635,
     "gatesFeeApproved": true,
     "gatesFeeLow": false,
     "usdtBalance": 426,
     "verifiedAt": 1784163450654,
-    "lastActive": 1784370487116,
-    "_gatesFeePaused": true,
+    "lastActive": 1784401094996,
+    "_gatesFeePaused": false,
     "tradeAmount": 100000,
-    "gatesFeeCollected": 0.808
+    "gatesFeeCollected": 1.3345
+  },
+  "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005": {
+    "createdAt": 1784390405793,
+    "username": "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005",
+    "salt": "8092777e79034ddd42304be07e8b63cd",
+    "passwordHash": "e5beb12e22728b57a468a7d96108a779e43f111668d52b157652bc9527376befa3fdbeb58431fbf1a53a6cff8215d66f0a2ecdd7c1178d998f4d86bcd8d01f0c",
+    "authToken": "f84ca48980a68f7e6986330418ea4783786e66dbdf4503fb393ded75e881d270",
+    "walletAddress": "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005",
+    "bscWalletAddr": "0xe2bcc13035d78aa414d25e52a95a7b07f8f68005",
+    "strategy": "bb",
+    "tradingEnabled": false,
+    "withdrawConsent": false
   }
 }

@@ -27,6 +27,42 @@
         "userShare": "0.6465",
         "timestamp": 1784382674450,
         "status": "pending"
+      },
+      {
+        "symbol": "SKHYUSDT",
+        "pnlUsdt": "1.0467",
+        "platformFee": "0.2093",
+        "ecoFund": "0.1047",
+        "userShare": "0.7327",
+        "timestamp": 1784390615387,
+        "status": "pending"
+      },
+      {
+        "symbol": "KAITOUSDT",
+        "pnlUsdt": "1.3377",
+        "platformFee": "0.2675",
+        "ecoFund": "0.1338",
+        "userShare": "0.9364",
+        "timestamp": 1784391706003,
+        "status": "pending"
+      },
+      {
+        "symbol": "ALLOUSDT",
+        "pnlUsdt": "6.5545",
+        "platformFee": "1.3109",
+        "ecoFund": "0.6555",
+        "userShare": "4.5882",
+        "timestamp": 1784393496198,
+        "status": "pending"
+      },
+      {
+        "symbol": "LABUSDT",
+        "pnlUsdt": "0.9770",
+        "platformFee": "0.1954",
+        "ecoFund": "0.0977",
+        "userShare": "0.6839",
+        "timestamp": 1784399165420,
+        "status": "pending"
       }
     ],
     "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f": [
@@ -37,6 +73,60 @@
         "ecoFund": "0.0854",
         "userShare": "0.5980",
         "timestamp": 1784382676839,
+        "status": "pending"
+      },
+      {
+        "symbol": "SKHYUSDT",
+        "pnlUsdt": "0.5556",
+        "platformFee": "0.1111",
+        "ecoFund": "0.0556",
+        "userShare": "0.3889",
+        "timestamp": 1784390606020,
+        "status": "pending"
+      },
+      {
+        "symbol": "ENAUSDT",
+        "pnlUsdt": "0.4637",
+        "platformFee": "0.0927",
+        "ecoFund": "0.0464",
+        "userShare": "0.3246",
+        "timestamp": 1784392339555,
+        "status": "pending"
+      },
+      {
+        "symbol": "ALLOUSDT",
+        "pnlUsdt": "1.4926",
+        "platformFee": "0.2985",
+        "ecoFund": "0.1493",
+        "userShare": "1.0448",
+        "timestamp": 1784393481920,
+        "status": "pending"
+      },
+      {
+        "symbol": "SYNUSDT",
+        "pnlUsdt": "1.3525",
+        "platformFee": "0.2705",
+        "ecoFund": "0.1352",
+        "userShare": "0.9467",
+        "timestamp": 1784397491714,
+        "status": "pending"
+      },
+      {
+        "symbol": "LABUSDT",
+        "pnlUsdt": "0.7049",
+        "platformFee": "0.1410",
+        "ecoFund": "0.0705",
+        "userShare": "0.4934",
+        "timestamp": 1784399153889,
+        "status": "pending"
+      },
+      {
+        "symbol": "CRCLUSDT",
+        "pnlUsdt": "0.5035",
+        "platformFee": "0.1007",
+        "ecoFund": "0.0504",
+        "userShare": "0.3525",
+        "timestamp": 1784400531178,
         "status": "pending"
       }
     ],
@@ -66,6 +156,69 @@
         "ecoFund": "0.1640",
         "userShare": "1.1480",
         "timestamp": 1784383526264,
+        "status": "pending"
+      },
+      {
+        "symbol": "DRAMUSDT",
+        "pnlUsdt": "0.1283",
+        "platformFee": "0.0257",
+        "ecoFund": "0.0128",
+        "userShare": "0.0898",
+        "timestamp": 1784389182114,
+        "status": "pending"
+      },
+      {
+        "symbol": "KAITOUSDT",
+        "pnlUsdt": "0.8797",
+        "platformFee": "0.1759",
+        "ecoFund": "0.0880",
+        "userShare": "0.6158",
+        "timestamp": 1784391712794,
+        "status": "pending"
+      },
+      {
+        "symbol": "ENAUSDT",
+        "pnlUsdt": "0.4732",
+        "platformFee": "0.0946",
+        "ecoFund": "0.0473",
+        "userShare": "0.3312",
+        "timestamp": 1784392351981,
+        "status": "pending"
+      },
+      {
+        "symbol": "ALLOUSDT",
+        "pnlUsdt": "0.8894",
+        "platformFee": "0.1779",
+        "ecoFund": "0.0889",
+        "userShare": "0.6226",
+        "timestamp": 1784393485644,
+        "status": "pending"
+      },
+      {
+        "symbol": "SYNUSDT",
+        "pnlUsdt": "0.9525",
+        "platformFee": "0.1905",
+        "ecoFund": "0.0952",
+        "userShare": "0.6667",
+        "timestamp": 1784397491539,
+        "status": "pending"
+      },
+      {
+        "symbol": "CRCLUSDT",
+        "pnlUsdt": "0.4877",
+        "platformFee": "0.0975",
+        "ecoFund": "0.0488",
+        "userShare": "0.3414",
+        "timestamp": 1784398545533,
+        "status": "pending"
+      },
+      {
+        "symbol": "LABUSDT",
+        "pnlUsdt": "0.5600",
+        "platformFee": "0.1120",
+        "ecoFund": "0.0560",
+        "userShare": "0.3920",
+        "timestamp": 1784399164840,
         "status": "pending"
       }
     ]
@@ -528,8 +681,8 @@
       }
     ]
   },
-  "totalPlatformFee": 20.280828200000034,
-  "totalEcoFund": 10.140414100000017,
+  "totalPlatformFee": 21.725980200000027,
+  "totalEcoFund": 10.862990100000014,
   "resetAt": "2026-07-17T00:00:00Z",
   "resetNote": "清除旧记账"
 }
