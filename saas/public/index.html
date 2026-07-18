@@ -321,6 +321,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <span id="confirmRechargeMsg" style="margin-left:10px;font-size:.75em;color:var(--muted)"></span>
       </div>
 
+      <!-- Pending Recharge Alert (检测到链上有未入账充值时显示) -->
+      <div id="gatesFeePendingAlert" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);border-radius:8px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span style="color:var(--green);font-size:.82em;font-weight:600">检测到充值 <span id="pendingRechargeAmount">$0.00</span> 待入账</span>
+        </div>
+        <div style="color:var(--muted);font-size:.75em;margin-top:4px;margin-left:22px">系统检测到 Trader 钱包有新的充值。点击下方按钮一键确认入账到您的账户。</div>
+        <button id="autoConfirmBtn" onclick="confirmRechargeAuto()" style="margin-top:8px;margin-left:22px;padding:8px 20px;border:none;border-radius:8px;background:var(--green);color:#fff;font-size:.78em;font-weight:700;cursor:pointer;transition:all .15s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+          一键确认入账
+        </button>
+        <span id="autoConfirmMsg" style="margin-left:10px;font-size:.75em;color:var(--muted)"></span>
+      </div>
+
       <!-- Info Footer -->
       <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:16px;flex-wrap:wrap;font-size:.72em;color:var(--muted)">
         <div style="display:flex;align-items:center;gap:4px">
@@ -770,6 +783,19 @@ function refreshAll(){
 
       // 低余额警告
       document.getElementById('gatesFeeLowAlert').style.display=isLow?'block':'none';
+      
+      // 检测到未入账充值提示
+      var pendingRecharge = gf.pendingRecharge || 0;
+      var pendingAlertEl = document.getElementById('gatesFeePendingAlert');
+      if (pendingAlertEl) {
+        if (pendingRecharge >= 1) {
+          pendingAlertEl.style.display = 'block';
+          var pendingAmountEl = document.getElementById('pendingRechargeAmount');
+          if (pendingAmountEl) pendingAmountEl.textContent = '$' + pendingRecharge.toFixed(2);
+        } else {
+          pendingAlertEl.style.display = 'none';
+        }
+      }
     }
   },true);
   // 2. Multi-market positions (user's own only)
@@ -1183,6 +1209,38 @@ async function confirmRecharge() {
     if (msgEl) { msgEl.textContent = '❌ 网络错误，请重试'; msgEl.style.color = 'var(--red)'; }
     btn.disabled = false;
     btn.textContent = '我已充值，确认到账';
+  }
+}
+
+// ═══ 一键确认充值到账 — 自动检测链上差额，无需输入金额 ═══
+async function confirmRechargeAuto() {
+  var btn = document.getElementById('autoConfirmBtn');
+  var msgEl = document.getElementById('autoConfirmMsg');
+  if (!btn) return;
+  
+  btn.disabled = true;
+  btn.textContent = '入账中...';
+  if (msgEl) msgEl.textContent = '';
+  try {
+    var resp = await fetch('/api/gates-fee/confirm-recharge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: JSON.stringify({ auto: true })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      if (msgEl) { msgEl.textContent = '✅ ' + data.message + ' 余额: $' + data.newBalance; msgEl.style.color = 'var(--green)'; }
+      btn.style.display = 'none';
+      setTimeout(function() { location.reload(); }, 2000);
+    } else {
+      if (msgEl) { msgEl.textContent = '❌ ' + (data.message || data.error || '验证失败'); msgEl.style.color = 'var(--red)'; }
+      btn.disabled = false;
+      btn.textContent = '一键确认入账';
+    }
+  } catch(e) {
+    if (msgEl) { msgEl.textContent = '❌ 网络错误，请重试'; msgEl.style.color = 'var(--red)'; }
+    btn.disabled = false;
+    btn.textContent = '一键确认入账';
   }
 }
 </script>

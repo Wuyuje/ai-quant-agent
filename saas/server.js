@@ -1607,18 +1607,24 @@ class SaasServer {
         };
       }
 
-      // ═══ 盖茨费余额：自动检测链上差额并入账给当前用户 ═══
-      // 用户充值到Trader钱包后，打开仪表盘时自动检测新充值并入账
-      // 注意：Trader钱包是共用地址，如果有多个用户同时充值，差额会归给最后打开仪表盘的用户
-      // 实际场景中用户充值时间通常错开，入账后差额归零，不会重复入账
+      // ═══ 盖茨费余额：数据库记账 + 链上差额检测 ═══
+      // 用户充值到Trader钱包后，系统自动检测链上余额差额
+      // 有差额时前端显示"确认到账"提示，用户点按钮后入账
       let _gatesFeeBalance = user?.gatesFeeBalance ?? 0;
       let _gatesFeeLow = user?.gatesFeeLow ?? false;
-      let _autoDetected = 0;
-
+      let _pendingRecharge = 0; // 链上检测到的未入账金额
+      let _traderOnchainBalance = 0;
+      let _dbTotal = 0;
+      
+      // 计算数据库总额
+      for (const [, _u] of Object.entries(this.userDB.users || {})) {
+        if (_u && typeof _u.gatesFeeBalance === 'number') _dbTotal += _u.gatesFeeBalance;
+      }
+      
+      // 查 Trader 钱包链上 USDT 余额
       try {
-        // 查Trader钱包链上USDT余额（用 fetch + eth_call，5秒超时）
-        const _traderAddr = TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
-        const _data = '0x70a08231' + '000000000000000000000000' + _traderAddr.toLowerCase().replace('0x','');
+        const traderAddr = TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
+        const _data = '0x70a08231' + '000000000000000000000000' + traderAddr.toLowerCase().replace('0x','');
         const _ctrl = new AbortController();
         const _to = setTimeout(() => _ctrl.abort(), 5000);
         const _resp = await fetch('https://bsc-rpc.publicnode.com', {
@@ -1629,32 +1635,13 @@ class SaasServer {
         });
         clearTimeout(_to);
         const _json = await _resp.json();
-        const _traderOnchain = _json.result ? Number(BigInt(_json.result)) / 1e18 : 0;
-
-        // 查数据库总额
-        let _dbTotal = 0;
-        for (const [, _u] of Object.entries(this.userDB.users || {})) {
-          if (_u && typeof _u.gatesFeeBalance === 'number') _dbTotal += _u.gatesFeeBalance;
-        }
-
-        // 有差额 → 自动入账给当前用户（只入账一次，入账后差额归零）
-        const _diff = _traderOnchain - _dbTotal;
-        if (_diff > 0.5) {
-          _autoDetected = _diff;
-          const _newBal = _gatesFeeBalance + _diff;
-          _gatesFeeBalance = _newBal;
-          _gatesFeeLow = _newBal < 5;
-
-          this.userDB.set(session.wallet, {
-            ...user,
-            gatesFeeBalance: _newBal,
-            gatesFeeLow: _newBal < 5,
-            gatesFeeApproved: true,
-          });
-          console.log(`[GatesFee] ✅ ${session.wallet.slice(0,10)}... 自动检测充值 +$${_diff.toFixed(2)} → 余额: $${_newBal.toFixed(2)} (Trader链上: $${_traderOnchain.toFixed(2)}, DB总额: $${_dbTotal.toFixed(2)})`);
-        }
-      } catch (e) {
-        // RPC失败时静默降级，用数据库余额
+        _traderOnchainBalance = _json.result ? Number(BigInt(_json.result)) / 1e18 : 0;
+        // 差额 = 链上余额 - 数据库总额（>1 才显示，避免精度误差）
+        _pendingRecharge = Math.max(0, _traderOnchainBalance - _dbTotal);
+        if (_pendingRecharge < 1) _pendingRecharge = 0; // < $1 不显示
+      } catch(e) {
+        // 链上查询失败，不影响显示
+        console.log('[GatesFee] 链上余额查询失败:', e.message);
       }
 
       res.json({
@@ -1674,7 +1661,9 @@ class SaasServer {
             low: _gatesFeeLow,
             approved: user?.gatesFeeApproved ?? false,
             threshold: 5,
-            autoDetected: _autoDetected,
+            pendingRecharge: _pendingRecharge, // 链上检测到的未入账金额
+            traderOnchainBalance: _traderOnchainBalance,
+            dbTotal: _dbTotal,
             traderWalletAddr: TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e',
           },
           // 1️⃣ Vault合约余额
@@ -1905,7 +1894,7 @@ class SaasServer {
       });
     });
 
-    // ═══ 盖茨费：用户确认已充值 — 用户输入金额，后端查Trader钱包余额验证 ═══
+    // ═══ 盖茨费：用户确认已充值 — 支持自动检测差额或手动输入金额 ═══
     this.app.post('/api/gates-fee/confirm-recharge', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1913,13 +1902,9 @@ class SaasServer {
       if (!user) return res.status(400).json({ error: '用户不存在' });
 
       try {
-        const { amount: inputAmount } = req.body;
-        const amount = parseFloat(inputAmount);
-        if (!amount || amount <= 0) {
-          return res.json({ success: false, message: '请输入有效的充值金额' });
-        }
-
-        // 用 fetch + eth_call 查 Trader 钱包 USDT 余额（避免 ethers.Contract 卡住）
+        const { amount: inputAmount, auto: autoMode } = req.body;
+        
+        // 用 fetch + eth_call 查 Trader 钱包 USDT 余额
         const traderAddr = new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address;
         const _data = '0x70a08231' + '000000000000000000000000' + traderAddr.toLowerCase().replace('0x','');
         const _ctrl = new AbortController();
@@ -1939,38 +1924,58 @@ class SaasServer {
         for (const [, _u] of Object.entries(this.userDB.users || {})) {
           if (_u && typeof _u.gatesFeeBalance === 'number') dbTotal += _u.gatesFeeBalance;
         }
-
-        // 验证：Trader链上余额 >= 数据库总额 + 用户申报的金额
-        // 这意味着用户申报的金额确实在Trader钱包里
-        const expectedTotal = dbTotal + amount;
-        if (traderBalance + 0.5 >= expectedTotal) {
-          // 余额足够，入账
-          const oldBalance = user.gatesFeeBalance || 0;
-          const newBalance = oldBalance + amount;
-          this.userDB.set(session.wallet, {
-            ...user,
-            gatesFeeBalance: newBalance,
-            gatesFeeLow: newBalance < 5,
-            gatesFeeApproved: true,
-          });
-          console.log(`[GatesFee] ✅ ${session.wallet.slice(0,10)}... 确认充值 $${amount.toFixed(2)} → 余额: $${newBalance.toFixed(2)} (Trader总余额: $${traderBalance.toFixed(2)}, DB总额: $${dbTotal.toFixed(2)})`);
-          res.json({
-            success: true,
-            message: `充值确认成功！+$${amount.toFixed(2)}`,
-            oldBalance: oldBalance.toFixed(2),
-            newBalance: newBalance.toFixed(2),
-            traderBalance: traderBalance.toFixed(2),
-            recovered: newBalance >= 5,
-          });
+        
+        // 链上差额（未入账的充值总额）
+        const pendingDiff = Math.max(0, traderBalance - dbTotal);
+        
+        let amount;
+        if (autoMode) {
+          // 自动模式：直接用链上差额
+          amount = pendingDiff;
+          if (amount < 1) {
+            return res.json({
+              success: false,
+              message: '未检测到新的充值。Trader钱包余额: $' + traderBalance.toFixed(2) + ', 记账总额: $' + dbTotal.toFixed(2),
+              traderBalance: traderBalance.toFixed(2),
+              dbTotal: dbTotal.toFixed(2),
+            });
+          }
         } else {
-          // Trader钱包余额不足
-          res.json({
-            success: false,
-            message: `Trader钱包余额不足。链上余额: $${traderBalance.toFixed(2)}, 当前记账总额: $${dbTotal.toFixed(2)}, 无法入账 $${amount.toFixed(2)}`,
-            traderBalance: traderBalance.toFixed(2),
-            dbTotal: dbTotal.toFixed(2),
-          });
+          // 手动模式：用户输入金额
+          amount = parseFloat(inputAmount);
+          if (!amount || amount <= 0) {
+            return res.json({ success: false, message: '请输入有效的充值金额' });
+          }
+          // 验证：链上差额 >= 用户申报金额（用户不能申报超过实际差额的金额）
+          if (amount > pendingDiff + 0.5) {
+            return res.json({
+              success: false,
+              message: '充值金额超出链上检测到的差额。链上差额: $' + pendingDiff.toFixed(2) + ', 你申报: $' + amount.toFixed(2),
+              traderBalance: traderBalance.toFixed(2),
+              dbTotal: dbTotal.toFixed(2),
+              pendingDiff: pendingDiff.toFixed(2),
+            });
+          }
         }
+
+        // 入账
+        const oldBalance = user.gatesFeeBalance || 0;
+        const newBalance = oldBalance + amount;
+        this.userDB.set(session.wallet, {
+          ...user,
+          gatesFeeBalance: newBalance,
+          gatesFeeLow: newBalance < 5,
+          gatesFeeApproved: true,
+        });
+        console.log(`[GatesFee] ✅ ${session.wallet.slice(0,10)}... 确认充值 $${amount.toFixed(2)} → 余额: $${newBalance.toFixed(2)} (Trader总余额: $${traderBalance.toFixed(2)}, DB总额: $${dbTotal.toFixed(2)})`);
+        res.json({
+          success: true,
+          message: `充值确认成功！+$${amount.toFixed(2)}`,
+          oldBalance: oldBalance.toFixed(2),
+          newBalance: newBalance.toFixed(2),
+          traderBalance: traderBalance.toFixed(2),
+          recovered: newBalance >= 5,
+        });
       } catch (e) {
         console.error('[GatesFee] confirm-recharge error:', e.message);
         res.status(500).json({ error: '查询失败: ' + e.message });
