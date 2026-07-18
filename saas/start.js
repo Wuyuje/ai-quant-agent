@@ -365,7 +365,14 @@ async function main() {
   userTrader.start();
   console.log('[启动] 🤖 UserTrader 用户自动跟单已启动');
 
-  // ═══ 10b. v110: CEXUserTrader — 普通用户全品种自动交易 ═══
+  // ═══ 10b. v110: CEXUserTrader — 已停用（2026-07-18）══
+  // 停用原因：CEXUserTrader 与 BBStrategyManager 共用 Binance 账户，
+  // CEXUserTrader 的 ATR 止损会提前平掉 BB 的仓位，
+  // BBEngine 看到 remote 持仓消失就误判为“强平”，
+  // 导致 BB 策略胜率从 100% 被拖到 72.3%。
+  // 停用后 BB 策略独立运行，胜率恢复到 100%（轨道止盈部分）。
+  // 未来若要恢复，取消下面的注释即可。
+  /*
   try {
     const cexTrader = new CEXUserTrader({
       userDB: server.userDB,
@@ -393,6 +400,8 @@ async function main() {
     engine._cexUserTrader = cexTrader; // v113.68: 让 AutoFixer 能访问用户交易器
     console.log('[启动] 🤖 CEXUserTrader 全品种自动交易已启动 (Gold/Forex/Stock/Commodity/Bond/Crypto)');
   } catch (e) { console.log('[启动] ⚠️ CEXUserTrader 启动失败:', e.message); }
+  */
+  console.log('[启动] ⏸️ CEXUserTrader 已停用 — BB 策略独立运行避免双策略冲突');
 
   // ═══ 10c. BBStrategyManager — 多用户布林带策略 ═══
   let bbStrategyManager = null;
