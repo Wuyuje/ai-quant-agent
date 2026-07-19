@@ -266,8 +266,8 @@ touch scripts/deploy.js
 | 参数 | 值 | 说明 |
 |------|-----|------|
 | `_trader` | `0x你的平台机器人地址` | 只有这个地址可以在 Vault 里执行交易 |
-| `_platformFeeWallet` | `0x你的收入钱包地址` | 平台服务费收到这个钱包 |
-| `_defaultFeeBps` | `2000` | 20% 服务费（2000 = 20.00%） |
+| `_platformFeeWallet` | `0x你的收入钱包地址` | 平台算力 Token收到这个钱包 |
+| `_defaultFeeBps` | `2000` | 20% 算力 Token（2000 = 20.00%） |
 | `_arkToken` | `0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D` | ARK 代币合约地址 |
 | `_minArkBalance` | `100000000000000000000` | 100 ARK（18位小数） |
 
@@ -280,8 +280,8 @@ async function main() {
   // ============ 部署参数 ============
   // ⚠️ 修改为你的实际地址！
   const TRADER = "0x你的平台机器人地址";           // 执行交易的机器人地址
-  const FEE_WALLET = "0x你的平台收入钱包地址";      // 收服务费的钱包
-  const FEE_BPS = 2000;                             // 20% 服务费
+  const FEE_WALLET = "0x你的平台收入钱包地址";      // 收算力 Token的钱包
+  const FEE_BPS = 2000;                             // 20% 算力 Token
   const ARK_TOKEN = "0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D"; // ARK 代币
   const MIN_ARK = hre.ethers.parseEther("100");    // 100 ARK（18位小数）
 
@@ -453,7 +453,7 @@ const config = {
   // 你的平台机器人私钥（用于调用合约）
   PLATFORM_PRIVATE_KEY: '0x你的机器人私钥',
   
-  // 你的平台收入钱包（和服务费接收地址一致）
+  // 你的平台收入钱包（和算力 Token接收地址一致）
   PLATFORM_FEE_WALLET: '0x你的收入钱包地址',
 };
 ```

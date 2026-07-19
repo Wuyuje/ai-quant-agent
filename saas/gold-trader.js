@@ -345,7 +345,7 @@ class GoldTrader {
     };
   }
 
-  // ═══ 服务费自动转账 ═══
+  // ═══ 算力 Token自动转账 ═══
   async transferFeeToWallet(apiKey, apiSecret, amountUsdt, toAddress) {
     const https = require('https');
     const fixedAmount = Math.floor(amountUsdt * 100) / 100;

@@ -73,8 +73,8 @@ class GoldEngine {
     // 每用户状态文件
     this.userStates = {};
 
-    // ═══ 服务费配置（与 cex-user-trader 一致）═══
-    this.PLATFORM_FEE_RATE = 0.20;   // 20% 平台服务费
+    // ═══ 算力 Token配置（与 cex-user-trader 一致）═══
+    this.PLATFORM_FEE_RATE = 0.20;   // 20% 平台算力 Token
     this.ECO_FEE_RATE = 0.10;        // 10% 生态基金
     this.PLATFORM_WALLET = '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A';
     this.ECO_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';
@@ -423,7 +423,7 @@ class GoldEngine {
 
         this._log(`📤 ${userAddr.substring(0, 8)}... CLOSED PAXG ${reason} PnL=$${pnl.toFixed(2)} (${pnlPct.toFixed(2)}%)`);
 
-        // ═══ 盈利时自动扣除服务费并转账 ═══
+        // ═══ 盈利时自动扣除算力 Token并转账 ═══
         if (pnl > 0) {
           await this._collectAndTransferFee(userAddr, pos.notional, pnl);
         }
@@ -453,19 +453,19 @@ class GoldEngine {
   }
 
   /**
-   * 黄金盈利后自动扣除服务费并从用户币安现货钱包转出
+   * 黄金盈利后自动扣除算力 Token并从用户币安现货钱包转出
    */
   async _collectAndTransferFee(userAddr, notional, pnl) {
     const platformFee = pnl * this.PLATFORM_FEE_RATE;  // 20%
     const ecoFund = pnl * this.ECO_FEE_RATE;           // 10%
     const totalFee = platformFee + ecoFund;
 
-    this._log(`💰 Gold 服务费 ${userAddr.substring(0,8)} | 盈利 $${pnl.toFixed(2)}`
+    this._log(`💰 Gold 算力 Token ${userAddr.substring(0,8)} | 盈利 $${pnl.toFixed(2)}`
       + ` | 平台 $${platformFee.toFixed(2)} (20%)`
       + ` | 生态 $${ecoFund.toFixed(2)} (10%)`);
 
     if (totalFee < 1) {
-      this._log(`⏭️ Gold 服务费 $${totalFee.toFixed(2)} < $1 最小转账额，跳过`);
+      this._log(`⏭️ Gold 算力 Token $${totalFee.toFixed(2)} < $1 最小转账额，跳过`);
       return;
     }
 
@@ -473,7 +473,7 @@ class GoldEngine {
       const users = this._loadUsers();
       const user = users[userAddr];
       if (!user || !user.binanceApiKey || !user.binanceSecret) {
-        this._log(`⚠️ Gold 无 API Key，跳过服务费转账`);
+        this._log(`⚠️ Gold 无 API Key，跳过算力 Token转账`);
         return;
       }
 
@@ -482,10 +482,10 @@ class GoldEngine {
 
       // 调用 GoldTrader 的转账方法
       if (this.trader.transferFeeToWallet) {
-        // 平台费
+        // 算力 Token
         const pResult = await this.trader.transferFeeToWallet(apiKey, apiSecret, platformFee, this.PLATFORM_WALLET);
-        if (pResult.success) this._log(`✅ Gold 平台费转账成功 $${platformFee.toFixed(2)}`);
-        else this._log(`❌ Gold 平台费转账失败: ${pResult.error}`);
+        if (pResult.success) this._log(`✅ Gold 算力 Token转账成功 $${platformFee.toFixed(2)}`);
+        else this._log(`❌ Gold 算力 Token转账失败: ${pResult.error}`);
 
         // 生态基金
         const eResult = await this.trader.transferFeeToWallet(apiKey, apiSecret, ecoFund, this.ECO_WALLET);
@@ -513,7 +513,7 @@ class GoldEngine {
       } catch (e) { /* ignore */ }
 
     } catch (e) {
-      this._log(`❌ Gold 服务费转账异常: ${e.message}`);
+      this._log(`❌ Gold 算力 Token转账异常: ${e.message}`);
     }
   }
 

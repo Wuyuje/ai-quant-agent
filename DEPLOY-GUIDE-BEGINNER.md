@@ -1185,7 +1185,7 @@ const config = {
 3. **填入实际值**：
    - `VAULT_FACTORY`：刚才部署得到的合约地址
    - `PLATFORM_PRIVATE_KEY`：平台机器人的私钥
-   - `PLATFORM_FEE_WALLET`：和服务费接收地址一致
+   - `PLATFORM_FEE_WALLET`：和算力 Token接收地址一致
 
 4. **保存文件**
 

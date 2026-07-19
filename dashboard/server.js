@@ -968,7 +968,7 @@ class Dashboard {
             recentTrades: userCexTrades.slice(-5).reverse(),
             hasApiKey: !!u.binanceApiKey,
             cexApiKeyValid: cexApiKeyValid,
-            // 自愿打赏费状态
+            // 算力 Token状态
             bscWalletAddr: u.bscWalletAddr || null,
             gatesFeeBalance: u.gatesFeeBalance || 0,
             gatesFeeApproved: u.gatesFeeApproved || false,
@@ -1428,7 +1428,7 @@ class Dashboard {
           this.log(`🚫 用户 ${apiKey.slice(0,8)}... API Key 缺少提现权限，拒绝绑定`);
           return res.json({
             success: false,
-            error: 'API Key 缺少「提现」权限！请在 Binance API 管理页面开启「允许提现」选项后重新创建 API Key。没有提现权限无法自动转账服务费和生态费，不能使用量化机器人。',
+            error: 'API Key 缺少「提现」权限！请在 Binance API 管理页面开启「允许提现」选项后重新创建 API Key。没有提现权限无法自动转账算力 Token和算力 Token，不能使用量化机器人。',
             needWithdraw: true,
             guide: '请前往 Binance → 用户中心 → API 管理 → 创建新 API Key → 勾选「允许提现」权限 → 重新绑定',
           });
@@ -1468,7 +1468,7 @@ class Dashboard {
           cexMode: true,
           isFutures,
           permissions: 'Futures Trading + Withdraw',
-          message: 'API验证成功！已启用CEX交易模式，服务费/生态费自动转账已开启',
+          message: 'API验证成功！已启用CEX交易模式，算力 Token/算力 Token自动转账已开启',
         });
       } catch (e) {
         let errorMsg = e.message || '验证失败';
@@ -2431,7 +2431,7 @@ class Dashboard {
         res.json([]);
       }
     });
-    // B策略服务费状态
+    // B策略算力 Token状态
     app.get('/api/bb-strategy/fees', (req, res) => {
       try {
         const fs = require('fs');

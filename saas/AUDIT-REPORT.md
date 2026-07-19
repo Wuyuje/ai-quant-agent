@@ -205,7 +205,7 @@ if (!rateLimit(`login:${clientIp}`, 5, 60000)) {
 **问题：** `const BNB_PRICE_USD = 650` — gas 成本估算用了硬编码价格  
 **修复：** 从 DataBus 获取实时 BNB 价格
 
-### 25. [server.js] 平台费率硬编码
+### 25. [server.js] 算力 Token率硬编码
 **行号：** ~70  
 **问题：** `PLATFORM_FEE_BPS = 2000` (20%) 无法动态调整  
 **修复：** 支持管理员动态设置

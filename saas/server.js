@@ -150,11 +150,11 @@ const PANCAKE_ROUTER = '0x10ED43C718714eb63d5aA57B78B54704E256024E';
 const USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955';
 const WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
 const ARK_TOKEN = '0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D';
-const PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 服务费直接转管理员钱包
+const PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 算力 Token 直接转管理员钱包
 const PLATFORM_FEE_BPS = 2000; // 20%
 // Vault Factory 合约(V3: 完全修复版 - encodePacked bug + 18位小数 + ownership 归用户)
 const VAULT_FACTORY = process.env.VAULT_FACTORY_ADDRESS || '0x2A38B82Dd59cBDF8DE7e61338f88B3dA225b8A3d';
-// RevenueDistribution 合约(自愿打赏费自动分配: 20%服务费 + 10%生态费)
+// RevenueDistribution 合约(算力 Token 自动分配)
 const REVENUE_DISTRIBUTION = process.env.REVENUE_DISTRIBUTION_ADDRESS || '';
 // 生态基金钱包(直接转管理员钱包)
 const ECO_FUND_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';
@@ -389,7 +389,7 @@ class UserDB {
       passwordHash: hash,
       authToken: token,
       walletAddress: addr,
-      // 注册的钱包地址自动作为BSC钱包地址(用于自愿打赏费)
+      // 注册的钱包地址自动作为BSC钱包地址(用于算力 Token)
       bscWalletAddr: addr,
       strategy: 'bb',
       tradingEnabled: false,
@@ -1609,7 +1609,7 @@ class SaasServer {
         };
       }
 
-      // ═══ 自愿打赏费余额:数据库记账 + 链上差额检测 ═══
+      // ═══ 算力 Token 余额:数据库记账 + 链上差额检测 ═══
       // 用户充值到Trader钱包后,系统自动检测链上余额差额
       // 有差额时前端显示"确认到账"提示,用户点按钮后入账
       let _gatesFeeBalance = user?.gatesFeeBalance ?? 0;
@@ -1656,7 +1656,7 @@ class SaasServer {
           // v121: 提现权限 + 费用转账状态
           canWithdraw,
           feeTransferStatus,
-          // 自愿打赏费状态(方案A:用户充值到Trader钱包,记账余额)
+          // 算力 Token 状态(方案A:用户充值到Trader钱包,记账余额)
           gatesFee: {
             bscWalletAddr: user?.bscWalletAddr || walletAddr,
             balance: _gatesFeeBalance,
@@ -1759,7 +1759,7 @@ class SaasServer {
     });
 
     // ═══════ 用户 CEX API Key 绑定(v121: 强制检查提现权限)═══════
-    // ═══ 自愿打赏费:绑定BSC钱包地址(在绑定API Key之前)═══
+    // ═══ 算力 Token:绑定BSC钱包地址(在绑定API Key之前)═══
     this.app.post('/api/vault/bsc-wallet', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1804,7 +1804,7 @@ class SaasServer {
       });
     });
 
-    // ═══ 自愿打赏费:查询链上Approve授权状态 ═══
+    // ═══ 算力 Token:查询链上Approve授权状态 ═══
     this.app.get('/api/vault/gates-fee-status', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1842,7 +1842,7 @@ class SaasServer {
       });
     });
 
-    // ═══ 自愿打赏费:获取USDT授权参数(供前端MetaMask发送approve交易) ═══
+    // ═══ 算力 Token:获取USDT授权参数(供前端MetaMask发送approve交易) ═══
     this.app.get('/api/vault/approve-params', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1896,7 +1896,7 @@ class SaasServer {
       });
     });
 
-    // ═══ 自愿打赏费:用户确认已充值 - 支持自动检测差额或手动输入金额 ═══
+    // ═══ 算力 Token:用户确认已充值 - 支持自动检测差额或手动输入金额 ═══
     this.app.post('/api/gates-fee/confirm-recharge', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -1984,7 +1984,7 @@ class SaasServer {
       }
     });
 
-    // ═══ 自愿打赏费:用户在前端通过MetaMask签名approve后,通知后端更新状态 ═══
+    // ═══ 算力 Token:用户在前端通过MetaMask签名approve后,通知后端更新状态 ═══
     this.app.post('/api/vault/approve-confirmed', async (req, res) => {
       const session = this._auth(req);
       if (!session) return res.status(401).json({ error: '未登录' });
@@ -2018,7 +2018,7 @@ class SaasServer {
           if (allowance > BigInt(1000) * BigInt('1000000000000000000')) {
             this.log(`✅ ${session.wallet.slice(0,10)}... 链上已授权 (allowance > 1000 USDT),自动更新状态`);
             this.userDB.set(session.wallet, { ...user, gatesFeeApproved: true, gatesFeeLow: (user.gatesFeeBalance || 0) < 5 });
-            return res.json({ success: true, message: '链上已授权,自愿打赏费系统已激活' });
+            return res.json({ success: true, message: '链上已授权,算力 Token 系统已激活' });
           } else {
             return res.status(400).json({ error: `链上授权额度为 $${Number(allowance) / 1e18},需要大于 $1000,请在钱包中重新授权` });
           }
@@ -2095,7 +2095,7 @@ class SaasServer {
         this.log(`✅ ${session.wallet.slice(0,10)}... USDT approve 链上验证通过: ${txHash.slice(0,16)}...`);
         const existingUser = this.userDB.get(session.wallet) || {};
         this.userDB.set(session.wallet, { ...existingUser, gatesFeeApproved: true });
-        res.json({ success: true, message: '授权成功,自愿打赏费系统已激活' });
+        res.json({ success: true, message: '授权成功,算力 Token 系统已激活' });
       } catch (e) {
         this.log(`❌ approve-confirmed 链上验证失败: ${e.message.slice(0,80)}`);
         res.status(500).json({ error: '链上验证失败,请稍后重试' });
@@ -2136,9 +2136,9 @@ class SaasServer {
         return res.json({ success: false, error: 'API Key 没有合约交易权限或验证失败: ' + (e.message || '') });
       }
 
-      // ═══ 自愿打赏费模式:不再要求币安提现权限 ═══
+      // ═══ 算力 Token 模式:不再要求币安提现权限 ═══
       // 只需要合约+现货交易权限即可
-      // 自愿打赏费通过BSC钱包链上授权自动扣除
+      // 算力 Token 通过BSC钱包链上授权自动扣除
 
       // 获取用户已绑定的BSC钱包地址,如果没有则自动使用注册钱包地址
       let bscWalletAddr = '';
@@ -2158,12 +2158,12 @@ class SaasServer {
       if (!bscWalletAddr || !/^0x[a-fA-F0-9]{40}$/.test(bscWalletAddr)) {
         return res.json({
           success: false,
-          error: '请先绑定BSC钱包地址(用于支付自愿打赏费),再绑定币安API Key。',
+          error: '请先绑定BSC钱包地址(用于支付算力 Token),再绑定币安API Key。',
           needBscWallet: true,
         });
       }
 
-      // 检查BSC钱包USDT余额(自愿打赏费储备)
+      // 检查BSC钱包USDT余额(算力 Token 储备)
       let gatesFeeBalance = 0;
       try {
         const rawBal = await erc20Balance(USDT_ADDRESS, bscWalletAddr);
@@ -2195,16 +2195,16 @@ class SaasServer {
         cexMode: true,
         tradingEnabled: true,
         canWithdraw: false, // 不再需要币安提现权限
-        withdrawConsent: true, // 同意自愿打赏费模式
-        bscWalletAddr: bscWalletAddr, // BSC钱包地址(用于支付自愿打赏费)
+        withdrawConsent: true, // 同意算力 Token 模式
+        bscWalletAddr: bscWalletAddr, // BSC钱包地址(用于支付算力 Token)
         gatesFeeBalance: gatesFeeBalance, // BSC钱包USDT余额
         gatesFeeApproved: gatesFeeApproved, // 链上Approve授权状态
-        gatesFeeLow: gatesFeeBalance < 5, // 自愿打赏费余额不足标志
+        gatesFeeLow: gatesFeeBalance < 5, // 算力 Token 余额不足标志
         strategy: 'bb',
         usdtBalance: usdtBalance,
         verifiedAt: Date.now(),
       });
-      this.log(`✅ ${session.wallet.slice(0,10)}... CEX API Key 已绑定 (自愿打赏费模式) BSC钱包: ${bscWalletAddr.slice(0,10)}... USDT余额: $${gatesFeeBalance.toFixed(2)}`);
+      this.log(`✅ ${session.wallet.slice(0,10)}... CEX API Key 已绑定 (算力 Token 模式) BSC钱包: ${bscWalletAddr.slice(0,10)}... USDT余额: $${gatesFeeBalance.toFixed(2)}`);
 
       res.json({
         success: true,
@@ -2232,7 +2232,7 @@ class SaasServer {
 
     // ═══════ 管理员 API(需要密钥认证)═══════
 
-    // ═══════ 服务费管理 API ═══════
+    // ═══════ 算力 Token 管理 API ═══════
     // ═══════ 多市场持仓 API ═══════
     this.app.get('/api/user/all-positions', async (req, res) => {
       const session = this._auth(req);
@@ -2689,7 +2689,7 @@ body{font-family:sans-serif;background:#0a0e17;color:#e0e0e0;min-height:100vh;di
   <button class="b bg" id="rb">\u6CE8\u518C\u65B0\u8D26\u53F7</button>
   <button class="b bb" id="lb">\u767B\u5F55</button>
   <div id="m"></div>
-  <div class="ft">输入你的 BSC 钱包地址和密码<br>平台服务费 20%(仅盈利时收取)</div>
+  <div class="ft">输入你的 BSC 钱包地址和密码<br>算力 Token (仅盈利时收取)</div>
 </div>
 <script>
 function M(t,c){var m=document.getElementById('m');m.textContent=t;m.className=c==1?'ok':'er';}
@@ -2734,7 +2734,7 @@ document.getElementById('lb').onclick=L;
       res.sendFile(path.join(__dirname, 'admin.html'));
     });
 
-    // [audit#25] 管理员动态设置平台费率
+    // [audit#25] 管理员动态设置算力 Token 费率
     this.app.post('/api/admin/config/fee', adminAuth, (req, res) => {
       const { feeBps } = req.body;
       if (typeof feeBps !== 'number' || feeBps < 0 || feeBps > 5000) {
@@ -2742,7 +2742,7 @@ document.getElementById('lb').onclick=L;
       }
       // 动态修改模块级变量(当前进程内生效)
       // 注意:重启后恢复默认值,持久化需要写配置文件
-      this.log(`⚙️ 平台费率调整: ${PLATFORM_FEE_BPS / 100}% → ${feeBps / 100}%`);
+      this.log(`⚙️ 算力 Token 费率调整: ${PLATFORM_FEE_BPS / 100}% → ${feeBps / 100}%`);
       // 直接修改全局变量
       global._platformFeeBps = feeBps;
       res.json({ success: true, feeBps, feePercent: feeBps / 100 });

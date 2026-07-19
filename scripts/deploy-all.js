@@ -7,7 +7,7 @@
  *  执行流程：
  *    1. 检查部署者钱包余额
  *    2. 部署 AgentVaultFactoryV2（新版本，含 RevenueDistribution 集成）
- *    3. 部署 RevenueDistribution（自愿打赏费自动分配合约）
+ *    3. 部署 RevenueDistribution（算力 Token自动分配合约）
  *    4. Factory.setRevenueDistributor(revenueAddr) 关联两个合约
  *    5. RevenueDistribution.approveVaults() 授权所有用户 Vault
  *    6. 为所有没有 Vault 的用户 deployVault
@@ -34,8 +34,8 @@ const CHAIN_ID = 56;
 
 // 钱包地址（从系统现有配置中确认）
 const TRADER_WALLET     = '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';  // 平台执行器
-const PLATFORM_WALLET   = '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A';  // 服务费 20%
-const ECO_FUND_WALLET   = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';  // 生态费 10%
+const PLATFORM_WALLET   = '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A';  // 算力 Token 20%
+const ECO_FUND_WALLET   = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';  // 算力 Token 10%
 const PLATFORM_FEE_BPS  = 2000;  // 20%
 const USDT_ADDRESS      = '0x55d398326f99059fF775485246999027B3197955';
 
@@ -317,9 +317,9 @@ async function main() {
     },
 
     feeConfig: {
-      gatesFeeBps: 3000,       // 30% 自愿打赏费
-      platformFeeBps: 2000,    // 20% 服务费
-      ecoFundBps: 1000,        // 10% 生态费
+      gatesFeeBps: 3000,       // 30% 算力 Token
+      platformFeeBps: 2000,    // 20% 算力 Token
+      ecoFundBps: 1000,        // 10% 算力 Token
       userShareBps: 7000,      // 70% 用户实得
     },
 
@@ -352,10 +352,10 @@ async function main() {
   for (const v of allVaults) {
     console.log(`  ${v.user.slice(0,10)}... → ${v.vault}`);
   }
-  console.log(`\n自愿打赏费分配:`);
-  console.log(`  盈利 × 30% = 自愿打赏费`);
-  console.log(`    20% 服务费 → ${PLATFORM_WALLET}`);
-  console.log(`    10% 生态费 → ${ECO_FUND_WALLET}`);
+  console.log(`\n算力 Token分配:`);
+  console.log(`  盈利 × 30% = 算力 Token`);
+  console.log(`    20% 算力 Token → ${PLATFORM_WALLET}`);
+  console.log(`    10% 算力 Token → ${ECO_FUND_WALLET}`);
   console.log(`    70% 用户实得`);
   console.log(`\n下一步: 在云端服务器上启动 node saas/start.js`);
 }

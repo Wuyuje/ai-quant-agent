@@ -38,7 +38,7 @@ const PLATFORM_CONFIG = {
   platformWallet: '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A',  // 平台收入钱包
   arkTokenContract: '0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D', // ARK 合约
   arkMinBalance: 100,           // 最低 ARK 持仓门槛
-  platformFeePct: 20,           // 平台服务费 20%
+  platformFeePct: 20,           // 平台算力 Token 20%
   userSharePct: 70,             // 用户收益 70%
   ecoFundPct: 10,               // 生态基金 10%（策略进化 + ARK 回购）
 };

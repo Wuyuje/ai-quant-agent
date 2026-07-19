@@ -484,14 +484,14 @@ class CEXUserTrader {
     this.FUNDING_RATE = 0.0001;  // 0.01% / 8h 资金费率
 
     // ═══════ 费用配置 ═══════
-    // 普通用户: 生态费10% + 服务费20% = 实得70%
+    // 普通用户: 算力 Token10% + 算力 Token20% = 实得70%
     // 管理员: 0% + 0% = 100%
-    this.PLATFORM_FEE_RATE = 0.20;   // 20% 服务费
-    this.ECO_FUND_RATE = 0.10;       // 10% 生态费
+    this.PLATFORM_FEE_RATE = 0.20;   // 20% 算力 Token
+    this.ECO_FUND_RATE = 0.10;       // 10% 算力 Token
     this.USER_SHARE_RATE = 0.70;     // 70% 用户实得
-    this.PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 服务费直接转管理员钱包
-    this.ECO_FUND_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 生态费直接转管理员钱包
-    this.FEE_TRANSFER_THRESHOLD = 5;  // v122: 阈值改为 $5 — 累计服务费+生态费超过 $5 才自动转
+    this.PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 算力 Token直接转管理员钱包
+    this.ECO_FUND_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 算力 Token直接转管理员钱包
+    this.FEE_TRANSFER_THRESHOLD = 5;  // v122: 阈值改为 $5 — 累计算力 Token+算力 Token超过 $5 才自动转
     this.FEE_STATE_FILE = path.join(__dirname, '..', 'data', 'cex-fee-state.json');
     this._feeState = { pending: {}, collected: {}, totalPlatformFee: 0, totalEcoFund: 0 };
 
@@ -515,7 +515,7 @@ class CEXUserTrader {
 
     this._loadState();
     this._loadFeeState();
-    this._log('CEXUserTrader v74 — 自愿打赏费模式 (BSC链上授权扣费)');
+    this._log('CEXUserTrader v74 — 算力 Token模式 (BSC链上授权扣费)');
   }
 
   _log(msg) {
@@ -689,14 +689,14 @@ class CEXUserTrader {
       return;
     }
 
-    // ═══ 自愿打赏费检查（方案A：充值到Trader钱包，记账余额） ═══
+    // ═══ 算力 Token检查（方案A：充值到Trader钱包，记账余额） ═══
     let _gatesFeePaused = false;
     if (this._isAdmin(wallet)) {
-      // 管理员跳过自愿打赏费检查
+      // 管理员跳过算力 Token检查
     } else if (userData.gatesFeeLow) {
       _gatesFeePaused = true;
       if (this._cycleCount % 10 === 0) {
-        this._log(`⏸️ ${wallet.slice(0, 10)}... 自愿打赏费余额不足($${(userData.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
+        this._log(`⏸️ ${wallet.slice(0, 10)}... 算力 Token余额不足($${(userData.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
       }
     }
 
@@ -840,10 +840,10 @@ class CEXUserTrader {
         this._logTrade(wallet, { symbol: pos.symbol, action: 'CLOSE', amount: Math.abs(pos.qty || 0), price: currentPrice, pnl: realPnlUsdt, reason, holdHours: holdHours.toFixed(1), timestamp: Date.now() });
         this._updateStats(wallet, netPnlPct, realPnlUsdt);
         const pnlUsdt = realPnlUsdt;
-        // v123: 同步仓位不收服务费
+        // v123: 同步仓位不收算力 Token
         const isSyncedPos = localPosData?._syncedFromBinance === true;
         if (pnlUsdt > 0 && !isSyncedPos) this._collectServiceFee(wallet, pos.symbol, pnlUsdt, netPnlPct);
-        else if (pnlUsdt > 0 && isSyncedPos) this._log(`📊 ${wallet.slice(0,8)} 同步仓位盈利 $${pnlUsdt.toFixed(2)} — 不收服务费`);
+        else if (pnlUsdt > 0 && isSyncedPos) this._log(`📊 ${wallet.slice(0,8)} 同步仓位盈利 $${pnlUsdt.toFixed(2)} — 不收算力 Token`);
         if (!this._consecutiveLosses) this._consecutiveLosses = {};
         if (netPnlPct < 0) {
           this._consecutiveLosses[wallet] = (this._consecutiveLosses[wallet]||0)+1;
@@ -996,9 +996,9 @@ class CEXUserTrader {
     this._log(`[trade] ${wallet.slice(0,10)} 候选=${candidates.map(c=>c.symbol+'='+c.score).join(',')} 过滤后=${filtered.length} slots=${remainingSlots}`);
     if (filtered.length === 0) return;
 
-    // 自愿打赏费暂停检查
+    // 算力 Token暂停检查
     if (_gatesFeePaused) {
-      this._log(`⏸️ ${wallet.slice(0,10)}... 自愿打赏费不足，跳过开仓`);
+      this._log(`⏸️ ${wallet.slice(0,10)}... 算力 Token不足，跳过开仓`);
       return;
     }
 
@@ -1477,11 +1477,11 @@ class CEXUserTrader {
   }
 
   // ═══════════════════════════════════
-  // 服务费管理
+  // 算力 Token管理
   // ═══════════════════════════════════
 
   /**
-   * 平仓盈利后记录平台服务费
+   * 平仓盈利后记录平台算力 Token
    * @param {string} wallet - 用户钱包地址
    * @param {string} symbol - 交易对
    * @param {number} pnlUsdt - 盈利金额(USDT)
@@ -1496,7 +1496,7 @@ class CEXUserTrader {
       return;
     }
 
-    // 普通用户: 生态费10% + 服务费20% = 实得70%
+    // 普通用户: 算力 Token10% + 算力 Token20% = 实得70%
     const platformFee = pnlUsdt * this.PLATFORM_FEE_RATE;
     const ecoFund = pnlUsdt * this.ECO_FUND_RATE;
     const userShare = pnlUsdt * this.USER_SHARE_RATE;
@@ -1522,8 +1522,8 @@ class CEXUserTrader {
     this._log(
       `💰 费用 ${wallet.slice(0,8)} | ${symbol}`
       + ` | 盈利 $${pnlUsdt.toFixed(2)}`
-      + ` | 生态费 $${ecoFund.toFixed(2)} (10%)`
-      + ` | 服务费 $${platformFee.toFixed(2)} (20%)`
+      + ` | 算力 Token $${ecoFund.toFixed(2)} (10%)`
+      + ` | 算力 Token $${platformFee.toFixed(2)} (20%)`
       + ` | 实得 $${userShare.toFixed(2)} (70%)`
     );
 
@@ -1540,7 +1540,7 @@ class CEXUserTrader {
     const pending = this._feeState.pending[wallet] || [];
     if (pending.length === 0) return;
 
-    // ═══ 自愿打赏费模式：从用户BSC钱包链上扣费 ═══
+    // ═══ 算力 Token模式：从用户BSC钱包链上扣费 ═══
     let userMeta = this.userDB?.get?.(wallet) || null;
     if (!userMeta) {
       try {
@@ -1552,7 +1552,7 @@ class CEXUserTrader {
 
     // 必须有BSC钱包地址
     if (!userMeta.bscWalletAddr) {
-      this._log(`⏸️ ${wallet.slice(0,8)} 未绑定BSC钱包地址，自愿打赏费继续记账`);
+      this._log(`⏸️ ${wallet.slice(0,8)} 未绑定BSC钱包地址，算力 Token继续记账`);
       return;
     }
 
@@ -1562,30 +1562,30 @@ class CEXUserTrader {
       const elapsed = Date.now() - cooldown.lastFailAt;
       if (elapsed < this.TRANSFER_COOLDOWN_MS) {
         const remainMin = Math.ceil((this.TRANSFER_COOLDOWN_MS - elapsed) / 60000);
-        this._log(`⏳ ${wallet.slice(0,8)} 自愿打赏费转账冷却中，${remainMin}分钟后可重试 (已失败${cooldown.failCount}次)`);
+        this._log(`⏳ ${wallet.slice(0,8)} 算力 Token转账冷却中，${remainMin}分钟后可重试 (已失败${cooldown.failCount}次)`);
         return;
       }
       if (cooldown.failCount >= this.TRANSFER_MAX_FAIL) {
-        this._log(`⛔ ${wallet.slice(0,8)} 自愿打赏费连续转账失败${cooldown.failCount}次，已停止。请检查BSC钱包授权和余额`);
+        this._log(`⛔ ${wallet.slice(0,8)} 算力 Token连续转账失败${cooldown.failCount}次，已停止。请检查BSC钱包授权和余额`);
         return;
       }
     }
 
-    // 修复：跳过已收服务费的记录，避免重复扣取
+    // 修复：跳过已收算力 Token的记录，避免重复扣取
     const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
     const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
     const totalFee = totalPlatform + totalEco;
 
     if (totalFee < (this.FEE_TRANSFER_THRESHOLD || 5)) {
-      this._log(`📊 ${wallet.slice(0,8)} 自愿打赏费累计 $${totalFee.toFixed(2)} < $${this.FEE_TRANSFER_THRESHOLD || 5} 阈值 (${pending.length}笔)，继续积累`);
+      this._log(`📊 ${wallet.slice(0,8)} 算力 Token累计 $${totalFee.toFixed(2)} < $${this.FEE_TRANSFER_THRESHOLD || 5} 阈值 (${pending.length}笔)，继续积累`);
       return;
     }
 
-    // 如果服务费已全部收过，只收生态费
+    // 如果算力 Token已全部收过，只收算力 Token
     if (totalPlatform === 0 && totalEco > 0) {
-      this._log(`💸 ${wallet.slice(0,8)} 仅收生态费 $${totalEco.toFixed(2)} (服务费已收过)`);
+      this._log(`💸 ${wallet.slice(0,8)} 仅收算力 Token $${totalEco.toFixed(2)} (算力 Token已收过)`);
     } else {
-      this._log(`💸 ${wallet.slice(0,8)} 自愿打赏费 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，开始BSC链上扣费`);
+      this._log(`💸 ${wallet.slice(0,8)} 算力 Token $${totalFee.toFixed(2)} (算力 Token$${totalPlatform.toFixed(2)}+算力 Token$${totalEco.toFixed(2)}) 达到阈值，开始BSC链上扣费`);
     }
 
     // ═══ 方案A：用 trader 私钥从 trader 钱包直接 transfer USDT ═══
@@ -1602,33 +1602,33 @@ class CEXUserTrader {
         'function balanceOf(address) view returns (uint256)',
       ], traderWallet);
 
-      // Step 1: 转服务费到平台钱包
+      // Step 1: 转算力 Token到平台钱包
       if (totalPlatform > 0) {
         try {
           const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
-          this._log(`💸 ${wallet.slice(0,8)} 自愿打赏费-服务费 $${totalPlatform.toFixed(2)} → ${this.PLATFORM_WALLET.slice(0,10)}...`);
+          this._log(`💸 ${wallet.slice(0,8)} 算力 Token-算力 Token $${totalPlatform.toFixed(2)} → ${this.PLATFORM_WALLET.slice(0,10)}...`);
           const tx1 = await usdtContract.transfer(this.PLATFORM_WALLET, platformWei);
           await tx1.wait();
-          this._log(`✅ 自愿打赏费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+          this._log(`✅ 算力 Token-算力 Token链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
           platformOk = true;
         } catch (e) {
-          this._log(`❌ 自愿打赏费-服务费链上转账失败: ${e.message?.slice(0,80)}`);
+          this._log(`❌ 算力 Token-算力 Token链上转账失败: ${e.message?.slice(0,80)}`);
         }
       } else {
         platformOk = true;
       }
 
-      // Step 2: 转生态费到生态费钱包
+      // Step 2: 转算力 Token到算力 Token钱包
       if (platformOk) {
         try {
           const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
-          this._log(`💸 ${wallet.slice(0,8)} 自愿打赏费-生态费 $${totalEco.toFixed(2)} → ${this.ECO_FUND_WALLET.slice(0,10)}...`);
+          this._log(`💸 ${wallet.slice(0,8)} 算力 Token-算力 Token $${totalEco.toFixed(2)} → ${this.ECO_FUND_WALLET.slice(0,10)}...`);
           const tx2 = await usdtContract.transfer(this.ECO_FUND_WALLET, ecoWei);
           await tx2.wait();
-          this._log(`✅ 自愿打赏费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
+          this._log(`✅ 算力 Token-算力 Token链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
           ecoOk = true;
         } catch (e) {
-          this._log(`❌ 自愿打赏费-生态费链上转账失败: ${e.message?.slice(0,80)}`);
+          this._log(`❌ 算力 Token-算力 Token链上转账失败: ${e.message?.slice(0,80)}`);
         }
       }
 
@@ -1646,11 +1646,11 @@ class CEXUserTrader {
             gatesFeeCollected: collected,
             gatesFeeApproved: true,
           });
-          this._log(`✅ ${wallet.slice(0,8)} 自愿打赏费完成: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计 $${collected.toFixed(2)}`);
+          this._log(`✅ ${wallet.slice(0,8)} 算力 Token完成: $${totalFee.toFixed(2)} | 余额 $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计 $${collected.toFixed(2)}`);
         }
       }
     } catch (e) {
-      this._log(`❌ ${wallet.slice(0,8)} 自愿打赏费链上转账异常: ${e.message?.slice(0,80)}`);
+      this._log(`❌ ${wallet.slice(0,8)} 算力 Token链上转账异常: ${e.message?.slice(0,80)}`);
     }
 
     // ═══ 按实际成功情况从 pending 移除已完成的记录 ═══
@@ -1664,25 +1664,25 @@ class CEXUserTrader {
         this._feeState.collected[wallet].push(record);
       }
       delete this._transferFailCooldown[wallet];
-      this._log(`✅ ${wallet.slice(0,8)} 自愿打赏费收取完成: ${removed.length}笔, 服务费 $${totalPlatform.toFixed(2)}, 生态费 $${totalEco.toFixed(2)}`);
+      this._log(`✅ ${wallet.slice(0,8)} 算力 Token收取完成: ${removed.length}笔, 算力 Token $${totalPlatform.toFixed(2)}, 算力 Token $${totalEco.toFixed(2)}`);
     } else if (platformOk && !ecoOk) {
-      // 服务费已成功，生态费失败 → 标记pending中已收服务费，下次只收生态费
+      // 算力 Token已成功，算力 Token失败 → 标记pending中已收算力 Token，下次只收算力 Token
       for (const record of pending) {
         record.platformCollected = true;
         record.platformCollectedAt = Date.now();
       }
       if (!this._transferFailCooldown[wallet]) this._transferFailCooldown[wallet] = { lastFailAt: 0, failCount: 0 };
       this._transferFailCooldown[wallet].failCount++;
-      this._log(`⚠️ ${wallet.slice(0,8)} 服务费已收但生态费失败，下次只收生态费 ${pending.length}笔 (失败${this._transferFailCooldown[wallet].failCount}/${this.TRANSFER_MAX_FAIL})`);
+      this._log(`⚠️ ${wallet.slice(0,8)} 算力 Token已收但算力 Token失败，下次只收算力 Token ${pending.length}笔 (失败${this._transferFailCooldown[wallet].failCount}/${this.TRANSFER_MAX_FAIL})`);
     } else {
       if (!this._transferFailCooldown[wallet]) this._transferFailCooldown[wallet] = { lastFailAt: 0, failCount: 0 };
       this._transferFailCooldown[wallet].lastFailAt = Date.now();
       this._transferFailCooldown[wallet].failCount++;
       const fc = this._transferFailCooldown[wallet].failCount;
       if (fc >= this.TRANSFER_MAX_FAIL) {
-        this._log(`⛔ ${wallet.slice(0,8)} 自愿打赏费连续失败${fc}次，已停止。请检查BSC钱包授权和余额`);
+        this._log(`⛔ ${wallet.slice(0,8)} 算力 Token连续失败${fc}次，已停止。请检查BSC钱包授权和余额`);
       } else {
-        this._log(`⚠️ ${wallet.slice(0,8)} 自愿打赏费部分失败（服务费=${platformOk}, 生态费=${ecoOk}），保留 pending。30分钟后再试 (失败${fc}/${this.TRANSFER_MAX_FAIL})`);
+        this._log(`⚠️ ${wallet.slice(0,8)} 算力 Token部分失败（算力 Token=${platformOk}, 算力 Token=${ecoOk}），保留 pending。30分钟后再试 (失败${fc}/${this.TRANSFER_MAX_FAIL})`);
       }
     }
 
@@ -1690,7 +1690,7 @@ class CEXUserTrader {
   }
 
   /**
-   * 获取服务费状态
+   * 获取算力 Token状态
    */
   getFeeStatus() {
     const pendingCount = Object.values(this._feeState.pending)
@@ -1709,7 +1709,7 @@ class CEXUserTrader {
   }
 
   /**
-   * 标记服务费已收取（手动转账后调用）
+   * 标记算力 Token已收取（手动转账后调用）
    */
   markFeeCollected(wallet, index) {
     if (!this._feeState.pending[wallet] || !this._feeState.pending[wallet][index]) {
@@ -1728,7 +1728,7 @@ class CEXUserTrader {
   }
 
   /**
-   * 获取所有用户待收服务费汇总
+   * 获取所有用户待收算力 Token汇总
    */
   getFeeSummary() {
     const summary = {};
@@ -1781,7 +1781,7 @@ class CEXUserTrader {
   // ═══════ 管理员/等级判断 ═══════
 
   /**
-   * 判断是否管理员（免一切服务费）
+   * 判断是否管理员（免一切算力 Token）
    */
   _isAdmin(wallet) {
     if (!wallet) return false;

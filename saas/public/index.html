@@ -277,7 +277,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:8px">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-          <span style="font-size:.85em;font-weight:700;color:var(--accent)" data-i18n="gates.title">自愿打赏费余额</span>
+          <span style="font-size:.85em;font-weight:700;color:var(--accent)" data-i18n="gates.title">算力 Token 余额</span>
         </div>
         <span id="gatesFeeStatus" style="font-size:.72em;padding:3px 10px;border-radius:12px;font-weight:600">--</span>
       </div>
@@ -311,7 +311,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div id="gatesFeeLowAlert" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.3);border-radius:8px">
         <div style="display:flex;align-items:center;gap:6px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span style="color:var(--red);font-size:.82em;font-weight:600" data-i18n="gates.lowTitle">自愿打赏费余额不足，交易已暂停</span>
+          <span style="color:var(--red);font-size:.82em;font-weight:600" data-i18n="gates.lowTitle">算力 Token 余额不足，交易已暂停</span>
         </div>
         <div style="color:var(--muted);font-size:.75em;margin-top:4px;margin-left:22px" data-i18n="gates.lowDesc">请向以上充值地址转入 USDT (BEP-20)，充值后点击下方按钮确认。</div>
         <button id="confirmRechargeBtn" onclick="confirmRecharge()" style="margin-top:8px;margin-left:22px;padding:8px 20px;border:none;border-radius:8px;background:var(--green);color:#fff;font-size:.78em;font-weight:700;cursor:pointer;transition:all .15s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
@@ -362,7 +362,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="tab-panel" id="panel-api">
     <div class="api-section" style="margin:0">
       <h2 data-i18n="api.title">绑定 Binance API Key</h2>
-      <div class="ad" data-i18n="api.desc">绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。自愿打赏费只在盈利后收取，无盈利不收费。</div>
+      <div class="ad" data-i18n="api.desc">绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。算力 Token 只在盈利后收取，无盈利不收费。</div>
       <div class="api-cards">
         <div class="api-card"><div class="ic">&#128274;</div><div class="tl" data-i18n="api.c1t">仅交易权限</div><div class="ds" data-i18n="api.c1d">无需提现权限</div></div>
         <div class="api-card"><div class="ic">&#129302;</div><div class="tl" data-i18n="api.c2t">AI 7x24 交易</div><div class="ds" data-i18n="api.c2d">自动买卖</div></div>
@@ -485,15 +485,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
 var I18N={
 zh:{lang:'中文',
-  login:{subtitle:'智能量化机器人 · 全自动交易',desc:'AI 实时分析行情，自动买卖赚取收益',fee:'平台服务费 <b>20%</b>（仅盈利时收取）',loginBtn:'登录',divider:'首次使用？',registerBtn:'注册新账号',regOk:'注册成功，已自动登录',loginErr:'登录失败',regErr:'注册失败',fillAll:'请输入地址和密码',addrErr:'地址格式错误'},
+  login:{subtitle:'智能量化机器人 · 全自动交易',desc:'AI 实时分析行情，自动买卖赚取收益',fee:'算力 Token（仅盈利时收取）',loginBtn:'登录',divider:'首次使用？',registerBtn:'注册新账号',regOk:'注册成功，已自动登录',loginErr:'登录失败',regErr:'注册失败',fillAll:'请输入地址和密码',addrErr:'地址格式错误'},
   hdr:{logout:'退出'},st:{trading:'交易',strategy:'策略',api:'API',off:'未启用',running:'运行中'},
   tab:{overview:'总览',markets:'多品种持仓',api:'API 绑定',strategy:'策略',settings:'设置'},
   ov:{totalEquity:'总权益',available:'可用余额',availSub:'可用于开仓',pnl:'累计盈亏',pnlSub:'所有交易合计',trades:'总交易',tradesSub:'所有品种合计'},
   mk:{empty:'暂无持仓，开启交易后 AI 将自动开仓',crypto:'加密货币',gold:'黄金',forex:'外汇',commodities:'商品',bonds:'债券',stocks:'股票',
     noPos:'空仓',entry:'开仓价',mark:'标记价',size:'仓位',lev:'杠杆',pnl:'盈亏'},
   guide:{title:'币安 API Key 创建教程',s1:'打开币安APP（或访问 binance.com）→ 登录账户',s2:'点击右下角「用户中心」（人形图标）→ 向下滑动找到「API管理」',s3:'点击「创建API」→ 选择「系统生成」→ 输入标签名（如：quant）',s4:'权限设置：✅ 勾选「启用交易」  ❌ 不要勾选「启用提现」',s5:'完成安全验证 → 创建成功 → 点击「查看」→ 复制 API Key 和 Secret Key',s6:'回到本页面 → 点击「已有 Key，直接粘贴」→ 粘贴 Key 和 Secret → 点击「验证并绑定」',warn1:'安全提醒：不要勾选提现权限！AI 只需交易权限，不能动用您的资金。',openBinance:'直接打开币安 API 管理页面',tip:'如果无法打开，请使用 VPN 或在币安APP中操作'},
-  api:{title:'绑定 Binance API Key',desc:'绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。自愿打赏费只在盈利后收取，无盈利不收费。',c1t:'仅交易权限',c1d:'无需提现权限',c2t:'AI 7x24 交易',c2d:'自动买卖',c3t:'随时解绑',c3d:'一键停止',goto:'打开币安创建 API Key',paste:'已有 Key，直接粘贴',bind:'验证并绑定',connected:'已绑定 Binance API · CEX 模式已开启',binding:'绑定中...',bindOk:'绑定成功！',bindErr:'绑定失败，请检查 Key'},
-  gates:{title:'自愿打赏费余额',sub:'仅在盈利时自愿打赏，无盈利不收取',normal:'正常',warning:'余额偏低',lowTitle:'自愿打赏费余额不足，已暂停',lowDesc:'请向以上充值地址转入 USDT (BEP-20)，充值后点击下方按钮确认。',confirmBtn:'我已充值，确认到账',needRecharge:'请尽快充值',threshold:'最低阈值',rechargeAddr:'充值地址 (BSC · USDT BEP-20)',copy:'复制',info1:'盈利时主动打赏',info2:'无盈利不收取打赏',info3:'低于 $5 暂停开新仓'},
+  api:{title:'绑定 Binance API Key',desc:'绑定后 AI 自动帮你在币安交易。资金始终在你自己的币安账户。算力 Token 只在盈利后收取，无盈利不收费。',c1t:'仅交易权限',c1d:'无需提现权限',c2t:'AI 7x24 交易',c2d:'自动买卖',c3t:'随时解绑',c3d:'一键停止',goto:'打开币安创建 API Key',paste:'已有 Key，直接粘贴',bind:'验证并绑定',connected:'已绑定 Binance API · CEX 模式已开启',binding:'绑定中...',bindOk:'绑定成功！',bindErr:'绑定失败，请检查 Key'},
+  gates:{title:'算力 Token 余额',sub:'仅在盈利时收取算力 Token，无盈利不收取',normal:'正常',warning:'余额偏低',lowTitle:'算力 Token 余额不足，已暂停',lowDesc:'请向以上充值地址转入 USDT (BEP-20)，充值后点击下方按钮确认。',confirmBtn:'我已充值，确认到账',needRecharge:'请尽快充值',threshold:'最低阈值',rechargeAddr:'充值地址 (BSC · USDT BEP-20)',copy:'复制',info1:'盈利时收取算力 Token',info2:'无盈利不收取',info3:'低于 $5 暂停开新仓'},
   strat:{title:'交易策略',con:'保守',conD:'低风险 稳健',bal:'平衡',balD:'推荐 风险适中',agg:'激进',aggD:'高收益 高风险',pairs:'交易对',winRate:'胜率',maxDD:'最大回撤',holding:'持仓时间',risk:'风险等级',bt:'策略回测',btReturn:'30天收益',btWinRate:'胜率',btTrades:'交易次数',btProfit:'平均盈利',btRun:'运行回测',btRunning:'计算中...'},
   ctrl:{start:'开启交易',stop:'停止交易',refresh:'刷新'},
   set:{title:'交易设置',amount:'投入金额 (USDT)',strategy:'策略',maxSingle:'单笔限额 (USDT)',daily:'日限额 (USDT)',save:'保存',saved:'设置已保存'},
@@ -933,7 +933,7 @@ function saveSettings(){
 async function switchExchangeMode(mode){
   var msg=mode==='dex'
     ? '确认切换到 DEX (PancakeSwap BSC 链上现货)?\n\n• 资金在你的 BSC 钱包，不在币安\n• 只能做多，无杠杆\n• 交易成本较高 (~1% 单边)\n• 需要 BSC 钱包有 USDT 余额'
-    : '确认切换到 CEX (Binance 合约)?\n\n• 资金在你的币安账户\n• 支持杠杆+做空\n• 需要 Binance API Key\n• 自愿打赏费从 BSC 钱包扣';
+    : '确认切换到 CEX (Binance 合约)?\n\n• 资金在你的币安账户\n• 支持杠杆+做空\n• 需要 Binance API Key\n• 算力 Token 从 BSC 钱包扣';
   if(!confirm(msg))return;
   var btnC=document.getElementById('userBtnCEX'),btnD=document.getElementById('userBtnDEX');
   if(btnC)btnC.disabled=true;if(btnD)btnD.disabled=true;
@@ -1144,7 +1144,7 @@ document.getElementById('binanceGuide').addEventListener('click',function(e){if(
   };
 })();
 
-// ═══ 自愿打赏费充值引导（方案A：用户充值到平台钱包） ═══
+// ═══ 算力 Token 充值引导（方案A：用户充值到平台钱包） ═══
 function wfCopyAddr() {
   var addr = document.getElementById('gatesFeeWalletAddr') ? document.getElementById('gatesFeeWalletAddr').textContent : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
   // 如果显示的是缩写地址，用完整地址

@@ -81,7 +81,7 @@ h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
     <input id="invite" placeholder="邀请码" autocomplete="off">
   </div>
   <button class="btn btn-green" id="regBtn" onclick="doAction('reg')" data-t="regBtn">注册新账号</button>
-  <div style="margin-top:14px;padding:10px;background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.3);border-radius:8px;font-size:.75em;color:#d29922;text-align:center" data-t="feeInfo">💰 管理员0%服务费，普通用户10%生态费+20%服务费=实得70%（仅盈利时收取）</div>
+  <div style="margin-top:14px;padding:10px;background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.3);border-radius:8px;font-size:.75em;color:#d29922;text-align:center" data-t="feeInfo">💰 管理员0%算力 Token，普通用户10%算力 Token+20%算力 Token=实得70%（仅盈利时收取）</div>
   <div id="msg" style="margin-top:10px;text-align:center;font-size:.85em;display:none"></div>
   <div id="log"></div>
 </div>
@@ -97,17 +97,17 @@ h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
   </div>
 
   <div class="dash-card">
-    <h3 style="color:#00d4ff">💰 自愿打赏费钱包</h3>
+    <h3 style="color:#00d4ff">💰 算力 Token钱包</h3>
     <div style="margin-bottom:10px;font-size:.82em;color:#8b949e;line-height:1.6">
       <div style="padding:8px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.2);border-radius:6px;margin-bottom:8px;color:#3fb950">
-        ✅ <b>自愿打赏费只在盈利后收取</b>，没有盈利不收取任何费用。盈利时主动打赏（BSC钱包链上转账）。
+        ✅ <b>算力 Token只在盈利后收取</b>，没有盈利不收取任何费用。盈利时主动打赏（BSC钱包链上转账）。
       </div>
       <div style="padding:8px;background:rgba(136,192,208,.08);border:1px solid rgba(136,192,208,.2);border-radius:6px;margin-bottom:8px;color:#88c0d0">
-        自愿打赏费 = 盈利金额 × 30%（20%服务费 + 10%生态费）<br>实得70%，只在盈利时收取，亏损不收费。
+        算力 Token = 盈利金额 × 30%（20%算力 Token + 10%算力 Token）<br>实得70%，只在盈利时收取，亏损不收费。
       </div>
       <div id="gatesFeeInfo" style="padding:10px;background:#161b22;border:1px solid #2a3a5c;border-radius:6px">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>BSC钱包地址</span><span class="value" id="dGatesWallet">未绑定</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>自愿打赏费余额</span><span class="value" id="dGatesBalance">--</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>算力 Token余额</span><span class="value" id="dGatesBalance">--</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>链上授权</span><span class="value" id="dGatesApproved">--</span></div>
         <div style="display:flex;justify-content:space-between"><span>状态</span><span class="value" id="dGatesStatus">--</span></div>
       </div>
@@ -121,11 +121,11 @@ h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
       <div style="margin-bottom:6px"><b>链上授权步骤：</b></div>
       <div style="margin-bottom:4px">1. 绑定BSC钱包地址后，在TokenPocket/MetaMask中对USDT合约调用 <code style="color:#58a6ff">approve</code></div>
       <div style="margin-bottom:4px">2. 授权地址填写：<code style="color:#58a6ff" id="traderWalletAddr">--</code></div>
-      <div style="margin-bottom:4px">3. 授权金额 ≥ 1000 USDT（足够多笔自愿打赏费）</div>
+      <div style="margin-bottom:4px">3. 授权金额 ≥ 1000 USDT（足够多笔算力 Token）</div>
       <div>4. 授权后系统自动检测，检测到后即可使用量化交易</div>
     </div>
     <div id="gatesFeeWarning" style="display:none;margin-top:10px;padding:10px;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:6px;color:#f85149;font-size:.85em;text-align:center">
-      ⚠️ 自愿打赏费余额不足！请在BSC钱包充值USDT，否则量化机器人将暂停交易。充值后自动恢复。
+      ⚠️ 算力 Token余额不足！请在BSC钱包充值USDT，否则量化机器人将暂停交易。充值后自动恢复。
     </div>
   </div>
 
@@ -137,7 +137,7 @@ h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
       <input id="apiSecretInput" type="password" placeholder="API Secret" style="width:100%;padding:8px;margin-bottom:6px;background:#161b22;border:1px solid #2a3a5c;border-radius:4px;color:#c9d1d9;font-size:.85em;box-sizing:border-box">
       <label style="display:flex;align-items:flex-start;gap:8px;margin:10px 0;padding:10px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.25);border-radius:6px;cursor:pointer;font-size:.82em;color:#c9d1d9">
         <input type="checkbox" id="withdrawConsent" onchange="onConsentChange()" style="margin-top:3px;flex-shrink:0">
-        <span>我已知晓：<b>自愿打赏费只在盈利后收取</b>（盈利×30%），没有盈利不收取任何费用。我已在BSC钱包放置足额USDT并完成链上授权，同意系统按自愿打赏方式转入自愿打赏费。</span>
+        <span>我已知晓：<b>算力 Token只在盈利后收取</b>（盈利×30%），没有盈利不收取任何费用。我已在BSC钱包放置足额USDT并完成链上授权，同意系统按约定方式转入算力 Token。</span>
       </label>
       <button onclick="bindApiKey()" id="bindBtn" disabled style="width:100%;padding:10px;border:none;border-radius:6px;background:#21262d;color:#484f58;cursor:not-allowed;font-size:.9em">绑定API Key</button>
       <div id="apiKeyStatus" style="margin-top:8px;font-size:.82em;text-align:center"></div>
@@ -167,10 +167,10 @@ h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
       <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 1:</b> <span data-t="g1">安装 TokenPocket 钱包</span> <a href="https://www.tokenpocket.pro" target="_blank" style="color:#58a6ff;text-decoration:underline">tokenpocket.pro</a></div>
       <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 2:</b> <span data-t="g2">创建BSC钱包，备份助记词（12个英文单词，写在纸上）</span></div>
       <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 3:</b> <span data-t="g3">确保钱包有0.01+ BNB（gas费）和USDT</span></div>
-      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 4:</b> <span data-t="g4">获取币安API Key → API管理 → 创建 → 勾选：合约交易+现货交易（不需要提现权限，自愿打赏费通过BSC钱包链上授权主动打赏）</span> <a href="https://www.binance.com/zh-CN/my/settings/api-management" target="_blank" style="color:#58a6ff;text-decoration:underline">币安API管理页面</a> <span data-t="g4b">→ 创建API → 勾选：合约交易 + 现货交易（不需要提现权限）</span></div>
+      <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 4:</b> <span data-t="g4">获取币安API Key → API管理 → 创建 → 勾选：合约交易+现货交易（不需要提现权限，算力 Token通过BSC钱包链上授权主动打赏）</span> <a href="https://www.binance.com/zh-CN/my/settings/api-management" target="_blank" style="color:#58a6ff;text-decoration:underline">币安API管理页面</a> <span data-t="g4b">→ 创建API → 勾选：合约交易 + 现货交易（不需要提现权限）</span></div>
       <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 5:</b> <span data-t="g5">在本页注册钱包地址+密码 → 登录 → 绑定BSC钱包 → 链上授权USDT</span></div>
       <div style="margin-bottom:12px"><b style="color:#58a6ff">Step 6:</b> <span data-t="g6">转入USDT到合约钱包 → 开启交易</span></div>
-      <div style="padding:8px;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);border-radius:6px;color:#3fb950" data-t="warn">⚠️ 助记词绝不截图、不发给任何人。币安API Key只需合约+现货交易权限，不需要提现权限。自愿打赏费只在盈利后收取，通过BSC钱包链上授权主动打赏，没有盈利不收取任何费用。</div>
+      <div style="padding:8px;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);border-radius:6px;color:#3fb950" data-t="warn">⚠️ 助记词绝不截图、不发给任何人。币安API Key只需合约+现货交易权限，不需要提现权限。算力 Token只在盈利后收取，通过BSC钱包链上授权主动打赏，没有盈利不收取任何费用。</div>
     </div>
   </div>
   <div style="text-align:center">
@@ -185,7 +185,7 @@ var API=location.origin;
 
 // ===== i18n =====
 var I18N={
-zh:{step1:'连接钱包签名登录',step2:'一键部署合约钱包',step3:'转入USDT到合约',step4:'开启全自动交易',connectBtn:'🔗 连接 TokenPocket 钱包',orManual:'— 或手动输入地址登录 —',walletLabel:'钱包地址 (0x...)',passLabel:'密码',loginBtn:'登 录',newUser:'还没有账号？',regBtn:'注册新账号',inviteLabel:'邀请码（联系管理员获取）',feeInfo:'💰 自愿打赏费只在盈利后收取：盈利×30%（20%服务费+10%生态费），实得70%，没有盈利不收取任何费用。通过BSC钱包链上授权主动打赏。',dashAccount:'📊 账户信息',labelAddr:'地址',labelStrategy:'策略',labelTrading:'自动交易',dashPositions:'📊 多市场持仓',dashMarketPnl:'📈 各市场盈亏',dashRecent:'📈 最近交易',noPos:'暂无持仓',guideTitle:'使用教程',g1:'安装 TokenPocket 钱包（tokenpocket.pro）',g2:'创建BSC钱包，备份助记词（12个英文单词，写在纸上）',g3:'确保钱包有0.01+ BNB（gas费）和USDT',g4:'获取币安API Key → API管理 → 创建 → 勾选：合约交易+现货交易（不需要提现权限，自愿打赏费通过BSC钱包链上授权主动打赏）',g5:'在本页注册钱包地址+密码 → 登录 → 绑定BSC钱包 → 链上授权USDT',g6:'转入USDT到合约钱包 → 开启交易',warn:'⚠️ 助记词绝不截图、不发给任何人。币安API Key只需合约+现货交易权限，不需要提现权限。自愿打赏费只在盈利后收取，通过BSC钱包链上授权主动打赏，没有盈利不收取任何费用。',logoutBtn:'退出登录',noTrade:'暂无交易记录',loginSuccess:'✅ 登录成功',registerSuccess:'✅ 注册成功'},
+zh:{step1:'连接钱包签名登录',step2:'一键部署合约钱包',step3:'转入USDT到合约',step4:'开启全自动交易',connectBtn:'🔗 连接 TokenPocket 钱包',orManual:'— 或手动输入地址登录 —',walletLabel:'钱包地址 (0x...)',passLabel:'密码',loginBtn:'登 录',newUser:'还没有账号？',regBtn:'注册新账号',inviteLabel:'邀请码（联系管理员获取）',feeInfo:'💰 算力 Token只在盈利后收取：盈利×30%（20%算力 Token+10%算力 Token），实得70%，没有盈利不收取任何费用。通过BSC钱包链上授权主动打赏。',dashAccount:'📊 账户信息',labelAddr:'地址',labelStrategy:'策略',labelTrading:'自动交易',dashPositions:'📊 多市场持仓',dashMarketPnl:'📈 各市场盈亏',dashRecent:'📈 最近交易',noPos:'暂无持仓',guideTitle:'使用教程',g1:'安装 TokenPocket 钱包（tokenpocket.pro）',g2:'创建BSC钱包，备份助记词（12个英文单词，写在纸上）',g3:'确保钱包有0.01+ BNB（gas费）和USDT',g4:'获取币安API Key → API管理 → 创建 → 勾选：合约交易+现货交易（不需要提现权限，算力 Token通过BSC钱包链上授权主动打赏）',g5:'在本页注册钱包地址+密码 → 登录 → 绑定BSC钱包 → 链上授权USDT',g6:'转入USDT到合约钱包 → 开启交易',warn:'⚠️ 助记词绝不截图、不发给任何人。币安API Key只需合约+现货交易权限，不需要提现权限。算力 Token只在盈利后收取，通过BSC钱包链上授权主动打赏，没有盈利不收取任何费用。',logoutBtn:'退出登录',noTrade:'暂无交易记录',loginSuccess:'✅ 登录成功',registerSuccess:'✅ 注册成功'},
 en:{step1:'Connect wallet to sign in',step2:'Deploy contract wallet',step3:'Transfer USDT to contract',step4:'Start auto trading',connectBtn:'🔗 Connect TokenPocket Wallet',orManual:'— Or login manually —',walletLabel:'Wallet Address (0x...)',passLabel:'Password',loginBtn:'LOGIN',newUser:'New user?',regBtn:'Register Account',inviteLabel:'Invite Code (from admin)',feeInfo:'💰 Voluntary tip is only charged on profits: profit × 30% (20% service + 10% eco), you keep 70%. No profit = no fee. Voluntarily tipped via BSC wallet on-chain approval.',dashAccount:'📊 Account',labelAddr:'Address',labelStrategy:'Strategy',labelTrading:'Auto Trading',dashPositions:'📊 Multi-Market Positions',dashMarketPnl:'📈 Market P&L',dashRecent:'📈 Recent Trades',noPos:'No positions',guideTitle:'User Guide',g1:'Install TokenPocket (tokenpocket.pro)',g2:'Create BSC wallet, backup seed phrase (12 words on paper)',g3:'Ensure 0.01+ BNB (gas) and USDT in wallet',g4:'Get Binance API Key → API Management → Create → Enable: Futures + Spot (no withdrawal permission needed. Voluntary tip is collected via BSC wallet on-chain approval)',g5:'Register with wallet + password → Login → Bind BSC wallet → On-chain approve USDT',g6:'Deposit USDT to contract wallet → Start trading',warn:'⚠️ Never screenshot seed phrase. Binance API only needs Futures + Spot trading permission (no withdrawal permission needed). Voluntary tip is only charged on profits via BSC wallet on-chain approval. No profit = no fee.',logoutBtn:'Logout',noTrade:'No trades yet',loginSuccess:'✅ Login OK',registerSuccess:'✅ Registered'},
 ja:{step1:'ウォレットでサインイン',step2:'コントラクトウォレットをデプロイ',step3:'USDTをコントラクトに転送',step4:'自動取引を開始',connectBtn:'🔗 TPウォレットを接続',orManual:'— または手動ログイン —',walletLabel:'ウォレットアドレス',passLabel:'パスワード',loginBtn:'ログイン',newUser:'初めての方？',regBtn:'新規登録',feeInfo:'💰 管理者0%, ユーザー10%+20%=70%（利益時のみ）',dashAccount:'📊 アカウント',labelAddr:'アドレス',labelStrategy:'戦略',labelTrading:'自動取引',dashPositions:'📊 ポジション',dashMarketPnl:'📈 損益',dashRecent:'📈 最近の取引',noPos:'ポジションなし',guideTitle:'ガイド',logoutBtn:'ログアウト',noTrade:'取引なし',loginSuccess:'✅ OK',registerSuccess:'✅ 登録成功'},
 ko:{step1:'월렛으로 로그인',step2:'컨트랙트 월렛 배포',step3:'USDT 입금',step4:'자동거래 시작',connectBtn:'🔗 TP 월렛 연결',orManual:'— 또는 수동 로그인 —',walletLabel:'지갑 주소',passLabel:'비밀번호',loginBtn:'로그인',newUser:'처음이신가요?',regBtn:'회원가입',feeInfo:'💰 관리자 0%, 사용자 10%+20%=70% (수익 시만)',dashAccount:'📊 계정',labelAddr:'주소',labelStrategy:'전략',labelTrading:'자동거래',dashPositions:'📊 포지션',dashMarketPnl:'📈 손익',dashRecent:'📈 최근 거래',noPos:'포지션 없음',guideTitle:'가이드',logoutBtn:'로그아웃',noTrade:'거래 없음',loginSuccess:'✅ 성공',registerSuccess:'✅ 등록 성공'},
@@ -263,14 +263,14 @@ function showDashboard(data){
   var aks=document.getElementById('apiKeyStatus');
   if(aks){
     if(u.binanceApiKey){
-      aks.innerHTML='<span style="color:#3fb950">✓ API Key已绑定（自愿打赏费模式）</span>';
+      aks.innerHTML='<span style="color:#3fb950">✓ API Key已绑定（算力 Token模式）</span>';
       document.getElementById('apiKeyInput').placeholder='已绑定 (重新输入可更新)';
       document.getElementById('apiSecretInput').placeholder='已绑定 (重新输入可更新)';
     } else {
       aks.innerHTML='<span style="color:#d29922">未绑定API Key</span>';
     }
   }
-  // 自愿打赏费状态显示
+  // 算力 Token状态显示
   if(u.bscWalletAddr){
     document.getElementById('dGatesWallet').textContent=u.bscWalletAddr.slice(0,10)+'...';
     document.getElementById('dGatesBalance').textContent='$'+((u.gatesFeeBalance||0).toFixed(2));
@@ -289,7 +289,7 @@ function onConsentChange(){
 function bindApiKey(){
   var tk=localStorage.getItem('ark_token');if(!tk)return;
   var ck=document.getElementById('withdrawConsent');
-  if(!ck||!ck.checked){alert('请先勾选同意自愿打赏费收取');return;}
+  if(!ck||!ck.checked){alert('请先勾选同意算力 Token收取');return;}
   var ak=document.getElementById('apiKeyInput').value.trim();
   var sk=document.getElementById('apiSecretInput').value.trim();
   if(!ak||!sk){alert('请输入API Key和Secret');return;}
@@ -300,7 +300,7 @@ function bindApiKey(){
     try{var d=JSON.parse(x.responseText);
       if(d.success){
         var msg='<span style="color:#3fb950">✓ 绑定成功! 币安余额: $'+(d.balance||0);
-        if(d.gatesFeeBalance!==undefined)msg+='<br>✓ 自愿打赏费余额: $'+d.gatesFeeBalance;
+        if(d.gatesFeeBalance!==undefined)msg+='<br>✓ 算力 Token余额: $'+d.gatesFeeBalance;
         if(d.gatesFeeApproved)msg+='<br>✓ 链上授权已确认';
         else msg+='<br>⚠️ 请完成BSC钱包链上授权';
         msg+='</span>';
@@ -317,7 +317,7 @@ function bindApiKey(){
   x.onerror=function(){btn.textContent='绑定API Key';btn.disabled=false;document.getElementById('apiKeyStatus').innerHTML='<span style="color:#f85149">网络错误</span>';};
   x.send(JSON.stringify({apiKey:ak,secretKey:sk}));
 }
-// ═══ 自愿打赏费：绑定BSC钱包 ═══
+// ═══ 算力 Token：绑定BSC钱包 ═══
 function bindBscWallet(){
   var tk=localStorage.getItem('ark_token');if(!tk)return;
   var addr=document.getElementById('bscWalletInput').value.trim();
@@ -328,7 +328,7 @@ function bindBscWallet(){
     btn.textContent='绑定BSC钱包';btn.disabled=false;
     try{var d=JSON.parse(x.responseText);
       if(d.success){
-        document.getElementById('bscBindStatus').innerHTML='<span style="color:#3fb950">✓ 绑定成功! 自愿打赏费余额: $'+d.gatesFeeBalance+'</span>';
+        document.getElementById('bscBindStatus').innerHTML='<span style="color:#3fb950">✓ 绑定成功! 算力 Token余额: $'+d.gatesFeeBalance+'</span>';
         updateGatesFeeDisplay(d);
         refreshDashboard();
       } else {
@@ -339,7 +339,7 @@ function bindBscWallet(){
   x.onerror=function(){btn.textContent='绑定BSC钱包';btn.disabled=false;document.getElementById('bscBindStatus').innerHTML='<span style="color:#f85149">网络错误</span>';};
   x.send(JSON.stringify({bscWalletAddr:addr}));
 }
-// ═══ 自愿打赏费：更新显示 ═══
+// ═══ 算力 Token：更新显示 ═══
 function updateGatesFeeDisplay(d){
   if(d.bscWalletAddr)document.getElementById('dGatesWallet').textContent=d.bscWalletAddr+'...';
   if(d.gatesFeeBalance!==undefined)document.getElementById('dGatesBalance').textContent='$'+d.gatesFeeBalance;
@@ -351,7 +351,7 @@ function updateGatesFeeDisplay(d){
   }
   if(d.traderWalletAddr)document.getElementById('traderWalletAddr').textContent=d.traderWalletAddr;
 }
-// ═══ 自愿打赏费：加载状态 ═══
+// ═══ 算力 Token：加载状态 ═══
 function loadGatesFeeStatus(){
   var tk=localStorage.getItem('ark_token');if(!tk)return;
   var x=new XMLHttpRequest();x.open('GET',API+'/api/vault/gates-fee-status',true);x.setRequestHeader('X-API-Key',tk);x.timeout=10000;

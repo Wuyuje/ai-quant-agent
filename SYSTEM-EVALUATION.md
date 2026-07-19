@@ -150,7 +150,7 @@ Agent确认 (masterd-agent.js)
 ### dYdX V4 (DEX)
 - 费率: 0.05% taker / 0% maker
 - 滑点: 0.03%
-- 生态费: 链上转账到EVM钱包
+- 算力 Token: 链上转账到EVM钱包
 - 状态: ✅ 已集成，通道切换UI已修复
 
 ### 手续费问题

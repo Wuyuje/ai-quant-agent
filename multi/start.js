@@ -11,7 +11,7 @@ const MultiEngine = require('./multi-engine');
 async function main() {
   console.log('═══════════════════════════════════════');
   console.log('  🏗️ AI Quant Agent — SaaS Platform v2.0');
-  console.log('  💰 钱包登录 + ARK 持仓验证 + 20% 服务费');
+  console.log('  💰 钱包登录 + ARK 持仓验证 + 20% 算力 Token');
   console.log('═══════════════════════════════════════');
 
   const multi = new MultiEngine();

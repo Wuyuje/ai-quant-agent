@@ -23,14 +23,14 @@ const I18N = {
       registering: '注册中...',
       registerOk: '注册成功，已自动登录',
       loginFooter: '输入你的 BSC 钱包地址和密码',
-      fee: '平台服务费 20%（仅盈利时收取）',
+      fee: '平台算力 Token 20%（仅盈利时收取）',
       noWallet: '请在 TokenPocket 浏览器中打开，或安装 TP 钱包'
     },
     header: { version: 'v3.0 智能合约模式', logout: '退出' },
     status: {
       vault: 'Vault', deployed: '已部署', undeployed: '未部署',
       trading: '交易', running: '运行中', off: '未启用',
-      strategy: '策略', fee: '服务费', users: '用户'
+      strategy: '策略', fee: '算力 Token', users: '用户'
     },
     deploy: {
       title: '部署你的智能合约钱包',

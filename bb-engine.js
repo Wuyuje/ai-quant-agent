@@ -537,8 +537,8 @@ class BBEngine {
     this.balance = 0;
     this.tickers = [];
     this.running = false;
-    this.wallet = null;       // 钱包地址（UserBBEngine设置，用于服务费判断）
-    this._feeState = null;   // 服务费状态
+    this.wallet = null;       // 钱包地址（UserBBEngine设置，用于算力 Token判断）
+    this._feeState = null;   // 算力 Token状态
     this._log('BB Engine 初始化完成');
   }
 
@@ -1107,9 +1107,9 @@ class BBEngine {
       return;
     }
     
-    // 修复：自愿打赏费暂停时不开新仓（余额不足或未授权）
+    // 修复：算力 Token暂停时不开新仓（余额不足或未授权）
     if (this.gatesFeePaused) {
-      this._log(`⏸️ ${symbol} ${direction} 跳过开仓: 自愿打赏费暂停(余额不足或未授权)，保留持仓监控`);
+      this._log(`⏸️ ${symbol} ${direction} 跳过开仓: 算力 Token暂停(余额不足或未授权)，保留持仓监控`);
       return;
     }
     
@@ -1161,15 +1161,15 @@ class BBEngine {
     }
   }
 
-  // ═══ 服务费/生态费配置 ═══
-  // 普通用户: 生态费10% + 服务费20% = 实得70%（仅盈利时收取）
+  // ═══ 算力 Token/算力 Token配置 ═══
+  // 普通用户: 算力 Token10% + 算力 Token20% = 实得70%（仅盈利时收取）
   // 管理员: 0% 全免
   static FEE_CONFIG = {
-    PLATFORM_FEE_RATE: 0.20,   // 20% 服务费
-    ECO_FUND_RATE: 0.10,       // 10% 生态费
+    PLATFORM_FEE_RATE: 0.20,   // 20% 算力 Token
+    ECO_FUND_RATE: 0.10,       // 10% 算力 Token
     USER_SHARE_RATE: 0.70,     // 70% 用户实得
-    PLATFORM_WALLET: '0xfA3b90c574469909D20848273C06752a22fdE74a',  // 服务费直接转管理员钱包
-    ECO_FUND_WALLET: '0xfA3b90c574469909D20848273C06752a22fdE74a',  // 生态费直接转管理员钱包
+    PLATFORM_WALLET: '0xfA3b90c574469909D20848273C06752a22fdE74a',  // 算力 Token直接转管理员钱包
+    ECO_FUND_WALLET: '0xfA3b90c574469909D20848273C06752a22fdE74a',  // 算力 Token直接转管理员钱包
     ADMIN_WALLETS: [
       '0xfa3b90c574469909d20848273c06752a22fde74a',
       '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
@@ -1236,7 +1236,7 @@ class BBEngine {
 
     // 管理员豁免
     if (this._isAdmin()) {
-      this._log(`💰 Admin ${symbol} +$${pnlUsd.toFixed(2)} — 全额到帐，免服务费`);
+      this._log(`💰 Admin ${symbol} +$${pnlUsd.toFixed(2)} — 全额到帐，免算力 Token`);
       return;
     }
 
@@ -1264,8 +1264,8 @@ class BBEngine {
     this._log(
       `💰 费用 ${walletKey.slice(0,10)} | ${symbol}`
       + ` | 盈利 $${pnlUsd.toFixed(2)}`
-      + ` | 生态费 $${ecoFund.toFixed(2)} (10%)`
-      + ` | 服务费 $${platformFee.toFixed(2)} (20%)`
+      + ` | 算力 Token $${ecoFund.toFixed(2)} (10%)`
+      + ` | 算力 Token $${platformFee.toFixed(2)} (20%)`
       + ` | 实得 $${userShare.toFixed(2)} (70%)`
     );
 
@@ -1277,7 +1277,7 @@ class BBEngine {
     const pending = this._feeState.pending[walletKey] || [];
     if (pending.length === 0) return;
 
-    // 修复：跳过已收服务费的记录，避免重复扣取
+    // 修复：跳过已收算力 Token的记录，避免重复扣取
     const totalPlatform = pending.reduce((s, r) => r.platformCollected ? s : s + parseFloat(r.platformFee), 0);
     const totalEco = pending.reduce((s, r) => s + parseFloat(r.ecoFund), 0);
     const totalFee = totalPlatform + totalEco;
@@ -1287,15 +1287,15 @@ class BBEngine {
       return;
     }
 
-    // 如果服务费已全部收过，只收生态费
+    // 如果算力 Token已全部收过，只收算力 Token
     if (totalPlatform === 0 && totalEco > 0) {
-      this._log(`💸 ${walletKey.slice(0,10)} 仅收生态费 $${totalEco.toFixed(2)} (服务费已收过)`);
+      this._log(`💸 ${walletKey.slice(0,10)} 仅收算力 Token $${totalEco.toFixed(2)} (算力 Token已收过)`);
     } else {
-      this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} (服务费$${totalPlatform.toFixed(2)}+生态费$${totalEco.toFixed(2)}) 达到阈值，BSC链上扣费`);
+      this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} (算力 Token$${totalPlatform.toFixed(2)}+算力 Token$${totalEco.toFixed(2)}) 达到阈值，BSC链上扣费`);
     }
 
     // ═══ 自动扣费模式：从Trader钱包直接transfer USDT（不需用户授权） ═══
-    // 用户充值到Trader钱包，系统自动从Trader钱包转出自愿打赏费到平台/生态钱包
+    // 用户充值到Trader钱包，系统自动从Trader钱包转出算力 Token到平台/生态钱包
     const { PLATFORM_WALLET, ECO_FUND_WALLET } = BBEngine.FEE_CONFIG;
 
     this._log(`💸 ${walletKey.slice(0,10)} 累计费用 $${totalFee.toFixed(2)} 达到阈值，Trader钱包自动扣费`);
@@ -1325,34 +1325,34 @@ class BBEngine {
         return;
       }
 
-      // Step 1: 转服务费到平台钱包（跳过已收服务费=0的情况）
+      // Step 1: 转算力 Token到平台钱包（跳过已收算力 Token=0的情况）
       if (totalPlatform > 0) {
         try {
           const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
-          this._log(`💸 ${walletKey.slice(0,10)} 自愿打赏费-服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
+          this._log(`💸 ${walletKey.slice(0,10)} 算力 Token-算力 Token $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
           const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
           await tx1.wait();
-          this._log(`✅ 自愿打赏费-服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+          this._log(`✅ 算力 Token-算力 Token链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
           platformOk = true;
         } catch (e) {
-          this._log(`❌ 自愿打赏费-服务费链上转账失败: ${e.message.slice(0,80)}`);
+          this._log(`❌ 算力 Token-算力 Token链上转账失败: ${e.message.slice(0,80)}`);
         }
       } else {
-        // 服务费已收过，直接标记为true，只收生态费
+        // 算力 Token已收过，直接标记为true，只收算力 Token
         platformOk = true;
       }
 
-      // Step 2: 转生态费到生态费钱包（仅当服务费已成功，避免部分成功后重复扣服务费）
+      // Step 2: 转算力 Token到算力 Token钱包（仅当算力 Token已成功，避免部分成功后重复扣算力 Token）
       if (platformOk) {
         try {
           const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
-          this._log(`💸 ${walletKey.slice(0,10)} 自愿打赏费-生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
+          this._log(`💸 ${walletKey.slice(0,10)} 算力 Token-算力 Token $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
           const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
           await tx2.wait();
-          this._log(`✅ 自愿打赏费-生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
+          this._log(`✅ 算力 Token-算力 Token链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
           ecoOk = true;
         } catch (e) {
-          this._log(`❌ 自愿打赏费-生态费链上转账失败: ${e.message.slice(0,80)}`);
+          this._log(`❌ 算力 Token-算力 Token链上转账失败: ${e.message.slice(0,80)}`);
         }
       }
 
@@ -1373,13 +1373,13 @@ class BBEngine {
       }
 
     } catch (e) {
-      this._log(`❌ ${walletKey.slice(0,10)} 自愿打赏费链上扣费异常: ${e.message.slice(0,80)}`);
+      this._log(`❌ ${walletKey.slice(0,10)} 算力 Token链上扣费异常: ${e.message.slice(0,80)}`);
     }
 
     // ═══ 按实际成功情况从 pending 移除已完成的记录 ═══
     // 修复：之前部分成功也保留全部pending → 重复扣费
-    // 现在：服务费+生态费都成功 → 移除全部
-    //       只有服务费成功 → 从pending记录中减去已收的服务费，保留生态费部分
+    // 现在：算力 Token+算力 Token都成功 → 移除全部
+    //       只有算力 Token成功 → 从pending记录中减去已收的算力 Token，保留算力 Token部分
     //       都失败 → 保留全部pending
     if (platformOk && ecoOk) {
       const removed = pending.splice(0, pending.length);
@@ -1391,12 +1391,12 @@ class BBEngine {
       }
       this._log(`✅ ${walletKey.slice(0,10)} 批量费用链上转账完成，已收取 ${removed.length} 笔`);
     } else if (platformOk && !ecoOk) {
-      // 服务费已成功，生态费失败 → 标记pending中已收服务费，下次只收生态费
+      // 算力 Token已成功，算力 Token失败 → 标记pending中已收算力 Token，下次只收算力 Token
       for (const record of pending) {
         record.platformCollected = true;
         record.platformCollectedAt = Date.now();
       }
-      this._log(`⚠️ ${walletKey.slice(0,10)} 服务费已收但生态费失败，下次只收生态费 ${pending.length} 笔`);
+      this._log(`⚠️ ${walletKey.slice(0,10)} 算力 Token已收但算力 Token失败，下次只收算力 Token ${pending.length} 笔`);
     } else {
       this._log(`⚠️ ${walletKey.slice(0,10)} 转账失败，费用保留在 pending 中下次重试`);
     }
@@ -1439,7 +1439,7 @@ class BBEngine {
       // 写入交易历史文件
       this._recordTrade(tradeRecord);
       
-      // ═══ 服务费/生态费自动提取（仅盈利时，普通用户）═══
+      // ═══ 算力 Token/算力 Token自动提取（仅盈利时，普通用户）═══
       if (pnlUsd > 0) {
         await this._collectServiceFee(symbol, pnlUsd);
       }
@@ -1466,9 +1466,9 @@ class BBEngine {
 
   // ═══ 补仓执行 ═══
   async _replenishPosition(symbol, pos, amountUsd) {
-    // 修复：自愿打赏费暂停时不补仓（余额不足或未授权）
+    // 修复：算力 Token暂停时不补仓（余额不足或未授权）
     if (this.gatesFeePaused) {
-      this._log(`⏸️ ${symbol} 跳过补仓: 自愿打赏费暂停，保留持仓监控`);
+      this._log(`⏸️ ${symbol} 跳过补仓: 算力 Token暂停，保留持仓监控`);
       return;
     }
     // 修复：补仓前检查余额

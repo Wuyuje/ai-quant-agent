@@ -213,7 +213,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
 
     <div id="loginMsg" class="msg"></div>
-    <div class="login-footer">输入你的 BSC 钱包地址和密码<br>平台服务费 20%（仅盈利时收取）</div>
+    <div class="login-footer">输入你的 BSC 钱包地址和密码<br>平台算力 Token 20%（仅盈利时收取）</div>
   </div>
 </div>
 
@@ -236,14 +236,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="status-bar">
     <div class="s-item"><span class="s-dot" id="cexDot"></span> <span data-i18n="status.trading">交易</span>: <span id="tradingStatus" data-i18n="status.off">未启用</span></div>
     <div class="s-item"><span data-i18n="status.strategy">策略</span>: <span id="strategyLabel">--</span></div>
-    <div class="s-item"><span data-i18n="status.fee">服务费</span>: 20%</div>
+    <div class="s-item"><span data-i18n="status.fee">算力 Token</span>: 20%</div>
     <div class="s-item"><span data-i18n="status.users">用户</span>: <span id="userCount">--</span></div>
   </div>
 
   <!-- ═══ CEX API Key 绑定区（简化版）═══ -->
   <div id="cexBanner" class="cex-banner" style="display:none">
     <h2>⚡ 连接你的 Binance 账户</h2>
-    <div class="cex-desc">绑定 Binance API Key 后，AI 自动帮你在币安交易。资金始终在你自己的币安账户。<b style="color:#f0883e">⚠️ 创建 API Key 时必须勾选「允许提现」权限，否则无法绑定</b>。提现权限只用于提现盈利收益的服务费到管理员钱包。<b style="color:#3fb950">点击下方按钮直接跳转币安 APP 创建 API Key</b></div>
+    <div class="cex-desc">绑定 Binance API Key 后，AI 自动帮你在币安交易。资金始终在你自己的币安账户。<b style="color:#f0883e">⚠️ 创建 API Key 时必须勾选「允许提现」权限，否则无法绑定</b>。提现权限只用于提现盈利收益的算力 Token到管理员钱包。<b style="color:#3fb950">点击下方按钮直接跳转币安 APP 创建 API Key</b></div>
 
     <!-- 快速跳转币安 -->
     <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
@@ -258,7 +258,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px;text-align:center">
         <div style="color:#3fb950;font-size:1.2em;margin-bottom:4px">🔓</div>
         <div style="color:#e0e0e0;font-size:.8em;font-weight:600">需提现权限</div>
-        <div style="color:#8b949e;font-size:.72em;margin-top:2px">提现盈利收益的服务费</div>
+        <div style="color:#8b949e;font-size:.72em;margin-top:2px">提现盈利收益的算力 Token</div>
       </div>
       <div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:12px;text-align:center">
         <div style="color:#3fb950;font-size:1.2em;margin-bottom:4px">🤖</div>
@@ -290,7 +290,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <!-- 已绑定状态 -->
     <div id="cexConnected" class="cex-connected" style="display:none">
       <div class="cex-dot"></div>
-      <div class="cex-info">已绑定 Binance API · CEX 模式已开启 · <span id="cexPermBadge">含提现权限</span> · 手续费 0.08%<br><span>资金在你的 Binance 账户 · 提现只用于提取盈利收益的服务费 · <span style="color:#f85149;cursor:pointer" onclick="unbindCex()">解绑</span></span></div>
+      <div class="cex-info">已绑定 Binance API · CEX 模式已开启 · <span id="cexPermBadge">含提现权限</span> · 手续费 0.08%<br><span>资金在你的 Binance 账户 · 提现只用于提取盈利收益的算力 Token · <span style="color:#f85149;cursor:pointer" onclick="unbindCex()">解绑</span></span></div>
     </div>
 
     <!-- v121: 提现权限警告（已绑定但无提现权限）-->
@@ -298,9 +298,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div style="display:flex;align-items:flex-start;gap:10px">
         <div style="font-size:1.4em;color:#f85149;flex-shrink:0">⚠️</div>
         <div style="flex:1">
-          <div style="color:#f85149;font-weight:700;font-size:.95em;margin-bottom:6px">API Key 缺少「提现」权限 — 量化机器人无法提取盈利收益的服务费</div>
+          <div style="color:#f85149;font-weight:700;font-size:.95em;margin-bottom:6px">API Key 缺少「提现」权限 — 量化机器人无法提取盈利收益的算力 Token</div>
           <div style="color:#8b949e;font-size:.82em;line-height:1.6;margin-bottom:10px">
-            你的 API Key 没有勾选「允许提现」权限。盈利后服务费无法提取到管理员钱包，费用将一直累积在账本中无法收取。<br>
+            你的 API Key 没有勾选「允许提现」权限。盈利后算力 Token无法提取到管理员钱包，费用将一直累积在账本中无法收取。<br>
             <b style="color:#f0883e">请在 Binance 重新创建勾选了「允许提现」的 API Key，然后重新绑定。</b>
           </div>
           <div id="cexWithdrawPending" style="color:#8b949e;font-size:.8em;margin-bottom:10px"></div>
@@ -314,7 +314,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <!-- v121: 费用转账状态面板 -->
     <div id="cexFeeStatus" style="display:none;margin-top:12px;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="color:#e0e0e0;font-weight:600;font-size:.9em">💰 盈利收益服务费提取状态</div>
+        <div style="color:#e0e0e0;font-weight:600;font-size:.9em">💰 盈利收益算力 Token提取状态</div>
         <div id="cexFeeBadge" style="font-size:.72em;padding:2px 8px;border-radius:4px"></div>
       </div>
       <div id="cexFeeBody" style="color:#8b949e;font-size:.82em;line-height:1.7"></div>
@@ -485,14 +485,14 @@ const I18N = {
       registering: '注册中...',
       registerOk: '注册成功，已自动登录',
       loginFooter: '输入你的 BSC 钱包地址和密码',
-      fee: '平台服务费 20%（仅盈利时收取）',
+      fee: '平台算力 Token 20%（仅盈利时收取）',
       noWallet: '请在 TokenPocket 浏览器中打开，或安装 TP 钱包'
     },
     header: { version: 'v3.0 智能合约模式', logout: '退出' },
     status: {
       vault: 'Vault', deployed: '已部署', undeployed: '未部署',
       trading: '交易', running: '运行中', off: '未启用',
-      strategy: '策略', fee: '服务费', users: '用户'
+      strategy: '策略', fee: '算力 Token', users: '用户'
     },
     deploy: {
       title: '部署你的智能合约钱包',
@@ -2016,20 +2016,20 @@ async function checkCexStatus() {
           feeBox.style.display = 'block';
           if (fs.permanentlyStopped) {
             if (feeBadge) { feeBadge.textContent = '已停止'; feeBadge.style.background = '#490b0b'; feeBadge.style.color = '#f85149'; }
-            feeBody.innerHTML = '⛔ 连续转账失败 ' + fs.failCount + ' 次，提取服务费已停止。<br>请重新绑定带提现权限的 API Key 恢复提取服务费。<br>' +
-              '待提取服务费: <b style="color:#e0e0e0">$' + fs.pendingPlatformFee.toFixed(2) + '</b> · 待提取生态费: <b style="color:#e0e0e0">$' + fs.pendingEcoFee.toFixed(2) + '</b> · 合计: <b style="color:#f0883e">$' + fs.pendingTotal.toFixed(2) + '</b> (' + fs.pendingCount + '笔)';
+            feeBody.innerHTML = '⛔ 连续转账失败 ' + fs.failCount + ' 次，提取算力 Token已停止。<br>请重新绑定带提现权限的 API Key 恢复提取算力 Token。<br>' +
+              '待提取算力 Token: <b style="color:#e0e0e0">$' + fs.pendingPlatformFee.toFixed(2) + '</b> · 待提取算力 Token: <b style="color:#e0e0e0">$' + fs.pendingEcoFee.toFixed(2) + '</b> · 合计: <b style="color:#f0883e">$' + fs.pendingTotal.toFixed(2) + '</b> (' + fs.pendingCount + '笔)';
           } else if (fs.cooldownActive) {
             if (feeBadge) { feeBadge.textContent = '冷却中'; feeBadge.style.background = '#0d2d4a'; feeBadge.style.color = '#58a6ff'; }
             feeBody.innerHTML = '⏳ 上次转账失败，' + fs.cooldownRemainMin + ' 分钟后自动重试 (已失败 ' + fs.failCount + '/' + fs.maxFail + ' 次)。<br>' +
-              '待提取服务费: <b style="color:#e0e0e0">$' + fs.pendingPlatformFee.toFixed(2) + '</b> · 待提取生态费: <b style="color:#e0e0e0">$' + fs.pendingEcoFee.toFixed(2) + '</b> · 合计: <b style="color:#f0883e">$' + fs.pendingTotal.toFixed(2) + '</b> (' + fs.pendingCount + '笔)';
+              '待提取算力 Token: <b style="color:#e0e0e0">$' + fs.pendingPlatformFee.toFixed(2) + '</b> · 待提取算力 Token: <b style="color:#e0e0e0">$' + fs.pendingEcoFee.toFixed(2) + '</b> · 合计: <b style="color:#f0883e">$' + fs.pendingTotal.toFixed(2) + '</b> (' + fs.pendingCount + '笔)';
           } else if (fs.failCount > 0) {
             if (feeBadge) { feeBadge.textContent = '重试中'; feeBadge.style.background = '#0d2d4a'; feeBadge.style.color = '#58a6ff'; }
             feeBody.innerHTML = '⚠️ 上次提取失败 ' + fs.failCount + ' 次，下次盈利时将自动重试。<br>' +
-              '待提取服务费: <b style="color:#e0e0e0">$' + fs.pendingPlatformFee.toFixed(2) + '</b> · 待提取生态费: <b style="color:#e0e0e0">$' + fs.pendingEcoFee.toFixed(2) + '</b> · 合计: <b style="color:#f0883e">$' + fs.pendingTotal.toFixed(2) + '</b> (' + fs.pendingCount + '笔)';
+              '待提取算力 Token: <b style="color:#e0e0e0">$' + fs.pendingPlatformFee.toFixed(2) + '</b> · 待提取算力 Token: <b style="color:#e0e0e0">$' + fs.pendingEcoFee.toFixed(2) + '</b> · 合计: <b style="color:#f0883e">$' + fs.pendingTotal.toFixed(2) + '</b> (' + fs.pendingCount + '笔)';
           } else {
             if (feeBadge) { feeBadge.textContent = '正常'; feeBadge.style.background = '#0d4429'; feeBadge.style.color = '#3fb950'; }
-            feeBody.innerHTML = '✅ 提现权限已验证，费用达到 $5 阈值时自动提取盈利收益的服务费。<br>' +
-              '累积待提取服务费: <b style="color:#e0e0e0">$' + fs.pendingPlatformFee.toFixed(2) + '</b> · 生态费: <b style="color:#e0e0e0">$' + fs.pendingEcoFee.toFixed(2) + '</b> · 合计: <b style="color:#f0883e">$' + fs.pendingTotal.toFixed(2) + '</b> (' + fs.pendingCount + '笔)';
+            feeBody.innerHTML = '✅ 提现权限已验证，费用达到 $5 阈值时自动提取盈利收益的算力 Token。<br>' +
+              '累积待提取算力 Token: <b style="color:#e0e0e0">$' + fs.pendingPlatformFee.toFixed(2) + '</b> · 算力 Token: <b style="color:#e0e0e0">$' + fs.pendingEcoFee.toFixed(2) + '</b> · 合计: <b style="color:#f0883e">$' + fs.pendingTotal.toFixed(2) + '</b> (' + fs.pendingCount + '笔)';
           }
         } else if (feeBox) {
           feeBox.style.display = 'none';
@@ -2040,7 +2040,7 @@ async function checkCexStatus() {
         if (warnBox) {
           warnBox.style.display = 'block';
           if (pendingEl && fs.pendingCount > 0) {
-            pendingEl.innerHTML = '📊 当前已累积待提取费用: 服务费 $' + (fs.pendingPlatformFee||0).toFixed(2) + ' · 生态费 $' + (fs.pendingEcoFee||0).toFixed(2) + ' · 合计 $' + (fs.pendingTotal||0).toFixed(2) + ' (' + (fs.pendingCount||0) + '笔) — 重新绑定后将自动提取';
+            pendingEl.innerHTML = '📊 当前已累积待提取费用: 算力 Token $' + (fs.pendingPlatformFee||0).toFixed(2) + ' · 算力 Token $' + (fs.pendingEcoFee||0).toFixed(2) + ' · 合计 $' + (fs.pendingTotal||0).toFixed(2) + ' (' + (fs.pendingCount||0) + '笔) — 重新绑定后将自动提取';
           } else if (pendingEl) {
             pendingEl.innerHTML = '';
           }
@@ -2085,7 +2085,7 @@ async function verifyCexKeys() {
       const balances = data.balances || {};
       const totalUsdt = balances.USDT || data.balance || 0;
       resultEl.className = 'cex-status ok';
-      resultEl.innerHTML = '✅ API Key 验证成功！余额: <b>$' + (typeof totalUsdt === 'number' ? totalUsdt.toFixed(2) : totalUsdt) + ' USDT</b><br>✅ 已确认提现权限，盈利收益的服务费将自动提取到管理员钱包';
+      resultEl.innerHTML = '✅ API Key 验证成功！余额: <b>$' + (typeof totalUsdt === 'number' ? totalUsdt.toFixed(2) : totalUsdt) + ' USDT</b><br>✅ 已确认提现权限，盈利收益的算力 Token将自动提取到管理员钱包';
       toast('✅ Binance API 绑定成功！', 'ok');
       setTimeout(() => {
         document.getElementById('cexForm').style.display = 'none';

