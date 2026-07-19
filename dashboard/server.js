@@ -57,6 +57,7 @@ class Dashboard {
       '/api/user/',
       '/api/backtest',
       '/api/verify-api-key', '/api/cex-mode/', '/api/cex-status',
+      '/api/strategy/', // v125: A 策略开关代理到 SaaS Server
       '/admin', '/go', '/reg',  // SaaS 页面路由也代理
     ];
     // 注意: /api/admin/ 不代理，dashboard本地处理

@@ -99,6 +99,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="card"><h3>📊 用户交易次数</h3><div class="val" id="utTradeCount">0</div><div class="sub" id="utLastTrade">最近交易: --</div></div>
     </div>
 
+    <!-- v125: 策略开关 -->
+    <div class="card" style="margin-bottom:16px;border-color:#f0883e">
+      <h3 style="color:#f0883e">🎚️ 策略开关</h3>
+      <div style="display:flex;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap">
+        <div>
+          <span style="color:var(--text)">B 策略 (BB布林带):</span>
+          <span style="color:#3fb950;font-weight:bold">✅ 启动中 (默认)</span>
+        </div>
+        <div>
+          <span style="color:var(--text)">A 策略 (旧引擎):</span>
+          <span id="aStrategyStatus" style="font-weight:bold;color:#8b949e">查询中...</span>
+        </div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn primary" id="btnStartA" onclick="toggleAStrategy(true)" style="display:none">启动 A 策略</button>
+          <button class="btn" id="btnStopA" onclick="toggleAStrategy(false)" style="display:none">停止 A 策略</button>
+        </div>
+      </div>
+      <div class="sub" style="margin-top:8px;color:#8b949e">A 策略 = 旧引擎组合(Engine主引擎+Gold/Forex/Symbol/CrossArb等)。开关后引擎自动重启生效。</div>
+    </div>
+
     <!-- 持仓详情 -->
     <div class="card" style="margin-bottom:16px">
       <h3>💎 管理员持仓详情</h3>
@@ -161,6 +181,7 @@ async function doLogin() {
     try { sessionStorage.setItem('adminKey', adminKey); } catch(e) {}
     refresh();
     refreshTimer = setInterval(refresh, 10000);
+    loadAStrategyStatus(); // v125: 加载 A 策略状态
   } catch(e) {
     document.getElementById('loginErr').textContent = '❌ ' + e.message;
   }
@@ -363,6 +384,49 @@ async function clearPending(userAddress) {
     await api('POST', '/api/admin/pending-funds/clear', { userAddress });
     refresh();
   } catch(e) { alert('清除失败: ' + e.message); }
+}
+
+// ═══ v125: A 策略开关 ═══
+async function loadAStrategyStatus() {
+  try {
+    const r = await fetch('/api/strategy/a/status', { headers: { 'X-Admin-Key': adminKey } });
+    if (!r.ok) return;
+    const d = await r.json();
+    const statusEl = document.getElementById('aStrategyStatus');
+    const btnStart = document.getElementById('btnStartA');
+    const btnStop = document.getElementById('btnStopA');
+    if (d.aStrategyEnabled) {
+      statusEl.textContent = '✅ 已启动';
+      statusEl.style.color = '#3fb950';
+      btnStart.style.display = 'none';
+      btnStop.style.display = 'inline-block';
+    } else {
+      statusEl.textContent = '⏸️ 已停用';
+      statusEl.style.color = '#8b949e';
+      btnStart.style.display = 'inline-block';
+      btnStop.style.display = 'none';
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function toggleAStrategy(enable) {
+  const action = enable ? '启动' : '停止';
+  if (!confirm(`确认${action} A 策略？\n\n${enable ? '将同时运行 A 策略和 B 策略' : 'B 策略继续运行，只停止 A 策略'}\n\n开关后引擎会自动重启加载新配置。`)) return;
+  try {
+    const url = enable ? '/api/strategy/a/start' : '/api/strategy/a/stop';
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'X-Admin-Key': adminKey, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const d = await r.json();
+    if (d.success) {
+      alert(`✅ A 策略已${action}，引擎正在重启...\n\n请等待10秒后刷新页面查看状态。`);
+      setTimeout(() => loadAStrategyStatus(), 12000);
+    } else {
+      alert('❌ ' + (d.error || '操作失败'));
+    }
+  } catch (e) { alert('❌ ' + e.message); }
 }
 
 // 安全恢复：从 sessionStorage 读取 key（不从 URL 读取）

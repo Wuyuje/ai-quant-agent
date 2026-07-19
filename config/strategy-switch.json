@@ -1,0 +1,7 @@
+{
+  "_comment": "策略开关配置。aStrategyEnabled=false 时只启动 B 策略(BB布林带)；=true 时同时启动 A 策略(旧合约引擎组合)。",
+  "_comment_zh": "默认关闭。管理员通过仪表盘按钮或 /api/strategy/a/start 接口启动 A 策略，改完后自动重启生效。",
+  "aStrategyEnabled": false,
+  "lastChangedAt": 0,
+  "lastChangedBy": "system"
+}

@@ -1,11 +1,13 @@
 /**
- * SaaS Platform v3.0 启动入口 — v124 纯BB策略版
+ * SaaS Platform v3.0 启动入口 — v125 B策略默认/A策略按需
  * 
- * v124 变更：
- *   - 停用所有旧合约策略（Engine 18策略、Gold、Forex、SymbolEngine、CrossArb等）
- *   - 只保留 BBStrategyManager（布林带策略）作为唯一交易策略
- *   - 保留：Dashboard仪表盘、SaaS Server（算力付费/用户管理）、UserTrader（跟单）、MultiEngine v3
- *   - 保留：Greenfield BSC链上同步
+ * v125 变更：
+ *   - B策略（BBStrategyManager 布林带）默认启动，作为主策略
+ *   - A策略（Engine 主引擎 + Gold/Forex/Symbol/CrossArb 等旧引擎）由开关控制
+ *   - 开关文件：config/strategy-switch.json 的 aStrategyEnabled 字段
+ *   - 默认 aStrategyEnabled=false，只跑 B 策略
+ *   - 管理员通过仪表盘按钮或 /api/strategy/a/start 接口开启 A 策略
+ *   - 保留：Dashboard仪表盘、SaaS Server、UserTrader、MultiEngine v3、Greenfield
  *
  * 启动：
  *   node saas/start.js
@@ -29,15 +31,41 @@ try { GreenfieldSync = require('../greenfield/sync'); } catch(e) { console.log('
 const CONFIG = require('../config/loader');
 const PAIRS = require('../config/trading-pairs');
 
+// v125: 策略开关（A 策略默认关闭）
+const STRATEGY_SWITCH_FILE = path.join(__dirname, '..', 'config', 'strategy-switch.json');
+function loadStrategySwitch() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(STRATEGY_SWITCH_FILE, 'utf-8'));
+    return !!(cfg && cfg.aStrategyEnabled === true);
+  } catch (e) { return false; }
+}
+const ENABLE_A_STRATEGY = loadStrategySwitch();
+
+// A 策略相关旧引擎 require（仅在 A 策略启用时加载，避免无谓模块初始化）
+let GoldEngine = null, ForexEngine = null, SymbolEngine = null, CrossArb = null;
+let SignalBus = null, RiskLayer = null, CapitalRouter = null, CEXUserTrader = null;
+if (ENABLE_A_STRATEGY) {
+  try { GoldEngine = require('../gold-engine'); } catch(e) { console.log('[A策略] gold-engine 加载失败:', e.message); }
+  try { ForexEngine = require('../forex-engine'); } catch(e) { console.log('[A策略] forex-engine 加载失败:', e.message); }
+  try { SymbolEngine = require('../symbol-engine'); } catch(e) { console.log('[A策略] symbol-engine 加载失败:', e.message); }
+  try { CrossArb = require('./cross-arb'); } catch(e) { console.log('[A策略] cross-arb 加载失败:', e.message); }
+  try { SignalBus = require('./signal-bus'); } catch(e) { console.log('[A策略] signal-bus 加载失败:', e.message); }
+  try { RiskLayer = require('./risk-layer'); } catch(e) { console.log('[A策略] risk-layer 加载失败:', e.message); }
+  try { CapitalRouter = require('./capital-router'); } catch(e) { console.log('[A策略] capital-router 加载失败:', e.message); }
+  try { CEXUserTrader = require('./cex-user-trader'); } catch(e) { console.log('[A策略] cex-user-trader 加载失败:', e.message); }
+}
+
 // 全局引用（用于优雅关闭）
 let _engine, _dashboard, _server, _userTrader;
+let _goldEngine, _forexEngine, _symbolEngines = {}, _crossArb, _signalBus, _sharedRisk, _capitalRouter, _cexUserTrader;
 let _multiEngine, _greenfieldSync;
 
 async function main() {
   console.log('');
   console.log('╔══════════════════════════════════════════════════════════╗');
-  console.log('║  🔥 ARK Quant Agent v124 — 纯BB策略版                     ║');
-  console.log('║  只运行BB布林带策略 · 仪表盘 · 算力付费 · 用户管理        ║');
+  console.log(`║  🔥 ARK Quant Agent v125 — B策略默认/A策略按需          ║`);
+  console.log(`║  B策略 (BB布林带): ✅ 默认启动                            ║`);
+  console.log(`║  A策略 (旧引擎):    ${ENABLE_A_STRATEGY ? '✅ 已启用 (按开关)' : '⏸️ 已停用 (管理员指令开启)'}${' '.repeat(Math.max(0, 24 - (ENABLE_A_STRATEGY ? 16 : 30)))}║`);
   console.log('╚══════════════════════════════════════════════════════════╝');
   console.log('');
 
@@ -85,19 +113,102 @@ async function main() {
   }
   console.log(`[启动] 📊 ${symbols.length} 个交易对数据就绪`);
 
-  // ═══ 2. Engine 实例（不启动交易，只作为数据容器） ═══
+  // ═══ 2. Engine 实例（数据容器 + A策略可选启动）═══
   const port = process.env.SAAS_PORT || 10020;
   const engine = new Engine({ dataBus });
   _engine = engine;
-  // v124: engine.start() 不再调用 — 只用BB策略
-  console.log('[启动] ⏸️ Engine 主引擎不启动交易循环 (v124: 只用BB策略)');
+  if (ENABLE_A_STRATEGY) {
+    // A 策略启用：启动主引擎交易循环
+    try {
+      await engine.start();
+      console.log('[启动] ✅ Engine 主引擎已启动 (A策略)');
+    } catch (e) {
+      console.log('[启动] ⚠️ Engine 主引擎启动失败:', e.message);
+    }
+  } else {
+    // v125: B 策略模式，主引擎不启动交易循环
+    console.log('[启动] ⏸️ Engine 主引擎不启动 (B策略模式，用 BBStrategyManager)');
+  }
 
   // ═══ 3. Binance API Key（从 .env 读取） ═══
   const binanceApiKey = process.env.BINANCE_API_KEY || '';
   const binanceApiSecret = process.env.BINANCE_API_SECRET || '';
 
-  // ═══ v124: 以下引擎全部停用 ═══
-  console.log('[启动] ⏸️ Gold/Forex/SymbolEngine/CrossArb/SignalBus/RiskLayer 已停用 (v124)');
+  // ═══ A 策略旧引擎初始化（仅启用时）═══
+  let goldEngine = null, forexEngine = null;
+  let symbolEngines = {};
+  let crossArb = null, signalBus = null, sharedRisk = null, capitalRouter = null;
+  let cexUserTrader = null;
+  if (ENABLE_A_STRATEGY) {
+    console.log('[启动] 🟡 A 策略启动中 (Engine + Gold + Forex + Symbol + CrossArb + SignalBus + RiskLayer + CapitalRouter + CEXUserTrader)...');
+    try {
+      if (GoldEngine) {
+        goldEngine = new GoldEngine({ dataBus, userDB: null });
+        await goldEngine.start();
+        _goldEngine = goldEngine;
+        console.log('[A策略] ✅ GoldEngine 已启动');
+      }
+    } catch (e) { console.log('[A策略] ⚠️ GoldEngine 启动失败:', e.message); }
+    try {
+      if (ForexEngine) {
+        forexEngine = new ForexEngine({ dataBus, userDB: null });
+        await forexEngine.start();
+        _forexEngine = forexEngine;
+        console.log('[A策略] ✅ ForexEngine 已启动');
+      }
+    } catch (e) { console.log('[A策略] ⚠️ ForexEngine 启动失败:', e.message); }
+    try {
+      if (SignalBus) {
+        signalBus = new SignalBus({ dataBus });
+        await signalBus.start();
+        _signalBus = signalBus;
+        console.log('[A策略] ✅ SignalBus 已启动');
+      }
+    } catch (e) { console.log('[A策略] ⚠️ SignalBus 启动失败:', e.message); }
+    try {
+      if (RiskLayer) {
+        sharedRisk = new RiskLayer({ dataBus });
+        await sharedRisk.start();
+        _sharedRisk = sharedRisk;
+        console.log('[A策略] ✅ RiskLayer 已启动');
+      }
+    } catch (e) { console.log('[A策略] ⚠️ RiskLayer 启动失败:', e.message); }
+    try {
+      if (CapitalRouter) {
+        capitalRouter = new CapitalRouter({ dataBus });
+        await capitalRouter.start();
+        _capitalRouter = capitalRouter;
+        console.log('[A策略] ✅ CapitalRouter 已启动');
+      }
+    } catch (e) { console.log('[A策略] ⚠️ CapitalRouter 启动失败:', e.message); }
+    try {
+      if (CrossArb) {
+        crossArb = new CrossArb({ dataBus });
+        await crossArb.start();
+        _crossArb = crossArb;
+        console.log('[A策略] ✅ CrossArb 已启动');
+      }
+    } catch (e) { console.log('[A策略] ⚠️ CrossArb 启动失败:', e.message); }
+    // SymbolEngine: 每品种独立引擎
+    try {
+      if (SymbolEngine) {
+        const symbolCfg = require('../config/trading-pairs');
+        const symbolList = Object.keys(symbolCfg).filter(s => !s.startsWith('_'));
+        for (const sym of symbolList) {
+          try {
+            const se = new SymbolEngine({ symbol: sym, dataBus, userDB: null });
+            await se.start();
+            symbolEngines[sym] = se;
+          } catch (e) { /* skip */ }
+        }
+        _symbolEngines = symbolEngines;
+        console.log(`[A策略] ✅ SymbolEngine 已启动 ${Object.keys(symbolEngines).length} 个`);
+      }
+    } catch (e) { console.log('[A策略] ⚠️ SymbolEngine 启动失败:', e.message); }
+    console.log('[启动] ✅ A 策略启动完成');
+  } else {
+    console.log('[启动] ⏸️ A 策略已停用 (Gold/Forex/Symbol/CrossArb/SignalBus/RiskLayer)');
+  }
 
   // ═══ 4. Greenfield BSC 链上同步 ═══
   let greenfieldSync = null;
@@ -114,9 +225,9 @@ async function main() {
   // ═══ 5. SaaS Server（用户平台 + 算力付费） ═══
   const server = new SaasServer(engine, port, {
     dataBus,
-    goldEngine: null, forexEngine: null,
-    symbolEngines: {},
-    capitalRouter: null, sharedRisk: null, signalBus: null, crossArb: null,
+    goldEngine, forexEngine,
+    symbolEngines,
+    capitalRouter, sharedRisk, signalBus, crossArb,
   });
   _server = server;
   server.start();
@@ -126,8 +237,8 @@ async function main() {
   const Dashboard = require('../dashboard/server');
   const dashboardPort = process.env.DASHBOARD_PORT || 10010;
   const dashboard = new Dashboard(engine, dashboardPort, {
-    capitalRouter: null, sharedRisk: null, signalBus: null, crossArb: null,
-    goldEngine: null, forexEngine: null, symbolEngines: {},
+    capitalRouter, sharedRisk, signalBus, crossArb,
+    goldEngine, forexEngine, symbolEngines,
     masterdAgent: null,
     newsHub: null,
   });
@@ -147,8 +258,23 @@ async function main() {
   userTrader.start();
   console.log('[启动] 🤖 UserTrader 用户自动跟单已启动');
 
-  // ═══ 8. CEXUserTrader — 已停用 ═══
-  console.log('[启动] ⏸️ CEXUserTrader 已停用 (v124)');
+  // ═══ 8. CEXUserTrader (A 策略一部分) ═══
+  if (ENABLE_A_STRATEGY && CEXUserTrader) {
+    try {
+      cexUserTrader = new CEXUserTrader({
+        userDB: server.userDB,
+        dataBus,
+        traderKey: process.env.TRADER_PRIVATE_KEY,
+        goldEngine, forexEngine, symbolEngines,
+      });
+      cexUserTrader.start();
+      _cexUserTrader = cexUserTrader;
+      server.cexUserTrader = cexUserTrader;
+      console.log('[启动] ✅ CEXUserTrader 已启动 (A策略)');
+    } catch (e) { console.log('[启动] ⚠️ CEXUserTrader 启动失败:', e.message); }
+  } else {
+    console.log('[启动] ⏸️ CEXUserTrader 已停用' + (ENABLE_A_STRATEGY ? ' (模块未加载)' : ' (B策略模式)'));
+  }
 
   // ═══ 9. BBStrategyManager — 唯一交易策略 ═══
   let bbStrategyManager = null;
@@ -185,10 +311,10 @@ async function main() {
   // ═══ 状态汇总 ═══
   console.log('');
   console.log('📊 ═══════════════════════════════════════════');
-  console.log('📊 v124 纯BB策略版状态:');
+  console.log('📊 v125 策略状态:');
   console.log('📊 ───────────────────────────────────────────');
-  console.log('📊 BB策略:        ✅ (唯一交易策略)');
-  console.log('📊 旧合约引擎:    ⏸️ 已停用 (18策略/Gold/Forex/Symbol/Arb)');
+  console.log('📊 B策略 (BB布林带): ✅ 启动');
+  console.log(`📊 A策略 (旧引擎): ${ENABLE_A_STRATEGY ? '✅ 启用' : '⏸️ 停用 (需管理员指令)'}`);
   console.log(`📊 Dashboard:     ✅ 端口 ${dashboardPort}`);
   console.log(`📊 SaaS Server:   ✅ 端口 ${port}`);
   console.log(`📊 UserTrader:    ✅ (用户跟单)`);
@@ -254,6 +380,20 @@ async function gracefulShutdown(reason) {
   try {
     if (_engine) { _engine.running = false; }
   } catch (e) { /* ignore */ }
+  
+  // v125: A 策略引擎关闭
+  try { if (_goldEngine) _goldEngine.stop?.(); } catch (e) {}
+  try { if (_forexEngine) _forexEngine.stop?.(); } catch (e) {}
+  try {
+    for (const se of Object.values(_symbolEngines || {})) {
+      try { se.stop?.(); } catch (e) {}
+    }
+  } catch (e) {}
+  try { if (_crossArb) _crossArb.stop?.(); } catch (e) {}
+  try { if (_signalBus) _signalBus.stop?.(); } catch (e) {}
+  try { if (_sharedRisk) _sharedRisk.stop?.(); } catch (e) {}
+  try { if (_capitalRouter) _capitalRouter.stop?.(); } catch (e) {}
+  try { if (_cexUserTrader) _cexUserTrader.stop?.(); } catch (e) {}
   
   try {
     if (_server) { _server.close(); }

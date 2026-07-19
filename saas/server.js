@@ -2784,6 +2784,83 @@ document.getElementById('lb').onclick=L;
         res.status(500).json({ error: '合约编译产物未找到: ' + e.message });
       }
     });
+
+    // ═══ v125: A 策略开关接口（仅管理员）═══
+    // GET /api/strategy/a/status — 查询 A 策略开关状态
+    // POST /api/strategy/a/start — 启动 A 策略（写入开关后重启引擎）
+    // POST /api/strategy/a/stop — 停止 A 策略（写入开关后重启引擎）
+    // 鉴权方式1: X-Admin-Key header (仪表盘按钮使用)
+    // 鉴权方式2: Authorization Bearer + 管理员钱包 session (外部 API 调用)
+    const ADMIN_WALLETS_V125 = [
+      '0xfa3b90c574469909d20848273c06752a22fde74a',
+      '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
+    ];
+    const STRATEGY_SWITCH_FILE = path.join(__dirname, '..', 'config', 'strategy-switch.json');
+
+    const strategySwitchHandler = async (req, res) => {
+      try {
+        // 鉴权1: X-Admin-Key
+        const adminKey = req.headers['x-admin-key'];
+        if (!adminKey || adminKey !== ADMIN_KEY) {
+          // 鉴权2: session 钱包是否为管理员
+          const session = this._auth(req);
+          if (!session) return res.status(401).json({ error: '未认证 (需 X-Admin-Key 或管理员 session)' });
+          const wallet = (session.wallet || '').toLowerCase();
+          if (!ADMIN_WALLETS_V125.includes(wallet)) {
+            return res.status(403).json({ error: '仅管理员可操作 A 策略开关' });
+          }
+        }
+
+        // 读取当前开关
+        let cfg = {};
+        try { cfg = JSON.parse(fs.readFileSync(STRATEGY_SWITCH_FILE, 'utf-8')); } catch (e) {}
+
+        if (req.method === 'GET') {
+          return res.json({
+            success: true,
+            aStrategyEnabled: !!cfg.aStrategyEnabled,
+            lastChangedAt: cfg.lastChangedAt || 0,
+            lastChangedBy: cfg.lastChangedBy || 'system',
+            note: 'A 策略=旧引擎组合(Engine主引擎+Gold/Forex/Symbol/CrossArb等)。启动后需重启生效。',
+          });
+        }
+
+        // POST: start/stop
+        const action = req.path.endsWith('/start') ? 'start' : 'stop';
+        const newEnabled = (action === 'start');
+        cfg.aStrategyEnabled = newEnabled;
+        cfg.lastChangedAt = Date.now();
+        cfg.lastChangedBy = adminKey ? 'admin-key' : ((this._auth(req)?.wallet || 'unknown').slice(0, 12));
+        fs.writeFileSync(STRATEGY_SWITCH_FILE, JSON.stringify(cfg, null, 2));
+        this.log(`🔧 管理员 ${newEnabled ? '启动' : '停止'} A 策略 — 写入开关，准备重启引擎`);
+
+        // 异步触发重启（让当前响应先返回）
+        setTimeout(() => {
+          try {
+            this.log('🔄 A 策略开关变更，触发引擎重启...');
+            const crashFile = path.join(__dirname, '..', 'data', 'engine-crash.state');
+            fs.writeFileSync(crashFile, JSON.stringify({
+              reason: 'strategy-switch-change',
+              msg: `A策略${newEnabled ? '启动' : '停止'}，watchdog 重启加载新配置`,
+              ts: Date.now(),
+            }));
+            // start.js 会检测到 crash state 自行退出，watchdog 拉起新实例加载新开关
+          } catch (e) { this.log('⚠️ 写 crash state 失败:', e.message); }
+        }, 800);
+
+        return res.json({
+          success: true,
+          message: `A 策略已${newEnabled ? '启动' : '停止'}，引擎正在重启加载新配置...`,
+          aStrategyEnabled: newEnabled,
+          restartTriggered: true,
+        });
+      } catch (e) {
+        return res.status(500).json({ error: e.message });
+      }
+    };
+    this.app.get('/api/strategy/a/status', strategySwitchHandler);
+    this.app.post('/api/strategy/a/start', strategySwitchHandler);
+    this.app.post('/api/strategy/a/stop', strategySwitchHandler);
   }
 
   _auth(req) {
