@@ -188,10 +188,11 @@ function startEngine() {
   const enginePath = path.join(__dirname, 'start.js');
   log(`🚀 启动引擎: node ${enginePath}`);
 
+  // v113.67: 强制 PRIVATE_ACCESS=no 让管理员仪表盘可公网访问（web_publish 需要）
   engineProcess = spawn('node', [enginePath], {
     cwd: path.join(__dirname, '..'),
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env },
+    env: { ...process.env, PRIVATE_ACCESS: 'no' },
     detached: false,
   });
 

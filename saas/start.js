@@ -367,6 +367,8 @@ async function main() {
   server.start();
 
   // ═══ 9. Dashboard 仪表盘 ═══
+  // v113.67: 强制 PRIVATE_ACCESS=no 让管理员仪表盘可公网访问（web_publish 需要）
+  if (!process.env.PRIVATE_ACCESS) process.env.PRIVATE_ACCESS = 'no';
   const Dashboard = require('../dashboard/server');
   const dashboardPort = process.env.DASHBOARD_PORT || 10010;
   const dashboard = new Dashboard(engine, dashboardPort, {
