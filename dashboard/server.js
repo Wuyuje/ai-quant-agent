@@ -122,7 +122,11 @@ class Dashboard {
     // API: 综合状态
     this.app.get('/api/status', async (req, res) => {
       try {
+        // v124: running 反映 BBStrategyManager 状态（主引擎已停用，只有 BB 策略在跑）
+        const bbMgr = this.bbStrategyManager || this.engine?._bbStrategyManager;
+        const bbRunning = !!(bbMgr && bbMgr.running);
         const status = this.engine.getStatus();
+        status.running = bbRunning; // 覆盖 engine.running=false，让 watchdog 判定健康
         let totalUserCount = 0;
         try {
           const fs = require('fs');
