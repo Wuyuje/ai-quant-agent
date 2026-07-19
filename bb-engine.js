@@ -1302,6 +1302,26 @@ class BBEngine {
     );
 
     this._saveFeeState();
+
+    // ═══ v124: 立即扣减仪表盘记账余额（实时反映） ═══
+    // 之前: pending 累积到 $5 才扣 gatesFeeBalance → 仪表盘余额不实时
+    // 现在: 每次盈利立即扣减, 仪表盘余额立即反映算力费扣减
+    //      链上转账成功时只更新 gatesFeeCollected, 不再重复扣余额
+    if (this.userDB) {
+      const existing = this.userDB.get(walletKey.toLowerCase()) || {};
+      const oldBalance = existing.gatesFeeBalance || 0;
+      const newBalance = Math.max(0, oldBalance - totalFee);
+      const newPending = (existing.gatesFeePending || 0) + totalFee; // 累积待转账金额
+      this.userDB.set(walletKey.toLowerCase(), {
+        ...existing,
+        gatesFeeBalance: newBalance,
+        gatesFeeLow: newBalance < 5,
+        gatesFeePending: newPending, // 用于 _tryBatchFeeTransfer 时清零
+        gatesFeeApproved: true,
+      });
+      this._log(`📉 ${walletKey.slice(0,10)} 仪表盘余额: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} (扣减待转账 $${totalFee.toFixed(2)})`);
+    }
+
     await this._tryBatchFeeTransfer(walletKey);
   }
 
@@ -1388,20 +1408,21 @@ class BBEngine {
         }
       }
 
-      // 更新用户记账余额（Trader钱包共用，按用户记账）
+      // ═══ v124: 链上转账成功 — 只更新 gatesFeeCollected, 不再扣 gatesFeeBalance ═══
+      // 余额已在 _collectServiceFee 时实时扣减, 这里只标记为已转账 collected
+      // 同时清零 gatesFeePending (累积待转账金额归零)
       if (platformOk && ecoOk && this.userDB) {
         const existing = this.userDB.get(walletKey.toLowerCase()) || {};
-        const oldBalance = existing.gatesFeeBalance || 0;
-        const newBalance = Math.max(0, oldBalance - totalFee);
         const collected = (existing.gatesFeeCollected || 0) + totalFee;
+        // 重新计算 pending (清零本次转账部分)
+        const currentPending = Math.max(0, (existing.gatesFeePending || 0) - totalFee);
         this.userDB.set(walletKey.toLowerCase(), {
           ...existing,
-          gatesFeeBalance: newBalance,
-          gatesFeeLow: newBalance < 5,
           gatesFeeCollected: collected,
+          gatesFeePending: currentPending,
           gatesFeeApproved: true, // 自动扣费模式，永远视为已授权
         });
-        this._log(`✅ ${walletKey.slice(0,10)} 记账余额: $${oldBalance.toFixed(2)} → $${newBalance.toFixed(2)} | 累计扣费 $${collected.toFixed(2)}`);
+        this._log(`✅ ${walletKey.slice(0,10)} 链上转账成功 $${totalFee.toFixed(2)} | 累计已转 $${collected.toFixed(2)} | 剩余待转 $${currentPending.toFixed(2)}`);
       }
 
     } catch (e) {
