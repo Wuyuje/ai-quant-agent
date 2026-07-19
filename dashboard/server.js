@@ -57,7 +57,7 @@ class Dashboard {
       '/api/user/',
       '/api/backtest',
       '/api/verify-api-key', '/api/cex-mode/', '/api/cex-status',
-      '/api/strategy/', // v125: A 策略开关代理到 SaaS Server
+      '/api/strategy/a/', // v125: 仅代理 A 策略开关接口到 SaaS Server（/api/strategy/switch, /api/strategy/active 等由 dashboard 本地处理）
       '/admin', '/go', '/reg',  // SaaS 页面路由也代理
     ];
     // 注意: /api/admin/ 不代理，dashboard本地处理
@@ -2548,7 +2548,22 @@ class Dashboard {
       if (um) {
         return res.json(um.getStatus());
       }
-      res.json({ error: '统一策略管理器未启动' });
+      // v125: 兼容模式 — 没有 unifiedManager 时返回当前 B 策略状态
+      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      const strategy = bb ? bb.getActiveStrategy() : 'bb';
+      const isBB = strategy === 'bb';
+      const bbStats = bb?.getStats?.() || {};
+      res.json({
+        activeStrategy: strategy,
+        isBB,
+        switching: false,
+        aStrategy: { running: false, cycleCount: 0 }, // A 策略默认停用
+        bStrategy: {
+          running: !!bbStats.running,
+          cycleCount: bbStats.cycleCount || 0,
+          activeUsers: bbStats.activeUsers || 0,
+        },
+      });
     });
 
     // ═══ 管理员交易所切换 (CEX/DEX) — 独立于全局策略 ═══
