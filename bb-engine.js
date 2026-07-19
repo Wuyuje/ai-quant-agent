@@ -32,8 +32,40 @@ const CONFIG = {
   
   // v122: 交易对黑名单 — 这些币种永不选入持仓
   // BANKUSDT: 2026-07-17 触发 3 次终极止损，单笔亏损 -$150+，拉入黑名单
+  // v124 (2026-07-18): 加入 SymbolEngine 管理的所有合约品种，彻底隔离 BB 和其他引擎
+  //   原因：SymbolEngine 用管理员 .env 的 Binance key 在同一账户开合约仓 (TSLAUSDT/NVDAUSDT/...)
+  //   BB _syncPositions() 把这些仓当「孤儿仓位」接管，用 BB 轨道止盈逻辑去管这些非 BB 选的币
+  //   结果：管理员 BB 历史里混入大量 TSLAUSDT/NVDAUSDT/AAPLUSDT/MSFTUSDT/METAUSDT/GOOGLUSDT/QQQUSDT
+  //         /COPPERUSDT/NATGASUSDT/XAGUSDT/XAUUSDT/URNMUSDT/UVXYUSDT，ONDOUSDT 一笔亏损 -$115
+  //   修复：把这些品种全部拉入黑名单，BB 永不接管、永不交易、永不补仓
   blacklist: [
     'BANKUSDT',   // 单笔巨亏 -$150（3次终极止损）
+    // ── SymbolEngine 股票/ETF 合约（PERP） ──
+    'TSLAUSDT', 'NVDAUSDT', 'AAPLUSDT', 'METAUSDT', 'MSFTUSDT',
+    'GOOGLUSDT', 'SPYUSDT', 'QQQUSDT',
+    // ── SymbolEngine 商品合约 ──
+    'XAGUSDT', 'XAUUSDT', 'COPPERUSDT', 'NATGASUSDT',
+    // ── SymbolEngine 债券合约 ──
+    'UVXYUSDT', 'URNMUSDT',
+  ],
+  
+  // v124: 允许 BB 接管的「白名单」前缀 — 只接管纯加密合约品种
+  //   SymbolEngine 的股票/ETF/商品合约全部不在白名单里，即使新加品种也不会被误接管
+  //   空数组 = 不启用白名单（退回 blacklist 模式）；非空 = 启用白名单
+  orphanAllowPrefixes: [
+    'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC',
+    'LINK', 'UNI', 'LTC', 'BCH', 'ATOM', 'NEAR', 'APT', 'ARB', 'OP', 'INJ',
+    'SUI', 'TIA', 'SEI', 'ORDI', 'PEPE', 'WIF', 'BONK', 'SHIB', 'FIL', 'FTM',
+    'ALGO', 'AAVE', 'SAND', 'MANA', 'AXS', 'FET', 'RNDR', 'GRT', 'ICP', 'EGLD',
+    'THETA', 'XLM', 'VET', 'FLOW', 'XTZ', 'KAVA', 'ONE', 'GALA', 'CHZ', 'ENJ',
+    'SUSHI', 'CRV', 'SNX', 'COMP', 'YFI', 'BAL', '1INCH', 'KSM', 'OCEAN', 'DASH',
+    'ZEC', 'XMR', 'DASH', 'NEO', 'IOTA', 'WAVES', 'LSK', 'ICX', 'ONT', 'BTG',
+    'XEC', 'FLR', 'KAITO', 'SKHY', 'HYPE', 'ONDO', 'KORU', 'SPCX', 'SNXX', 'INTC',
+    'MU', 'SYN', '1000XEC', '1000SATS', '1000PEPE', '1000BONK', '1000SHIB',
+    'WLD', 'JUP', 'PYTH', 'STX', 'RUNE', 'DYDX', 'GMX', 'CRV', 'KAVA', 'ROSE',
+    'STRK', 'MANTA', 'JTO', 'TIA', 'BLUR', 'GAS', 'CFX', 'ACH', 'ID', 'JASMY',
+    'LDO', 'ARKM', 'CYBER', 'NTRN', 'YGG', 'DODO', 'BAKE', 'XVS', 'ALPACA', 'WING',
+    'TRB', 'FIL', 'MTL', 'DODO', 'WAVES', 'CELO', 'KSM', 'CFG', 'ANKR', 'PERP', 'DUSK'
   ],
   
   // K线参数
@@ -1526,42 +1558,10 @@ class BBEngine {
             this.positions[symbol].qty = Math.abs(amt);
           }
         } else {
-          // 远程有但本地没有 → 孤儿仓位（可能是另一策略开的仓，或手动开的仓）
-          // v122: 黑名单币种不接管孤儿仓位（只监控价格，等机会平掉）
-          const blacklistSet = new Set(CONFIG.blacklist || []);
-          const currentCount = Object.keys(this.positions).length;
-          if (blacklistSet.has(symbol)) {
-            this._log(`🚫 ${symbol} 在黑名单中，不接管孤儿仓位（等机会平掉）`);
-          } else if (currentCount >= CONFIG.maxPositions) {
-            // 修复：持仓数超过 maxPositions 时，不接管新孤儿仓位，已有持仓靠策略止盈自然减仓
-            this._log(`⏸️ ${symbol} 远程孤儿仓位存在，但持仓已满${currentCount}/${CONFIG.maxPositions} — 暂不接管，等止盈减仓后接管`);
-          } else {
-            // ═══ v123: 孤儿仓位安全接管 — 不补仓，只监控止盈止损 ═══
-            // 修复：以前孤儿仓位 replenishCount=0 会触发 3 次补仓，把手动开的仓位放大近一倍 → 强平
-            // 现在：孤儿仓位直接置 replenishCount=maxReplenish（3），永不补仓，只等止盈/止损
-            const orphanLev = parseInt(rp.leverage) || CONFIG.leverage;
-            if (orphanLev !== CONFIG.leverage) {
-              this._log(`⚠️ ${symbol} 孤儿仓位杠杆 ${orphanLev}x 与默认 ${CONFIG.leverage}x 不一致，按实际杠杆管理`);
-            }
-            this._log(`🔗 ${symbol} 接管孤儿仓位: ${amt > 0 ? 'LONG' : 'SHORT'} qty=${Math.abs(amt)} entry=${entry} lev=${orphanLev}x（不补仓，只等止盈/止损）`);
-            this.positions[symbol] = {
-              symbol,
-              side: amt > 0 ? 'LONG' : 'SHORT',
-              qty: Math.abs(amt),
-              entryPrice: entry,
-              margin: Math.abs(amt) * entry / orphanLev,
-              leverage: orphanLev,
-              openTime: 0,
-              replenishCount: CONFIG.maxReplenish, // 🔑 v123: 直接置满，永不补仓
-              lastNarrowTime: null,
-              klinesSinceNarrow: 0,
-              mode: '轨道',
-              atrTrailPrice: null,
-              currentPrice: markPrice,
-              _orphan: true, // 🔑 孤儿仓位标记，补仓逻辑中绝对跳过
-            };
-            this._saveState();
-          }
+          // ═══ v124: 彻底不接管任何孤儿仓位 ═══
+          // 远程有但本地没有的仓位 → 其他引擎/手动开的仓，BB 一律不碰
+          // 只记录日志便于排查，不纳入任何管理
+          this._log(`⏭️ ${symbol} 远程有仓但非BB开的，不管（其他引擎/手动仓位）`);
         }
       }
 
