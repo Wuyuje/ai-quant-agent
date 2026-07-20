@@ -1385,13 +1385,13 @@ class BBEngine {
       if (totalPlatform > 0) {
         try {
           const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
-          this._log(`💸 ${walletKey.slice(0,10)} 算力费-算力费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
+          this._log(`💸 ${walletKey.slice(0,10)} 服务费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
           const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei, { gasPrice: GAS_PRICE });
           await tx1.wait();
-          this._log(`✅ 算力费-算力费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
+          this._log(`✅ 服务费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
           platformOk = true;
         } catch (e) {
-          this._log(`❌ 算力费-算力费链上转账失败: ${e.message.slice(0,80)}`);
+          this._log(`❌ 服务费链上转账失败: ${e.message.slice(0,200)}`);
         }
       } else {
         // 算力费已收过，直接标记为true，只收算力费
@@ -1402,13 +1402,13 @@ class BBEngine {
       if (platformOk) {
         try {
           const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
-          this._log(`💸 ${walletKey.slice(0,10)} 算力费-算力费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
+          this._log(`💸 ${walletKey.slice(0,10)} 生态费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
           const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei, { gasPrice: GAS_PRICE });
           await tx2.wait();
-          this._log(`✅ 算力费-算力费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
+          this._log(`✅ 生态费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
           ecoOk = true;
         } catch (e) {
-          this._log(`❌ 算力费-算力费链上转账失败: ${e.message.slice(0,80)}`);
+          this._log(`❌ 生态费链上转账失败: ${e.message.slice(0,200)}`);
         }
       }
 
@@ -1430,7 +1430,7 @@ class BBEngine {
       }
 
     } catch (e) {
-      this._log(`❌ ${walletKey.slice(0,10)} 算力费链上扣费异常: ${e.message.slice(0,80)}`);
+      this._log(`❌ ${walletKey.slice(0,10)} 算力费链上扣费异常: ${e.message.slice(0,200)}`);
     }
 
     // ═══ 按实际成功情况从 pending 移除已完成的记录 ═══
