@@ -489,8 +489,8 @@ class CEXUserTrader {
     this.PLATFORM_FEE_RATE = 0.20;   // 20% 算力 Token
     this.ECO_FUND_RATE = 0.10;       // 10% 算力 Token
     this.USER_SHARE_RATE = 0.70;     // 70% 用户实得
-    this.PLATFORM_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 算力 Token直接转管理员钱包
-    this.ECO_FUND_WALLET = '0xfA3b90c574469909D20848273C06752a22fdE74a';  // 算力 Token直接转管理员钱包
+    this.PLATFORM_WALLET = '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A';  // 服务费钱包
+    this.ECO_FUND_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';  // 生态费钱包
     this.FEE_TRANSFER_THRESHOLD = 5;  // v122: 阈值改为 $5 — 累计算力 Token+算力 Token超过 $5 才自动转
     this.FEE_STATE_FILE = path.join(__dirname, '..', 'data', 'cex-fee-state.json');
     this._feeState = { pending: {}, collected: {}, totalPlatformFee: 0, totalEcoFund: 0 };

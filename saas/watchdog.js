@@ -36,7 +36,7 @@ const CONFIG = {
 
   CHECK_INTERVAL: 30000,       // 30 秒检查一次
   FAIL_THRESHOLD: 3,            // 连续 3 次失败才重启
-  MAX_RESTARTS: 10,             // 1 小时内最多重启 10 次
+  MAX_RESTARTS: 9999,           // v125: 无限重启（不让系统永久停）
   RESTART_WINDOW: 3600000,     // 1 小时窗口
   HEALTH_TIMEOUT: 10000,        // 健康检查超时 10 秒
   RESTART_COOLDOWN: 15000,     // 重启后等 15 秒再检查
@@ -253,10 +253,11 @@ function recentRestartCount() {
 
 // ═══ 执行重启（统一逻辑）═══
 async function doRestart(reason) {
-  const restarts = recentRestartCount();
+  let restarts = recentRestartCount();
   if (restarts >= CONFIG.MAX_RESTARTS) {
-    log(`🛑 1 小时内已重启 ${restarts} 次，达到上限。暂停自动重启。`, 'ERROR');
-    return;
+    log(`⚠️ 1 小时内已重启 ${restarts} 次，重置计数后继续重启（v125: 水不永久停）`, 'WARN');
+    restartHistory = []; // 重置计数
+    restarts = 0;
   }
   log(`🔄 ${reason} — 开始重启... (${restarts + 1}/${CONFIG.MAX_RESTARTS} in 1h)`, 'WARN');
 
