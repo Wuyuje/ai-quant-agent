@@ -1609,8 +1609,9 @@ class SaasServer {
         };
       }
 
-      // ═══ 算力费余额:数据库记账 + 链上差额自动入账 ═══
-      // 用户充值到Trader钱包后,系统自动检测链上余额差额并自动入账
+      // ═══ 算力 Token 余额:数据库记账 + 链上差额检测 ═══
+      // 用户充值到Trader钱包后,系统自动检测链上余额差额
+      // 有差额时前端显示"确认到账"提示,用户点按钮后入账
       let _gatesFeeBalance = user?.gatesFeeBalance ?? 0;
       let _gatesFeeLow = user?.gatesFeeLow ?? false;
       let _pendingRecharge = 0; // 链上检测到的未入账金额
@@ -1637,26 +1638,9 @@ class SaasServer {
         clearTimeout(_to);
         const _json = await _resp.json();
         _traderOnchainBalance = _json.result ? Number(BigInt(_json.result)) / 1e18 : 0;
-        // 差额 = 链上余额 - 数据库总额
+        // 差额 = 链上余额 - 数据库总额(>1 才显示,避免精度误差)
         _pendingRecharge = Math.max(0, _traderOnchainBalance - _dbTotal);
-        if (_pendingRecharge < 1) _pendingRecharge = 0; // < $1 忽略精度误差
-        
-        // v125: 自动入账 — 检测到差额后直接入账到当前用户，不需要手动确认
-        if (_pendingRecharge >= 1 && user) {
-          const rechargeAmount = _pendingRecharge;
-          const oldBalance = user.gatesFeeBalance || 0;
-          const newBalance = oldBalance + rechargeAmount;
-          this.userDB.set(walletAddr, {
-            ...user,
-            gatesFeeBalance: newBalance,
-            gatesFeeLow: newBalance < 5,
-            gatesFeeApproved: true,
-          });
-          _gatesFeeBalance = newBalance;
-          _gatesFeeLow = newBalance < 5;
-          _pendingRecharge = 0; // 已入账，清零
-          console.log(`[GatesFee] ✅ ${walletAddr.slice(0,10)}... 自动入账 $${rechargeAmount.toFixed(2)} → 余额: $${newBalance.toFixed(2)}`);
-        }
+        if (_pendingRecharge < 1) _pendingRecharge = 0; // < $1 不显示
       } catch(e) {
         // 链上查询失败,不影响显示
         console.log('[GatesFee] 链上余额查询失败:', e.message);

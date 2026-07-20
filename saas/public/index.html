@@ -313,16 +313,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           <span style="color:var(--red);font-size:.82em;font-weight:600" data-i18n="gates.lowTitle">算力 Token 余额不足，交易已暂停</span>
         </div>
-        <div style="color:var(--muted);font-size:.75em;margin-top:4px;margin-left:22px" data-i18n="gates.lowDesc">请向以上充值地址转入 USDT (BEP-20)，系统会自动检测并入账。</div>
+        <div style="color:var(--muted);font-size:.75em;margin-top:4px;margin-left:22px" data-i18n="gates.lowDesc">请向以上充值地址转入 USDT (BEP-20)，充值后点击下方按钮确认。</div>
+        <button id="confirmRechargeBtn" onclick="confirmRecharge()" style="margin-top:8px;margin-left:22px;padding:8px 20px;border:none;border-radius:8px;background:var(--green);color:#fff;font-size:.78em;font-weight:700;cursor:pointer;transition:all .15s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+          <span data-i18n="gates.confirmBtn">我已充值，确认到账</span>
+        </button>
+        <span id="confirmRechargeMsg" style="margin-left:10px;font-size:.75em;color:var(--muted)"></span>
       </div>
 
-      <!-- v125: 自动入账提示（不需要手动确认）-->
+      <!-- Pending Recharge Alert (检测到链上有未入账充值时显示) -->
       <div id="gatesFeePendingAlert" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);border-radius:8px">
         <div style="display:flex;align-items:center;gap:6px">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <span style="color:var(--green);font-size:.82em;font-weight:600">充值已自动入账</span>
+          <span style="color:var(--green);font-size:.82em;font-weight:600">检测到充值 <span id="pendingRechargeAmount">$0.00</span> 待入账</span>
         </div>
-        <div style="color:var(--muted);font-size:.75em;margin-top:4px;margin-left:22px">系统检测到充值后已自动入账到您的账户，无需手动确认。</div>
+        <div style="color:var(--muted);font-size:.75em;margin-top:4px;margin-left:22px">系统检测到 Trader 钱包有新的充值。点击下方按钮一键确认入账到您的账户。</div>
+        <button id="autoConfirmBtn" onclick="confirmRechargeAuto()" style="margin-top:8px;margin-left:22px;padding:8px 20px;border:none;border-radius:8px;background:var(--green);color:#fff;font-size:.78em;font-weight:700;cursor:pointer;transition:all .15s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+          一键确认入账
+        </button>
+        <span id="autoConfirmMsg" style="margin-left:10px;font-size:.75em;color:var(--muted)"></span>
       </div>
 
       <!-- Info Footer -->
