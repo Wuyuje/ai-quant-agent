@@ -2467,10 +2467,22 @@ class Dashboard {
           bStrategy: st.bStrategy,
         });
       }
-      // 兼容旧模式
+      // v125 兼容模式: 返回完整状态 (与 /api/strategy/status 一致)
       const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
       const strategy = bb ? bb.getActiveStrategy() : 'bb';
-      res.json({ strategy, isBB: strategy === 'bb' });
+      const isBB = strategy === 'bb';
+      const bbStats = bb?.getStats?.() || {};
+      res.json({
+        strategy,
+        isBB,
+        switching: false,
+        aStrategy: { running: false, cycleCount: 0 },
+        bStrategy: {
+          running: !!bbStats.running,
+          cycleCount: bbStats.cycleCount || 0,
+          activeUsers: bbStats.activeUsers || 0,
+        },
+      });
     });
 
     app.post('/api/strategy/switch', this._adminAuth, async (req, res) => {

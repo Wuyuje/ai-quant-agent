@@ -276,7 +276,7 @@ async function main() {
     console.log('[启动] ⏸️ CEXUserTrader 已停用' + (ENABLE_A_STRATEGY ? ' (模块未加载)' : ' (B策略模式)'));
   }
 
-  // ═══ 9. BBStrategyManager — 唯一交易策略 ═══
+  // ═══ 9. BBStrategyManager — B策略 (默认启动) ═══
   let bbStrategyManager = null;
   try {
     bbStrategyManager = new BBStrategyManager({
@@ -287,8 +287,24 @@ async function main() {
     server.bbStrategyManager = bbStrategyManager;
     engine._bbStrategyManager = bbStrategyManager;
     dashboard.bbStrategyManager = bbStrategyManager; // 注入仪表盘
-    console.log('[启动] 📊 BBStrategyManager 多用户布林带策略已启动 (唯一策略)');
+    console.log('[启动] 📊 BBStrategyManager B策略已启动');
   } catch (e) { console.log('[启动] ⚠️ BBStrategyManager 启动失败:', e.message); }
+
+  // ═══ 9.5 UnifiedStrategyManager — A/B 策略统一切换 ═══
+  // 让仪表盘的 A/B 切换按钮真正能启停引擎
+  try {
+    const UnifiedStrategyManager = require('./start-unified').UnifiedStrategyManager || null;
+    if (UnifiedStrategyManager && bbStrategyManager) {
+      const um = new UnifiedStrategyManager({ server, dashboard });
+      // 复用已启动的 BBStrategyManager，避免重复启动
+      um.bbManager = bbStrategyManager;
+      um.activeStrategy = 'bb';
+      global.unifiedManager = um;
+      console.log('[启动] 🎚️ UnifiedStrategyManager 已启动 (A/B 策略切换器，复用现有 BB 管理器)');
+    } else {
+      console.log('[启动] ⏭️ UnifiedStrategyManager 未加载 (start-unified.js 不可用)');
+    }
+  } catch (e) { console.log('[启动] ⚠️ UnifiedStrategyManager 加载失败:', e.message); }
 
   // ═══ 10. MultiEngine v3 — 百万用户框架 ═══
   let multiEngine = null;

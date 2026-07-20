@@ -569,8 +569,14 @@ async function main() {
 // 注意：unifiedManager 需要全局可访问，Dashboard 的 /api/strategy/switch 会调用它
 global.unifiedManager = null;
 
+// 导出 UnifiedStrategyManager 供 start.js 复用
+module.exports = { UnifiedStrategyManager };
+
+// 仅在直接运行时才执行 main()
+if (require.main === module) {
 main().catch(e => {
   console.error('❌ 启动失败:', e);
   console.log('⚠️ 5秒后重试...');
   setTimeout(() => main().catch(() => {}), 5000);
 });
+}
