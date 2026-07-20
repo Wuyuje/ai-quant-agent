@@ -13,3 +13,6 @@ backup/
 # ── 日志 ──
 logs/
 *.log
+
+# Supervisor chat inbox (运行时数据)
+supervisor/
