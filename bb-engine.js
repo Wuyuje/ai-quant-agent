@@ -1370,6 +1370,9 @@ class BBEngine {
         'function balanceOf(address) view returns (uint256)',
       ], traderWallet);
 
+      // v125: BSC 节点要求显式 gasPrice=5 Gwei（不支持 EIP-1559）
+      const GAS_PRICE = ethers.parseUnits('5', 'gwei');
+
       // 检查Trader钱包USDT余额是否足够
       const traderBal = await usdtContract.balanceOf(traderWallet.address);
       const totalFeeWei = ethers.parseUnits(totalFee.toFixed(6), 18);
@@ -1383,7 +1386,7 @@ class BBEngine {
         try {
           const platformWei = ethers.parseUnits(totalPlatform.toFixed(6), 18);
           this._log(`💸 ${walletKey.slice(0,10)} 算力费-算力费 $${totalPlatform.toFixed(2)} → ${PLATFORM_WALLET.slice(0,10)}...`);
-          const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei);
+          const tx1 = await usdtContract.transfer(PLATFORM_WALLET, platformWei, { gasPrice: GAS_PRICE });
           await tx1.wait();
           this._log(`✅ 算力费-算力费链上转账成功 $${totalPlatform.toFixed(2)} USDT tx=${tx1.hash.slice(0,16)}...`);
           platformOk = true;
@@ -1400,7 +1403,7 @@ class BBEngine {
         try {
           const ecoWei = ethers.parseUnits(totalEco.toFixed(6), 18);
           this._log(`💸 ${walletKey.slice(0,10)} 算力费-算力费 $${totalEco.toFixed(2)} → ${ECO_FUND_WALLET.slice(0,10)}...`);
-          const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei);
+          const tx2 = await usdtContract.transfer(ECO_FUND_WALLET, ecoWei, { gasPrice: GAS_PRICE });
           await tx2.wait();
           this._log(`✅ 算力费-算力费链上转账成功 $${totalEco.toFixed(2)} USDT tx=${tx2.hash.slice(0,16)}...`);
           ecoOk = true;
