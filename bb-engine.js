@@ -1278,6 +1278,7 @@ class BBEngine {
     const platformFee = pnlUsd * PLATFORM_FEE_RATE;
     const ecoFund = pnlUsd * ECO_FUND_RATE;
     const userShare = pnlUsd * USER_SHARE_RATE;
+    const totalFee = platformFee + ecoFund; // v125 修复: 之前漏定义导致 'totalFee is not defined' 异常，阻断链上自动扣费
 
     const walletKey = this.wallet || 'unknown';
     if (!this._feeState.pending[walletKey]) this._feeState.pending[walletKey] = [];
