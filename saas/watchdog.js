@@ -407,23 +407,29 @@ waitForEngine(10).then(async (alive) => {
 
 // 优雅关闭（watchdog 自己退出时不杀引擎）
 process.on('SIGINT', () => {
-  log('收到 SIGINT，watchdog 退出（引擎继续运行）');
-  process.exit(0);
+  log('收到 SIGINT — watchdog 忽略，继续守护引擎');
+  // v125: 不退出，继续守护引擎
 });
 process.on('SIGTERM', () => {
-  log('收到 SIGTERM，watchdog 退出（引擎继续运行）');
-  process.exit(0);
+  log('收到 SIGTERM — watchdog 忽略，继续守护引擎');
+  // v125: 不退出，继续守护引擎（避免进程终止信号杀死 watchdog）
 });
 
 // watchdog 自身异常不应影响引擎
 process.on('uncaughtException', (err) => {
   log(`watchdog uncaughtException: ${err.message}`, 'ERROR');
+  // v125: EPIPE 是 stdout/stderr 管道断裂，忽略
+  if (err.code === 'EPIPE') return;
   // watchdog 自己出错时不退出，继续监控
 });
 process.on('unhandledRejection', (reason) => {
   log(`watchdog unhandledRejection: ${reason?.message || reason}`, 'ERROR');
   // watchdog 自己出错时不退出，继续监控
 });
+
+// v125: 忽略 stdout EPIPE 错误（避免 bash pipe 断裂导致 watchdog 崩溃）
+process.stdout?.on?.('error', (err) => { if (err.code === 'EPIPE') return; throw err; });
+process.stderr?.on?.('error', (err) => { if (err.code === 'EPIPE') return; throw err; });
 
 // ═══ watchdog 自身心跳（每 5 分钟打一条，让用户知道 watchdog 还活着） ═══
 setInterval(() => {
