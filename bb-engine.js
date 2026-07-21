@@ -40,6 +40,8 @@ const CONFIG = {
   //   修复：把这些品种全部拉入黑名单，BB 永不接管、永不交易、永不补仓
   blacklist: [
     'BANKUSDT',   // 单笔巨亏 -$150（3次终极止损）
+    'BTCUSDT',    // 波动率低，盈利空间小
+    'BNBUSDT',    // 波动率低，盈利空间小
     // ── SymbolEngine 股票/ETF 合约（PERP） ──
     'TSLAUSDT', 'NVDAUSDT', 'AAPLUSDT', 'METAUSDT', 'MSFTUSDT',
     'GOOGLUSDT', 'SPYUSDT', 'QQQUSDT',
