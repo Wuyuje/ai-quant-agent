@@ -805,6 +805,24 @@ class BBEngine {
       this._log(`🔄 ${pos.symbol} 布林带收口，切回轨道止盈模式`);
     }
 
+    // v126: ATR 模式但不放量时，用旧止盈线继续跟踪 + 中轨兜底
+    if (pos.mode === 'ATR' && pos.atrTrailPrice) {
+      if (pos.side === 'LONG' && close < pos.atrTrailPrice) {
+        return { action: 'CLOSE', reason: `ATR跟踪止盈(非放量): 收盘${close.toFixed(6)}<止盈线${pos.atrTrailPrice.toFixed(6)}`, pnlPct };
+      }
+      if (pos.side === 'SHORT' && close > pos.atrTrailPrice) {
+        return { action: 'CLOSE', reason: `ATR跟踪止盈(非放量): 收盘${close.toFixed(6)}>止盈线${pos.atrTrailPrice.toFixed(6)}`, pnlPct };
+      }
+      // 中轨兜底：ATR 模式下如果收盘触碰中轨也止盈
+      if (pos.side === 'LONG' && close >= bb.mid) {
+        return { action: 'CLOSE', reason: `ATR模式中轨兜底: 多单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
+      }
+      if (pos.side === 'SHORT' && close <= bb.mid) {
+        return { action: 'CLOSE', reason: `ATR模式中轨兜底: 空单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
+      }
+      return { action: 'HOLD', reason: `ATR跟踪中(非放量): 止盈线${pos.atrTrailPrice.toFixed(6)} 收盘${close.toFixed(6)}`, pnlPct, mode: 'ATR' };
+    }
+
     // 常态轨道止盈
     if (pos.mode !== 'ATR') {
       pos.mode = '轨道';
