@@ -1263,8 +1263,18 @@ class BBEngine {
       return;
     }
     
-    // 计算仓位大小
-    const positionMargin = this.balance * CONFIG.perPositionPct;
+    // 计算仓位大小 — v126: 根据币种波动率自动配比
+    // 高波动币(ATR>0.5%): 小仓位(8%)，防止大仓位被插针止损
+    // 中波动币(0.2%~0.5%): 中仓位(12%)
+    // 低波动币(<0.2%): 大仓位(15%)，波动小可以多开
+    const atr = Indicators.atr(klines, CONFIG.atrPeriod);
+    const atrPct = atr / price * 100;
+    let positionPct = CONFIG.perPositionPct; // 默认15%
+    if (atrPct > 0.5) positionPct = 0.08; // 高波动→8%
+    else if (atrPct > 0.2) positionPct = 0.12; // 中波动→12%
+    // 低波动保持15%
+    
+    const positionMargin = this.balance * positionPct;
     const notional = positionMargin * CONFIG.leverage;
     const qty = notional / price;
 
