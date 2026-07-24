@@ -98,6 +98,13 @@ const CONFIG = {
   singleKLossPct: 20,       // 单K浮亏≥本金20%止损
   ultimateLossPct: 70,       // 总浮亏≥70%终极止损
   
+  // v126: ATR 波动率最低门槛 — 排除低波动币
+  minAtrPct: 0.15,          // ATR/价格 < 0.15% 不开仓
+  
+  // v126: 资金费率预警 — SHORT 时资金费率为正则预警
+  fundingFeeWarnPct: 0.01,  // 资金费率 > 0.01% 时 SHORT 预警
+  fundingFeeBlockPct: 0.05, // 资金费率 > 0.05% 时 SHORT 禁开仓
+  
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
   deliveryPauseMin: 60,     // 交割前1小时暂停
@@ -682,7 +689,7 @@ class BBEngine {
   }
 
   // ═══ 4. 开仓准入检查 ═══
-  checkOpenCondition(klines) {
+  async checkOpenCondition(klines, symbol) {
     // (1) 禁开仓条件：带宽100根K线历史分位 > 90%
     const bwPercentile = Indicators.bandwidthPercentile(klines, CONFIG.bandwidthPercentileLookback);
     if (bwPercentile === null) {
@@ -705,13 +712,21 @@ class BBEngine {
       return { allowed: false, reason: `布林带未连续${CONFIG.narrowCount}根收窄`, bwPercentile };
     }
 
+    // v126: ATR 波动率过滤 — 排除低波动币
+    const atr = Indicators.atr(klines, CONFIG.atrPeriod);
+    const lastClose = klines[klines.length - 1].close;
+    const atrPct = atr / lastClose * 100;
+    if (atrPct < CONFIG.minAtrPct) {
+      return { allowed: false, reason: `ATR波动率${atrPct.toFixed(3)}%<${CONFIG.minAtrPct}% — 低波动不开仓`, bwPercentile };
+    }
+
     // (3) 开仓信号确认
     const bb = Indicators.bollinger(klines, CONFIG.bbPeriod, CONFIG.bbStd);
     if (!bb) {
       return { allowed: false, reason: '布林带数据不足' };
     }
 
-    const lastClose = klines[klines.length - 1].close;
+    // lastClose 已在 ATR 过滤中声明
     
     // v126: EMA 趋势过滤 — 只顺趋势开仓
     const ema20 = Indicators.ema(klines, 20);
@@ -741,6 +756,17 @@ class BBEngine {
       if (!isDowntrend) {
         return { allowed: false, reason: `收盘触上轨但EMA多头排列(EMA20=${ema20.toFixed(6)}>EMA60=${ema60.toFixed(6)}) — 逆势不开空`, bwPercentile };
       }
+      // v126: 资金费率检查 — SHORT 时费率为正则预警/禁开
+      try {
+        const fundingInfo = await this.api.getFundingInfo(symbol);
+        const fundingRate = parseFloat(fundingInfo.fundingRate || 0) * 100; // 转为百分比
+        if (fundingRate > CONFIG.fundingFeeBlockPct) {
+          return { allowed: false, reason: `资金费率${fundingRate.toFixed(4)}%>${CONFIG.fundingFeeBlockPct}% — SHORT 费率过高禁开仓`, bwPercentile };
+        }
+        if (fundingRate > CONFIG.fundingFeeWarnPct) {
+          this._log(`⚠️ ${symbol} 资金费率${fundingRate.toFixed(4)}%>${CONFIG.fundingFeeWarnPct}% — SHORT 预警但允许开仓`);
+        }
+      } catch (e) { /* 资金费率查询失败不阻塞开仓 */ }
       return { 
         allowed: true, 
         direction: 'SHORT', 
@@ -1156,7 +1182,7 @@ class BBEngine {
         }
 
         // 开仓准入检查
-        const openCheck = this.checkOpenCondition(klines);
+        const openCheck = await this.checkOpenCondition(klines, symbol);
         if (!openCheck.allowed) {
           // 静默跳过，不刷屏
           continue;
