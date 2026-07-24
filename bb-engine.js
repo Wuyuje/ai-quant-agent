@@ -80,7 +80,7 @@ const CONFIG = {
   bandwidthPercentileLookback: 100,  // 100根K线带宽分位
   bandwidthOpenBlock: 90,             // >90%禁开
   bandwidthOpenAllow: 85,             // <85%解禁
-  narrowCount: 2,                     // 连续2根收窄
+  narrowCount: 3,                     // 连续3根收窄
   
   // 止盈
   profitTriggerPct: 2.0,    // 浮盈≥2%触发止盈
