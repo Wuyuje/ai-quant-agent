@@ -760,7 +760,7 @@ class BBEngine {
     const isDowntrend = isRanging ? (ema20 < ema60) : (ema20 < ema60 && ema20Falling);
     
     if (isRanging) {
-      this._log(`📊 ${symbol} 检测到震荡市场 — 关闭 EMA 斜率过滤，回到纯 BB 逻辑`);
+      this._log(`📊 ${(symbol || '?')} 检测到震荡市场 — 关闭 EMA 斜率过滤，回到纯 BB 逻辑`);
     }
     
     // 开多：5min收盘价触及/跌破下轨 + EMA多头排列 + EMA20斜率向上（多头加速）
