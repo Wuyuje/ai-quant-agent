@@ -1320,6 +1320,7 @@ class BBEngine {
     ADMIN_WALLETS: [
       '0xfa3b90c574469909d20848273c06752a22fde74a',
       '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
+      '0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5',  // 白名单用户，免算力费
     ],
     FEE_THRESHOLD: 5,          // v122: 累计费用≥$5才转账（高于$5才自动转给管理员）
     FEE_STATE_FILE: path.join(__dirname, 'data', 'bb-fee-state.json'),
