@@ -99,11 +99,15 @@ const CONFIG = {
   ultimateLossPct: 70,       // 总浮亏≥70%终极止损
   
   // v126: ATR 波动率最低门槛 — 排除低波动币
-  minAtrPct: 0.15,          // ATR/价格 < 0.15% 不开仓
+  minAtrPct: 0.10,          // ATR/价格 < 0.10% 不开仓（放宽）
   
   // v126: 资金费率预警 — SHORT 时资金费率为正则预警
   fundingFeeWarnPct: 0.01,  // 资金费率 > 0.01% 时 SHORT 预警
   fundingFeeBlockPct: 0.05, // 资金费率 > 0.05% 时 SHORT 禁开仓
+  
+  // v126: 震荡市场检测 — 震荡时自动关闭 EMA 过滤
+  rangeDetectPeriod: 30,    // 用最近30根K线检测震荡
+  rangeThreshold: 0.5,      // EMA20与EMA60间距 < 布林带带宽的50% 判定为震荡
   
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
@@ -577,6 +581,15 @@ class Indicators {
     if (!currentBB || !prevBB) return false;
     return currentBB.bandwidth > prevBB.bandwidth;
   }
+
+  // v126: 震荡市场检测 — EMA20与EMA60间距小于布林带宽度的50%
+  static isRanging(ema20, ema60, bb, threshold = 0.5) {
+    if (!ema20 || !ema60 || !bb) return false;
+    const emaGap = Math.abs(ema20 - ema60);
+    const bandwidth = bb.upper - bb.lower;
+    if (bandwidth <= 0) return false;
+    return emaGap / bandwidth < threshold;
+  }
 }
 
 // ════════════════════════════════════════
@@ -729,18 +742,26 @@ class BBEngine {
     // lastClose 已在 ATR 过滤中声明
     
     // v126: EMA 趋势过滤 — 只顺趋势开仓 + 斜率确认（避免趋势即将反转时入场）
+    // 震荡市场时自动关闭 EMA 过滤，回到纯 BB 逻辑
     const ema20 = Indicators.ema(klines, 20);
     const ema60 = Indicators.ema(klines, 60);
     if (!ema20 || !ema60) {
       return { allowed: false, reason: 'EMA 数据不足', bwPercentile };
     }
+    // v126: 震荡检测
+    const isRanging = Indicators.isRanging(ema20, ema60, bb, CONFIG.rangeThreshold);
     // v126: EMA20 斜率 — 用前一根K线算 EMA20 对比当前 EMA20
     const ema20Prev = Indicators.ema(klines.slice(0, -1), 20);
     const ema20Rising = ema20Prev ? ema20 > ema20Prev : true; // EMA20 向上
     const ema20Falling = ema20Prev ? ema20 < ema20Prev : true; // EMA20 向下
     
-    const isUptrend = ema20 > ema60 && ema20Rising; // 多头排列 + EMA20加速向上
-    const isDowntrend = ema20 < ema60 && ema20Falling; // 空头排列 + EMA20加速向下
+    // 震荡市场: 不要求 EMA 趋势，回到纯 BB 逻辑
+    const isUptrend = isRanging ? (ema20 > ema60) : (ema20 > ema60 && ema20Rising);
+    const isDowntrend = isRanging ? (ema20 < ema60) : (ema20 < ema60 && ema20Falling);
+    
+    if (isRanging) {
+      this._log(`📊 ${symbol} 检测到震荡市场 — 关闭 EMA 斜率过滤，回到纯 BB 逻辑`);
+    }
     
     // 开多：5min收盘价触及/跌破下轨 + EMA多头排列 + EMA20斜率向上（多头加速）
     if (lastClose <= bb.lower) {
