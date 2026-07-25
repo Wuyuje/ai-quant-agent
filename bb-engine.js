@@ -98,17 +98,6 @@ const CONFIG = {
   singleKLossPct: 20,       // 单K浮亏≥本金20%止损
   ultimateLossPct: 70,       // 总浮亏≥70%终极止损
   
-  // v126: ATR 波动率最低门槛 — 排除低波动币
-  minAtrPct: 0.10,          // ATR/价格 < 0.10% 不开仓（放宽）
-  
-  // v126: 资金费率预警 — SHORT 时资金费率为正则预警
-  fundingFeeWarnPct: 0.01,  // 资金费率 > 0.01% 时 SHORT 预警
-  fundingFeeBlockPct: 0.05, // 资金费率 > 0.05% 时 SHORT 禁开仓
-  
-  // v126: 震荡市场检测 — 震荡时自动关闭 EMA 过滤
-  rangeDetectPeriod: 30,    // 用最近30根K线检测震荡
-  rangeThreshold: 0.5,      // EMA20与EMA60间距 < 布林带带宽的50% 判定为震荡
-  
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
   deliveryPauseMin: 60,     // 交割前1小时暂停
@@ -468,18 +457,6 @@ class Indicators {
     return slice.reduce((a, b) => a + b, 0) / period;
   }
 
-  // v126: EMA（指数移动平均线）— 趋势选币用
-  static ema(klines, period = 20) {
-    if (klines.length < period) return null;
-    const closes = klines.map(k => k.close);
-    const k = 2 / (period + 1); // EMA 平滑系数
-    let ema = closes[0]; // 第一根用收盘价初始化
-    for (let i = 1; i < closes.length; i++) {
-      ema = closes[i] * k + ema * (1 - k);
-    }
-    return ema;
-  }
-
   // 标准差
   static std(values, period) {
     if (values.length < period) return 0;
@@ -580,15 +557,6 @@ class Indicators {
     const prevBB = this.bollinger(klines.slice(0, -1), 20, 2.0);
     if (!currentBB || !prevBB) return false;
     return currentBB.bandwidth > prevBB.bandwidth;
-  }
-
-  // v126: 震荡市场检测 — EMA20与EMA60间距小于布林带宽度的50%
-  static isRanging(ema20, ema60, bb, threshold = 0.5) {
-    if (!ema20 || !ema60 || !bb) return false;
-    const emaGap = Math.abs(ema20 - ema60);
-    const bandwidth = bb.upper - bb.lower;
-    if (bandwidth <= 0) return false;
-    return emaGap / bandwidth < threshold;
   }
 }
 
@@ -702,7 +670,7 @@ class BBEngine {
   }
 
   // ═══ 4. 开仓准入检查 ═══
-  async checkOpenCondition(klines, symbol) {
+  checkOpenCondition(klines) {
     // (1) 禁开仓条件：带宽100根K线历史分位 > 90%
     const bwPercentile = Indicators.bandwidthPercentile(klines, CONFIG.bandwidthPercentileLookback);
     if (bwPercentile === null) {
@@ -725,86 +693,33 @@ class BBEngine {
       return { allowed: false, reason: `布林带未连续${CONFIG.narrowCount}根收窄`, bwPercentile };
     }
 
-    // v126: ATR 波动率过滤 — 排除低波动币
-    const atr = Indicators.atr(klines, CONFIG.atrPeriod);
-    const lastClose = klines[klines.length - 1].close;
-    const atrPct = atr / lastClose * 100;
-    if (atrPct < CONFIG.minAtrPct) {
-      return { allowed: false, reason: `ATR波动率${atrPct.toFixed(3)}%<${CONFIG.minAtrPct}% — 低波动不开仓`, bwPercentile };
-    }
-
     // (3) 开仓信号确认
     const bb = Indicators.bollinger(klines, CONFIG.bbPeriod, CONFIG.bbStd);
     if (!bb) {
       return { allowed: false, reason: '布林带数据不足' };
     }
 
-    // lastClose 已在 ATR 过滤中声明
+    const lastClose = klines[klines.length - 1].close;
     
-    // v126: EMA 趋势过滤 — 只顺趋势开仓 + 斜率确认（避免趋势即将反转时入场）
-    // 震荡市场时自动关闭 EMA 过滤，回到纯 BB 逻辑
-    const ema20 = Indicators.ema(klines, 20);
-    const ema60 = Indicators.ema(klines, 60);
-    if (!ema20 || !ema60) {
-      return { allowed: false, reason: 'EMA 数据不足', bwPercentile };
-    }
-    // v126: 震荡检测
-    const isRanging = Indicators.isRanging(ema20, ema60, bb, CONFIG.rangeThreshold);
-    // v126: EMA20 斜率 — 用前一根K线算 EMA20 对比当前 EMA20
-    const ema20Prev = Indicators.ema(klines.slice(0, -1), 20);
-    const ema20Rising = ema20Prev ? ema20 > ema20Prev : true; // EMA20 向上
-    const ema20Falling = ema20Prev ? ema20 < ema20Prev : true; // EMA20 向下
-    
-    // 震荡市场: 不要求 EMA 趋势，回到纯 BB 逻辑
-    const isUptrend = isRanging ? (ema20 > ema60) : (ema20 > ema60 && ema20Rising);
-    const isDowntrend = isRanging ? (ema20 < ema60) : (ema20 < ema60 && ema20Falling);
-    
-    if (isRanging) {
-      this._log(`📊 ${(symbol || '?')} 检测到震荡市场 — 关闭 EMA 斜率过滤，回到纯 BB 逻辑`);
-    }
-    
-    // 开多：5min收盘价触及/跌破下轨 + EMA多头排列 + EMA20斜率向上（多头加速）
+    // 开多：5min收盘价触及/跌破下轨
     if (lastClose <= bb.lower) {
-      if (!isUptrend) {
-        if (ema20 > ema60 && !ema20Rising) {
-          return { allowed: false, reason: `收盘触下轨+EMA多头排列但EMA20斜率向下(EMA20=${ema20.toFixed(6)}<前值${ema20Prev ? ema20Prev.toFixed(6) : 'N/A'}) — 趋势减弱不开多`, bwPercentile };
-        }
-        return { allowed: false, reason: `收盘触下轨但EMA空头排列(EMA20=${ema20.toFixed(6)}<EMA60=${ema60.toFixed(6)}) — 逆势不开多`, bwPercentile };
-      }
       return { 
         allowed: true, 
         direction: 'LONG', 
         bb, 
         bwPercentile, 
-        reason: `收盘价${lastClose.toFixed(6)}触及下轨${bb.lower.toFixed(6)} + EMA多头排列+斜率向上` 
+        reason: `收盘价${lastClose.toFixed(6)}触及下轨${bb.lower.toFixed(6)}` 
       };
     }
 
-    // 开空：5min收盘价触及/突破上轨 + EMA空头排列 + EMA20斜率向下（空头加速）
+    // 开空：5min收盘价触及/突破上轨
     if (lastClose >= bb.upper) {
-      if (!isDowntrend) {
-        if (ema20 < ema60 && !ema20Falling) {
-          return { allowed: false, reason: `收盘触上轨+EMA空头排列但EMA20斜率向上(EMA20=${ema20.toFixed(6)}>前值${ema20Prev ? ema20Prev.toFixed(6) : 'N/A'}) — 趋势减弱不开空`, bwPercentile };
-        }
-        return { allowed: false, reason: `收盘触上轨但EMA多头排列(EMA20=${ema20.toFixed(6)}>EMA60=${ema60.toFixed(6)}) — 逆势不开空`, bwPercentile };
-      }
-      // v126: 资金费率检查 — SHORT 时费率为正则预警/禁开
-      try {
-        const fundingInfo = await this.api.getFundingInfo(symbol);
-        const fundingRate = parseFloat(fundingInfo.fundingRate || 0) * 100; // 转为百分比
-        if (fundingRate > CONFIG.fundingFeeBlockPct) {
-          return { allowed: false, reason: `资金费率${fundingRate.toFixed(4)}%>${CONFIG.fundingFeeBlockPct}% — SHORT 费率过高禁开仓`, bwPercentile };
-        }
-        if (fundingRate > CONFIG.fundingFeeWarnPct) {
-          this._log(`⚠️ ${symbol} 资金费率${fundingRate.toFixed(4)}%>${CONFIG.fundingFeeWarnPct}% — SHORT 预警但允许开仓`);
-        }
-      } catch (e) { /* 资金费率查询失败不阻塞开仓 */ }
       return { 
         allowed: true, 
         direction: 'SHORT', 
         bb, 
         bwPercentile, 
-        reason: `收盘价${lastClose.toFixed(6)}触及上轨${bb.upper.toFixed(6)} + EMA空头排列` 
+        reason: `收盘价${lastClose.toFixed(6)}触及上轨${bb.upper.toFixed(6)}` 
       };
     }
 
@@ -1214,7 +1129,7 @@ class BBEngine {
         }
 
         // 开仓准入检查
-        const openCheck = await this.checkOpenCondition(klines, symbol);
+        const openCheck = this.checkOpenCondition(klines);
         if (!openCheck.allowed) {
           // 静默跳过，不刷屏
           continue;
@@ -1263,16 +1178,13 @@ class BBEngine {
       return;
     }
     
+    // 计算仓位大小
     // 计算仓位大小 — v126: 根据币种波动率自动配比
-    // 高波动币(ATR>0.5%): 小仓位(8%)，防止大仓位被插针止损
-    // 中波动币(0.2%~0.5%): 中仓位(12%)
-    // 低波动币(<0.2%): 大仓位(15%)，波动小可以多开
     const atr = Indicators.atr(klines, CONFIG.atrPeriod);
     const atrPct = atr / price * 100;
     let positionPct = CONFIG.perPositionPct; // 默认15%
     if (atrPct > 0.5) positionPct = 0.08; // 高波动→8%
     else if (atrPct > 0.2) positionPct = 0.12; // 中波动→12%
-    // 低波动保持15%
     
     const positionMargin = this.balance * positionPct;
     const notional = positionMargin * CONFIG.leverage;
