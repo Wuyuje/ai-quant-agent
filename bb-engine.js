@@ -319,12 +319,20 @@ class BinanceAPI {
 
   // v126: 自动设置保证金模式 — 稳的币全仓，波动大的逐仓
   async setMarginType(symbol, atrPct) {
-    // ATR > 0.30% = 高波动 → 逐仓(ISOLATED)，隔离风险
-    // ATR ≤ 0.30% = 低波动 → 全仓(CROSSED)，共享保证金
-    const marginType = atrPct > 0.30 ? 'ISOLATED' : 'CROSSED';
+    // v126: 根据余额+波动率自动配置保证金模式
+    // 小余额(<$100) → 强制逐仓，防连环强平
+    // 大余额 + 低波动(ATR≤0.30%) → 全仓，共享保证金
+    // 任何余额 + 高波动(ATR>0.30%) → 逐仓，隔离风险
+    const balance = this.balance || 0;
+    let marginType;
+    if (balance < 100) {
+      marginType = 'ISOLATED'; // 小余额强制逐仓
+    } else {
+      marginType = atrPct > 0.30 ? 'ISOLATED' : 'CROSSED';
+    }
     try {
       await this._request('POST', '/fapi/v1/marginType', { symbol, marginType });
-      this._log(`📐 ${symbol} 保证金模式: ${marginType === 'ISOLATED' ? '逐仓' : '全仓'} (ATR=${atrPct.toFixed(3)}%)`);
+      this._log(`📐 ${symbol} 保证金模式: ${marginType === 'ISOLATED' ? '逐仓' : '全仓'} (ATR=${atrPct.toFixed(3)}% 余额=$${balance.toFixed(0)})`);
     } catch (e) {
       // -4048: 已经是该模式，或持仓中无法切换，忽略
       if (!String(e.message || e).includes('-4048')) { /* ignore other errors */ }
