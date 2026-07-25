@@ -101,9 +101,6 @@ const CONFIG = {
   // v126: ATR 波动率最低门槛 — 排除低波动币
   minAtrPct: 0.10,          // ATR/价格 < 0.10% 不开仓
   
-  // v126: 资金费率过滤 — SHORT 时资金费率为正则禁开仓
-  fundingFeeBlockPct: 0.05, // 资金费率 > 0.05% 时 SHORT 禁开仓
-  
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
   deliveryPauseMin: 60,     // 交割前1小时暂停
@@ -463,18 +460,6 @@ class Indicators {
     return slice.reduce((a, b) => a + b, 0) / period;
   }
 
-  // EMA（指数移动平均线）— 趋势选币用
-  static ema(klines, period = 20) {
-    if (klines.length < period) return null;
-    const closes = klines.map(k => k.close);
-    const k = 2 / (period + 1);
-    let ema = closes[0];
-    for (let i = 1; i < closes.length; i++) {
-      ema = closes[i] * k + ema * (1 - k);
-    }
-    return ema;
-  }
-
   // 标准差
   static std(values, period) {
     if (values.length < period) return 0;
@@ -688,7 +673,7 @@ class BBEngine {
   }
 
   // ═══ 4. 开仓准入检查 ═══
-  async checkOpenCondition(klines, symbol) {
+  checkOpenCondition(klines) {
     // (1) 禁开仓条件：带宽100根K线历史分位 > 90%
     const bwPercentile = Indicators.bandwidthPercentile(klines, CONFIG.bandwidthPercentileLookback);
     if (bwPercentile === null) {
@@ -727,48 +712,25 @@ class BBEngine {
 
     // lastClose 已在 ATR 过滤中声明
     
-    // v126: EMA 趋势过滤 — 只顺趋势开仓
-    const ema20 = Indicators.ema(klines, 20);
-    const ema60 = Indicators.ema(klines, 60);
-    if (!ema20 || !ema60) {
-      return { allowed: false, reason: 'EMA 数据不足', bwPercentile };
-    }
-    const isUptrend = ema20 > ema60;
-    const isDowntrend = ema20 < ema60;
-    
-    // 开多：5min收盘价触及/跌破下轨 + EMA多头排列
+    // 开多：5min收盘价触及/跌破下轨
     if (lastClose <= bb.lower) {
-      if (!isUptrend) {
-        return { allowed: false, reason: `收盘触下轨但EMA空头排列(EMA20=${ema20.toFixed(6)}<EMA60=${ema60.toFixed(6)}) — 逆势不开多`, bwPercentile };
-      }
       return { 
         allowed: true, 
         direction: 'LONG', 
         bb, 
         bwPercentile, 
-        reason: `收盘价${lastClose.toFixed(6)}触及下轨${bb.lower.toFixed(6)} + EMA多头排列` 
+        reason: `收盘价${lastClose.toFixed(6)}触及下轨${bb.lower.toFixed(6)}` 
       };
     }
 
-    // 开空：5min收盘价触及/突破上轨 + EMA空头排列 + 资金费率检查
+    // 开空：5min收盘价触及/突破上轨
     if (lastClose >= bb.upper) {
-      if (!isDowntrend) {
-        return { allowed: false, reason: `收盘触上轨但EMA多头排列(EMA20=${ema20.toFixed(6)}>EMA60=${ema60.toFixed(6)}) — 逆势不开空`, bwPercentile };
-      }
-      // v126: 资金费率过滤 — SHORT 时费率过高禁开仓
-      try {
-        const fundingInfo = await this.api.getFundingInfo(symbol);
-        const fundingRate = parseFloat(fundingInfo.fundingRate || 0) * 100;
-        if (fundingRate > CONFIG.fundingFeeBlockPct) {
-          return { allowed: false, reason: `资金费率${fundingRate.toFixed(4)}%>${CONFIG.fundingFeeBlockPct}% — SHORT费率过高禁开仓`, bwPercentile };
-        }
-      } catch (e) { /* 费率查询失败不阻塞 */ }
       return { 
         allowed: true, 
         direction: 'SHORT', 
         bb, 
         bwPercentile, 
-        reason: `收盘价${lastClose.toFixed(6)}触及上轨${bb.upper.toFixed(6)} + EMA空头排列` 
+        reason: `收盘价${lastClose.toFixed(6)}触及上轨${bb.upper.toFixed(6)}` 
       };
     }
 
@@ -1178,7 +1140,7 @@ class BBEngine {
         }
 
         // 开仓准入检查
-        const openCheck = await this.checkOpenCondition(klines, symbol);
+        const openCheck = this.checkOpenCondition(klines);
         if (!openCheck.allowed) {
           // 静默跳过，不刷屏
           continue;
