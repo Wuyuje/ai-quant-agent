@@ -14,28 +14,27 @@
 
  */
 
-const { GridTrading } = require('./grid-trading');
-const { DCAInvesting } = require('./dca-investing');
+// v126: 精简策略 — 只保留有用的
 const { MultiTimeframe } = require('./multi-timeframe');
-const { KellyPosition } = require('./kelly-position');
-const { VolatilityAdaptive } = require('./volatility-adaptive');
-const { MLPredictor } = require('./ml-predictor');
 const { NeuralNet } = require('./neural-net');
 const { DynamicWeight } = require('./dynamic-weight');
-const { RiskParity } = require('./risk-parity');
-const { TailRiskControl } = require('./tail-risk-control');
 const { StrategyEnsemble } = require('./ensemble');
-
-// v93: 世界顶尖策略新增
-const FundingRateArb = require('./funding-rate-arb');
-const DeltaNeutral = require('./delta-neutral');
-const CrossExchangeSpread = require('./cross-exchange-spread');
-const SentimentDriven = require('./sentiment-driven');
-
-// v93+: 精英策略新增
 const RegimeDetect = require('./regime-detect');
-const PairsTrading = require('./pairs-trading');
-const MarketMakingV2 = require('./market-making');
+
+// v126: 已删除干扰策略
+// GridTrading: 和BB补仓冲突
+// DCAInvesting: 不适合合约
+// KellyPosition: 和固定仓位冲突
+// VolatilityAdaptive: 和BB带宽冲突
+// MLPredictor: 未配置
+// RiskParity: 和固定仓位冲突
+// TailRiskControl: 可能误杀仓位
+// FundingRateArb: 需多账户
+// DeltaNeutral: 需现货+合约
+// CrossExchangeSpread: 单交易所无用
+// SentimentDriven: 无数据源
+// PairsTrading: 不适合单账户
+// MarketMakingV2: 需挂单权限
 
 // v85: EnhancedDataBus（可选，不强制加载）
 let EnhancedDataBus;
@@ -46,27 +45,13 @@ class StrategyManager {
     // 初始化所有策略
     // v73: 只保留真正参与开仓决策的策略
     this.strategies = {
-      grid: new GridTrading(config.grid || {}),
-      dca: new DCAInvesting(config.dca || {}),
       multiTimeframe: new MultiTimeframe(),
-      kelly: new KellyPosition(config.kelly || {}),
-      volatility: new VolatilityAdaptive(config.volatility || {}),
-      ml: new MLPredictor(config.ml || {}),
-      dynamicWeight: new DynamicWeight(config.dynamicWeight || {}),
-      riskParity: new RiskParity(config.riskParity || {}),
-      tailRisk: new TailRiskControl(config.tailRisk || {}),
       neuralNet: new NeuralNet(config.neuralNet || {}),
+      dynamicWeight: new DynamicWeight(config.dynamicWeight || {}),
       // v85: 多策略投票制融合层
       ensemble: new StrategyEnsemble(config.ensemble || {}),
-      // v93: 世界顶尖策略
-      fundingRate: FundingRateArb,
-      deltaNeutral: DeltaNeutral,
-      crossSpread: CrossExchangeSpread,
-      sentiment: SentimentDriven,
       // v93+: 精英策略
       regimeDetect: RegimeDetect,
-      pairsTrading: PairsTrading,
-      marketMaking: MarketMakingV2,
     };
     // v85: EnhancedDataBus实例
     this._enhancedBus = EnhancedDataBus ? new EnhancedDataBus() : null;
