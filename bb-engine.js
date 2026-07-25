@@ -98,6 +98,9 @@ const CONFIG = {
   singleKLossPct: 20,       // 单K浮亏≥本金20%止损
   ultimateLossPct: 70,       // 总浮亏≥70%终极止损
   
+  // v126: ATR 波动率最低门槛 — 排除低波动币
+  minAtrPct: 0.10,          // ATR/价格 < 0.10% 不开仓
+  
   // 特殊时间
   fundingPauseMin: 15,      // 资金费率前15分钟暂停
   deliveryPauseMin: 60,     // 交割前1小时暂停
@@ -693,13 +696,21 @@ class BBEngine {
       return { allowed: false, reason: `布林带未连续${CONFIG.narrowCount}根收窄`, bwPercentile };
     }
 
+    // v126: ATR 波动率过滤 — 排除低波动币
+    const atr = Indicators.atr(klines, CONFIG.atrPeriod);
+    const lastClose = klines[klines.length - 1].close;
+    const atrPct = atr / lastClose * 100;
+    if (atrPct < CONFIG.minAtrPct) {
+      return { allowed: false, reason: `ATR波动率${atrPct.toFixed(3)}%<${CONFIG.minAtrPct}% — 低波动不开仓`, bwPercentile };
+    }
+
     // (3) 开仓信号确认
     const bb = Indicators.bollinger(klines, CONFIG.bbPeriod, CONFIG.bbStd);
     if (!bb) {
       return { allowed: false, reason: '布林带数据不足' };
     }
 
-    const lastClose = klines[klines.length - 1].close;
+    // lastClose 已在 ATR 过滤中声明
     
     // 开多：5min收盘价触及/跌破下轨
     if (lastClose <= bb.lower) {
