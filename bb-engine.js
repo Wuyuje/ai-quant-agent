@@ -317,6 +317,20 @@ class BinanceAPI {
     } catch (e) { /* ignore */ }
   }
 
+  // v126: 自动设置保证金模式 — 稳的币全仓，波动大的逐仓
+  async setMarginType(symbol, atrPct) {
+    // ATR > 0.30% = 高波动 → 逐仓(ISOLATED)，隔离风险
+    // ATR ≤ 0.30% = 低波动 → 全仓(CROSSED)，共享保证金
+    const marginType = atrPct > 0.30 ? 'ISOLATED' : 'CROSSED';
+    try {
+      await this._request('POST', '/fapi/v1/marginType', { symbol, marginType });
+      this._log(`📐 ${symbol} 保证金模式: ${marginType === 'ISOLATED' ? '逐仓' : '全仓'} (ATR=${atrPct.toFixed(3)}%)`);
+    } catch (e) {
+      // -4048: 已经是该模式，或持仓中无法切换，忽略
+      if (!String(e.message || e).includes('-4048')) { /* ignore other errors */ }
+    }
+  }
+
   // 获取交易对精度
   async getExchangeInfo() {
     const info = await this._get('/fapi/v1/exchangeInfo');
@@ -345,10 +359,11 @@ class BinanceAPI {
   }
 
   // 市价开多
-  async marketLong(symbol, qty, leverage, precisionMap) {
+  async marketLong(symbol, qty, leverage, precisionMap, atrPct) {
     try {
       qty = this._fixQty(symbol, qty, precisionMap);
       if (!qty || qty <= 0) return { success: false, error: 'qty too small' };
+      if (atrPct) await this.setMarginType(symbol, atrPct);
       await this.setLeverage(symbol, leverage);
       let result = await this._request('POST', '/fapi/v1/order', {
         symbol, side: 'BUY', type: 'MARKET', quantity: qty,
@@ -371,10 +386,11 @@ class BinanceAPI {
   }
 
   // 市价开空
-  async marketShort(symbol, qty, leverage, precisionMap) {
+  async marketShort(symbol, qty, leverage, precisionMap, atrPct) {
     try {
       qty = this._fixQty(symbol, qty, precisionMap);
       if (!qty || qty <= 0) return { success: false, error: 'qty too small' };
+      if (atrPct) await this.setMarginType(symbol, atrPct);
       await this.setLeverage(symbol, leverage);
       let result = await this._request('POST', '/fapi/v1/order', {
         symbol, side: 'SELL', type: 'MARKET', quantity: qty,
@@ -1203,9 +1219,9 @@ class BBEngine {
 
     let result;
     if (direction === 'LONG') {
-      result = await this.api.marketLong(symbol, qty, CONFIG.leverage, this.precisionMap);
+      result = await this.api.marketLong(symbol, qty, CONFIG.leverage, this.precisionMap, atrPct);
     } else {
-      result = await this.api.marketShort(symbol, qty, CONFIG.leverage, this.precisionMap);
+      result = await this.api.marketShort(symbol, qty, CONFIG.leverage, this.precisionMap, atrPct);
     }
 
     if (result.success) {
