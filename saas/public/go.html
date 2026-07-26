@@ -11,7 +11,7 @@
 <p>钱包地址：</p>
 <input id="a" style="width:100%;padding:12px;font-size:16px;border:1px solid #555;border-radius:8px;background:#161b22;color:#fff;margin:6px 0" placeholder="0x...">
 <p>密码：</p>
-<input id="p" type="password" style="width:100%;padding:12px;font-size:16px;border:1px solid #555;border-radius:8px;background:#161b22;color:#fff;margin:6px 0" placeholder="6位以上">
+<input id="p" type="password" style="width:100%;padding:12px;font-size:16px;border:1px solid #555;border-radius:8px;background:#161b22;color:#fff;margin:6px 0" placeholder="密码（6位以上）">
 <p>邀请码：</p>
 <input id="inv" style="width:100%;padding:12px;font-size:16px;border:1px solid #555;border-radius:8px;background:#161b22;color:#fff;margin:6px 0" placeholder="邀请码（注册时填写）">
 <br><br>
@@ -57,7 +57,7 @@ function reg(){
   var p=document.getElementById('p').value;
   log('reg: '+a.substring(0,12));
   if(!a||a.length<10){msg('输入钱包地址',0);return;}
-  if(p.length<6){msg('密码6位+',0);return;}
+  if(p.length<6){msg('密码至少6位',0);return;}
   var inv=document.getElementById('inv').value.trim();
   if(!inv){msg('请输入邀请码',0);return;}
   msg('注册中...',1);

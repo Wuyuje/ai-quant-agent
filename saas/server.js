@@ -724,11 +724,8 @@ class SaasServer {
         if (!actualUsername || !password) {
           return res.status(400).json({ error: '请输入钱包地址和密码' });
         }
-        if (password.length < 8) {
-          return res.status(400).json({ error: '密码至少 8 位,需含大小写字母和数字' });
-        }
-        if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {
-          return res.status(400).json({ error: '密码需包含大写、小写字母和数字' });
+        if (password.length < 6) {
+          return res.status(400).json({ error: '密码至少 6 位' });
         }
         // 检查用户名是否已存在
         const existing = this.userDB.getByUsername(actualUsername);
