@@ -484,6 +484,18 @@ class Indicators {
     return slice.reduce((a, b) => a + b, 0) / period;
   }
 
+  // EMA（指数移动平均线）— 趋势过滤用
+  static ema(klines, period = 20) {
+    if (klines.length < period) return null;
+    const closes = klines.map(k => k.close);
+    const k = 2 / (period + 1);
+    let ema = closes[0];
+    for (let i = 1; i < closes.length; i++) {
+      ema = closes[i] * k + ema * (1 - k);
+    }
+    return ema;
+  }
+
   // 标准差
   static std(values, period) {
     if (values.length < period) return 0;
