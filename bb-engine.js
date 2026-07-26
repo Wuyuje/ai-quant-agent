@@ -736,25 +736,40 @@ class BBEngine {
 
     // lastClose 已在 ATR 过滤中声明
     
-    // 开多：5min收盘价触及/跌破下轨
+    // v126: EMA 趋势过滤 — 只顺趋势开仓
+    const ema20 = Indicators.ema(klines, 20);
+    const ema60 = Indicators.ema(klines, 60);
+    if (!ema20 || !ema60) {
+      return { allowed: false, reason: 'EMA 数据不足', bwPercentile };
+    }
+    const isUptrend = ema20 > ema60;
+    const isDowntrend = ema20 < ema60;
+    
+    // 开多：5min收盘价触及/跌破下轨 + EMA多头排列
     if (lastClose <= bb.lower) {
+      if (!isUptrend) {
+        return { allowed: false, reason: `收盘触下轨但EMA空头排列(EMA20=${ema20.toFixed(6)}<EMA60=${ema60.toFixed(6)}) — 逆势不开多`, bwPercentile };
+      }
       return { 
         allowed: true, 
         direction: 'LONG', 
         bb, 
         bwPercentile, 
-        reason: `收盘价${lastClose.toFixed(6)}触及下轨${bb.lower.toFixed(6)}` 
+        reason: `收盘价${lastClose.toFixed(6)}触及下轨${bb.lower.toFixed(6)} + EMA多头排列` 
       };
     }
 
-    // 开空：5min收盘价触及/突破上轨
+    // 开空：5min收盘价触及/突破上轨 + EMA空头排列
     if (lastClose >= bb.upper) {
+      if (!isDowntrend) {
+        return { allowed: false, reason: `收盘触上轨但EMA多头排列(EMA20=${ema20.toFixed(6)}>EMA60=${ema60.toFixed(6)}) — 逆势不开空`, bwPercentile };
+      }
       return { 
         allowed: true, 
         direction: 'SHORT', 
         bb, 
         bwPercentile, 
-        reason: `收盘价${lastClose.toFixed(6)}触及上轨${bb.upper.toFixed(6)}` 
+        reason: `收盘价${lastClose.toFixed(6)}触及上轨${bb.upper.toFixed(6)} + EMA空头排列` 
       };
     }
 
