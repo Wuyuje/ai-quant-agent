@@ -2676,6 +2676,7 @@ class SaasServer {
     });
 
     // 极简注册/登录页面(兼容所有手机浏览器)
+    this.app.get('/go', (req, res) => { res.redirect('/go.html'); });
     this.app.get('/reg', (req, res) => {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.send(`<!DOCTYPE html>
