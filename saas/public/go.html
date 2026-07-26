@@ -6,10 +6,11 @@
 <title>测试</title>
 </head>
 <body style="margin:0;padding:20px;background:#0a0e17;color:#fff;font-family:sans-serif">
-<h3 style="color:#58a6ff">调试页面 v3</h3>
+<h3 style="color:#58a6ff">ARK 量化机器人</h3>
 <hr style="border-color:#333">
+<button id="wb" style="width:100%;padding:14px;font-size:16px;background:#f0b90b;color:#000;border:none;border-radius:8px;margin:4px 0">🔗 连接钱包自动填地址</button>
 <p>钱包地址：</p>
-<input id="a" style="width:100%;padding:12px;font-size:16px;border:1px solid #555;border-radius:8px;background:#161b22;color:#fff;margin:6px 0" placeholder="0x...">
+<input id="a" style="width:100%;padding:12px;font-size:16px;border:1px solid #555;border-radius:8px;background:#161b22;color:#fff;margin:6px 0" placeholder="0x... 或点上方按钮连接钱包">
 <p>密码：</p>
 <input id="p" type="password" style="width:100%;padding:12px;font-size:16px;border:1px solid #555;border-radius:8px;background:#161b22;color:#fff;margin:6px 0" placeholder="密码（6位以上）">
 <p>邀请码：</p>
@@ -77,6 +78,20 @@ function login(){
 }
 document.getElementById('rb').onclick=reg;
 document.getElementById('lb').onclick=login;
+document.getElementById('wb').onclick=function(){
+  if(typeof window.ethereum!=='undefined'||typeof window.web3!=='undefined'){
+    var eth=window.ethereum||window.web3.currentProvider;
+    eth.enable().then(function(accounts){
+      if(accounts&&accounts[0]){
+        document.getElementById('a').value=accounts[0];
+        document.getElementById('p').focus();
+        msg('钱包已连接: '+accounts[0].substring(0,10)+'...',1);
+      }
+    }).catch(function(e){msg('连接钱包失败',0);});
+  }else{
+    msg('未检测到钱包，请手动输入地址',0);
+  }
+};
 log('OK 页面就绪');
 })();
 </script>
