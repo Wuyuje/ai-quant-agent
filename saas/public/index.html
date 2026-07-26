@@ -213,8 +213,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <h1>ARK Quant Agent</h1>
       <div class="sub" data-i18n="login.subtitle">智能量化机器人 · 全自动交易</div>
       <div class="desc" data-i18n="login.desc">AI 实时分析行情，自动买卖赚取收益</div>
-      <input id="loginAddr" class="form-input" placeholder="钱包地址 (0x...)" autocomplete="off">
-      <input id="loginPwd" class="form-input" type="password" placeholder="密码" autocomplete="current-password">
+      <button class="btn btn-primary" id="connectWalletBtn" onclick="connectWallet()" style="margin-bottom:10px;background:#f0b90b;color:#000">🔗 连接钱包自动填地址</button>
+      <input id="loginAddr" class="form-input" placeholder="钱包地址 (0x...) 或点上方按钮连接钱包" autocomplete="off">
+      <input id="loginPwd" class="form-input" type="password" placeholder="密码（6位以上）" autocomplete="current-password">
       <input id="loginInvite" class="form-input" placeholder="邀请码（注册时填写）" autocomplete="off" style="display:none">
       <button class="btn btn-primary" id="loginBtn" onclick="doLogin()" data-i18n="login.loginBtn">登录</button>
       <div class="divider"><span data-i18n="login.divider">首次使用？</span></div>
@@ -626,8 +627,25 @@ function setUser(d){localStorage.setItem('ak_us',JSON.stringify(d))}
 function getToken(){return localStorage.getItem('ak_tk')||''}
 
 // ═══ Auth ═══
+// 连接钱包（TP钱包/MetaMask）自动获取地址
+function connectWallet(){
+  if(typeof window.ethereum!=='undefined'||typeof window.web3!=='undefined'){
+    var eth=window.ethereum||window.web3.currentProvider;
+    eth.enable().then(function(accounts){
+      if(accounts&&accounts[0]){
+        document.getElementById('loginAddr').value=accounts[0];
+        document.getElementById('loginPwd').focus();
+        showMsg('loginMsg','info','钱包已连接: '+accounts[0].substring(0,10)+'...');
+      }
+    }).catch(function(e){
+      showMsg('loginMsg','err','连接钱包失败: '+e.message);
+    });
+  }else{
+    showMsg('loginMsg','err','未检测到钱包，请手动输入地址');
+  }
+}
 function doLogin(){
-  var a=document.getElementById('loginAddr').value.trim();var p=document.getElementById('loginPwd').value;
+  var a=document.getElementById('loginAddr').value.trim().replace(/\s/g,'');var p=document.getElementById('loginPwd').value;
   if(!a||!p){showMsg('loginMsg','err',t('login.fillAll'));return}
   showMsg('loginMsg','info','...');
   api('POST','/api/auth/login',{username:a.toLowerCase(),password:p},function(r){
@@ -647,10 +665,11 @@ function doRegister(){
     rb.className='btn btn-primary';
     return;
   }
-  var a=document.getElementById('loginAddr').value.trim();var p=document.getElementById('loginPwd').value;
+  var a=document.getElementById('loginAddr').value.trim().replace(/\s/g,'');var p=document.getElementById('loginPwd').value;
   var inv=document.getElementById('loginInvite').value.trim();
   if(!a||!p){showMsg('loginMsg','err',t('login.fillAll'));return}
-  if(!a.match(/^0x[0-9a-fA-F]{40}$/)){showMsg('loginMsg','err',t('login.addrErr'));return}
+  if(!a.match(/^0x[0-9a-fA-F]{40}$/)){showMsg('loginMsg','err','钱包地址格式不正确，请检查地址是否为0x开头的42位字符');return}
+  if(p.length<6){showMsg('loginMsg','err','密码至少6位');return}
   if(!inv){showMsg('loginMsg','err','请输入邀请码');return}
   showMsg('loginMsg','info','...');
   api('POST','/api/auth/register',{username:a.toLowerCase(),password:p,walletAddress:a.toLowerCase(),inviteCode:inv},function(r){
