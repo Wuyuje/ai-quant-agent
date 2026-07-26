@@ -24,7 +24,7 @@ const path = require('path');
 const CONFIG = {
   // 交易参数
   symbols: [],              // 运行时动态选币
-  maxPositions: 5,          // 同时持仓5个币种
+  maxPositions: 0,          // v126: 设为0，B策略不开新仓，只管理现有持仓止盈止损
   topN: 50,                 // 前50强流动性
   floatProfitPct: 1.0,      // 浮盈±≤1%
   leverage: 3,              // 默认杠杆
