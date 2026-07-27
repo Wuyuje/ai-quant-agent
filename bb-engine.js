@@ -843,6 +843,14 @@ class BBEngine {
       return { action: 'CLOSE', reason: `轨道止盈: 空单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
     }
 
+    // ② 二级兜底：未触发中轨止盈，价格到反向轨道也平仓
+    if (pos.side === 'LONG' && close >= bb.upper) {
+      return { action: 'CLOSE', reason: `二级兜底: 多单收盘触碰上轨${bb.upper.toFixed(6)}`, pnlPct };
+    }
+    if (pos.side === 'SHORT' && close <= bb.lower) {
+      return { action: 'CLOSE', reason: `二级兜底: 空单收盘触碰下轨${bb.lower.toFixed(6)}`, pnlPct };
+    }
+
     return { action: 'HOLD', pnlPct, reason: `止盈等待: 收盘${close.toFixed(6)} 中轨${bb.mid.toFixed(6)}` };
   }
 
