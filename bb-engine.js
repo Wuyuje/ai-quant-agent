@@ -951,6 +951,49 @@ class BBEngine {
     };
   }
 
+  // ═══ v126: 趋势反转止损 + 反向开仓 ═══
+  // 用 EMA25/99 + 3根收盘价确认判断趋势反转
+  // 做多后 EMA25<EMA99 + 3根收盘价都在EMA25下方 → 止损 + 反向做空
+  // 做空后 EMA25>EMA99 + 3根收盘价都在EMA25上方 → 止损 + 反向做多
+  checkTrendReversal(klines, pos) {
+    if (klines.length < 100) return { action: 'HOLD' };
+    
+    const ema25 = Indicators.ema(klines, 25);
+    const ema99 = Indicators.ema(klines, 99);
+    if (!ema25 || !ema99) return { action: 'HOLD' };
+    
+    // 最近3根K线收盘价
+    const last3Closes = klines.slice(-3).map(k => k.close);
+    
+    // 做多持仓：趋势转空（EMA25<EMA99 + 3根收盘价都在EMA25下方）
+    if (pos.side === 'LONG' && ema25 < ema99) {
+      const allBelow = last3Closes.every(c => c < ema25);
+      if (allBelow) {
+        const pnlPct = this._calcPnlPct(pos, last3Closes[2]);
+        return {
+          action: 'CLOSE',
+          reason: `趋势反转止损: 做多但EMA25(${ema25.toFixed(6)})<EMA99(${ema99.toFixed(6)}) + 3根收盘价都在EMA25下方 (PnL=${pnlPct.toFixed(2)}%)`,
+          reverseDirection: 'SHORT',
+        };
+      }
+    }
+    
+    // 做空持仓：趋势转多（EMA25>EMA99 + 3根收盘价都在EMA25上方）
+    if (pos.side === 'SHORT' && ema25 > ema99) {
+      const allAbove = last3Closes.every(c => c > ema25);
+      if (allAbove) {
+        const pnlPct = this._calcPnlPct(pos, last3Closes[2]);
+        return {
+          action: 'CLOSE',
+          reason: `趋势反转止损: 做空但EMA25(${ema25.toFixed(6)})>EMA99(${ema99.toFixed(6)}) + 3根收盘价都在EMA25上方 (PnL=${pnlPct.toFixed(2)}%)`,
+          reverseDirection: 'LONG',
+        };
+      }
+    }
+    
+    return { action: 'HOLD' };
+  }
+
   // ═══ 7. 单K线止损 ═══
   checkSingleKStopLoss(klines, pos) {
     // 单K线浮亏达到单笔本金20%，直接全仓止损
@@ -1112,6 +1155,32 @@ class BBEngine {
         if (slResult.action === 'CLOSE') {
           this._log(`🔴 ${symbol} ${slResult.reason}`);
           await this._closePosition(symbol, pos, slResult.reason);
+          continue;
+        }
+
+        // ── v126: 趋势反转止损 + 立即反向开仓 ──
+        const reversalResult = this.checkTrendReversal(klines, pos);
+        if (reversalResult.action === 'CLOSE') {
+          this._log(`🔄 ${symbol} ${reversalResult.reason}`);
+          await this._closePosition(symbol, pos, reversalResult.reason);
+          // 止损后立即检查反向开仓
+          if (reversalResult.reverseDirection) {
+            this._log(`🔄 ${symbol} 趋势反转，尝试反向开仓 ${reversalResult.reverseDirection}`);
+            const bb = Indicators.bollinger(klines, CONFIG.bbPeriod, CONFIG.bbStd);
+            const ema25 = Indicators.ema(klines, 25);
+            const ema99 = Indicators.ema(klines, 99);
+            if (bb && ema25 && ema99) {
+              const canReverseLong = reversalResult.reverseDirection === 'LONG' && lastClose <= bb.lower && ema25 > ema99;
+              const canReverseShort = reversalResult.reverseDirection === 'SHORT' && lastClose >= bb.upper && ema25 < ema99;
+              if (canReverseLong || canReverseShort) {
+                const revDir = canReverseLong ? 'LONG' : 'SHORT';
+                this._log(`🟢 ${symbol} 反向开仓信号: ${revDir} (触轨+EMA顺向)`);
+                await this._openPosition(symbol, revDir, klines);
+              } else {
+                this._log(`⏭️ ${symbol} 反向开仓条件不满足（未触轨或EMA不顺向），等待下次信号`);
+              }
+            }
+          }
           continue;
         }
 
