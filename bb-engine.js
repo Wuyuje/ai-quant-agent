@@ -821,100 +821,29 @@ class BBEngine {
     return { allowed: false, reason: `收盘价${lastClose.toFixed(6)}在轨道内，未触发`, bwPercentile };
   }
 
-  // ═══ 5. 双模式止盈 ═══
+  // ═══ 5. 止盈 — 简洁版 ═══
   checkTakeProfit(klines, pos) {
     const bb = Indicators.bollinger(klines, CONFIG.bbPeriod, CONFIG.bbStd);
     if (!bb) return { action: 'HOLD' };
 
     const lastK = klines[klines.length - 1];
-    const close = lastK.close;  // 只用收盘价
+    const close = lastK.close;
     const pnlPct = this._calcPnlPct(pos, close);
 
-    // 统一前提：持仓浮盈 ≥ 2% 才触发止盈
+    // 浮盈≥触发门槛才止盈
     if (pnlPct < CONFIG.profitTriggerPct) {
-      return { action: 'HOLD', pnlPct, reason: `浮盈${pnlPct.toFixed(2)}%<2%` };
+      return { action: 'HOLD', pnlPct, reason: `浮盈${pnlPct.toFixed(2)}%<${CONFIG.profitTriggerPct}%` };
     }
 
-    // 判断放量移动止盈触发条件
-    const volMA = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
-    const volSpike = lastK.volume > volMA * CONFIG.volumeSpikeRatio;
-    const expanding = Indicators.isExpanding(klines);
-
-    if (volSpike && expanding) {
-      // 放量移动止盈模式
-      const atr = Indicators.atr(klines, CONFIG.atrPeriod);
-      
-      if (pos.side === 'LONG') {
-        // 多单：阶段最低点 + 0.3ATR为止盈线，跌破全平
-        const stageLow = this._getStageLow(klines, pos);
-        const trailPrice = stageLow + atr * CONFIG.atrTrailMultiplier;
-        pos.mode = 'ATR';
-        pos.atrTrailPrice = trailPrice;
-        if (close < trailPrice) {
-          return { action: 'CLOSE', reason: `ATR跟踪止盈: 收盘${close.toFixed(6)}<止盈线${trailPrice.toFixed(6)}(低点${stageLow.toFixed(6)}+0.3ATR)`, pnlPct };
-        }
-        return { action: 'HOLD', reason: `ATR跟踪中: 止盈线${trailPrice.toFixed(6)} 收盘${close.toFixed(6)}`, pnlPct, mode: 'ATR' };
-      } else {
-        // 空单：阶段最高点 - 0.3ATR为止盈线，突破全平
-        const stageHigh = this._getStageHigh(klines, pos);
-        const trailPrice = stageHigh - atr * CONFIG.atrTrailMultiplier;
-        pos.mode = 'ATR';
-        pos.atrTrailPrice = trailPrice;
-        if (close > trailPrice) {
-          return { action: 'CLOSE', reason: `ATR跟踪止盈: 收盘${close.toFixed(6)}>止盈线${trailPrice.toFixed(6)}(高点${stageHigh.toFixed(6)}-0.3ATR)`, pnlPct };
-        }
-        return { action: 'HOLD', reason: `ATR跟踪中: 止盈线${trailPrice.toFixed(6)} 收盘${close.toFixed(6)}`, pnlPct, mode: 'ATR' };
-      }
+    // 轨道止盈：收盘触中轨全平
+    if (pos.side === 'LONG' && close >= bb.mid) {
+      return { action: 'CLOSE', reason: `轨道止盈: 多单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
+    }
+    if (pos.side === 'SHORT' && close <= bb.mid) {
+      return { action: 'CLOSE', reason: `轨道止盈: 空单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
     }
 
-    // 布林带收口后自动切回轨道止盈模式
-    if (pos.mode === 'ATR' && Indicators.isContracting(klines)) {
-      pos.mode = '轨道';
-      this._log(`🔄 ${pos.symbol} 布林带收口，切回轨道止盈模式`);
-    }
-
-    // v126: ATR 模式但不放量时，用旧止盈线继续跟踪 + 中轨兜底
-    if (pos.mode === 'ATR' && pos.atrTrailPrice) {
-      if (pos.side === 'LONG' && close < pos.atrTrailPrice) {
-        return { action: 'CLOSE', reason: `ATR跟踪止盈(非放量): 收盘${close.toFixed(6)}<止盈线${pos.atrTrailPrice.toFixed(6)}`, pnlPct };
-      }
-      if (pos.side === 'SHORT' && close > pos.atrTrailPrice) {
-        return { action: 'CLOSE', reason: `ATR跟踪止盈(非放量): 收盘${close.toFixed(6)}>止盈线${pos.atrTrailPrice.toFixed(6)}`, pnlPct };
-      }
-      // 中轨兜底：ATR 模式下如果收盘触碰中轨也止盈
-      if (pos.side === 'LONG' && close >= bb.mid) {
-        return { action: 'CLOSE', reason: `ATR模式中轨兜底: 多单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
-      }
-      if (pos.side === 'SHORT' && close <= bb.mid) {
-        return { action: 'CLOSE', reason: `ATR模式中轨兜底: 空单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
-      }
-      return { action: 'HOLD', reason: `ATR跟踪中(非放量): 止盈线${pos.atrTrailPrice.toFixed(6)} 收盘${close.toFixed(6)}`, pnlPct, mode: 'ATR' };
-    }
-
-    // 常态轨道止盈
-    if (pos.mode !== 'ATR') {
-      pos.mode = '轨道';
-      
-      // ① 一级止盈：收盘价触碰布林中轨，满足盈利条件全仓平仓
-      if (pos.side === 'LONG' && close >= bb.mid) {
-        return { action: 'CLOSE', reason: `轨道止盈: 多单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
-      }
-      if (pos.side === 'SHORT' && close <= bb.mid) {
-        return { action: 'CLOSE', reason: `轨道止盈: 空单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
-      }
-
-      // ② 二级兜底：未触发中轨止盈，等待反向轨道触碰止盈
-      if (pos.side === 'LONG' && close >= bb.upper) {
-        return { action: 'CLOSE', reason: `二级兜底: 多单收盘触碰上轨${bb.upper.toFixed(6)}`, pnlPct };
-      }
-      if (pos.side === 'SHORT' && close <= bb.lower) {
-        return { action: 'CLOSE', reason: `二级兜底: 空单收盘触碰下轨${bb.lower.toFixed(6)}`, pnlPct };
-      }
-
-      return { action: 'HOLD', reason: `轨道止盈等待: 收盘${close.toFixed(6)} 中轨${bb.mid.toFixed(6)}`, pnlPct, mode: '轨道' };
-    }
-
-    return { action: 'HOLD', reason: `ATR跟踪中`, pnlPct, mode: 'ATR' };
+    return { action: 'HOLD', pnlPct, reason: `止盈等待: 收盘${close.toFixed(6)} 中轨${bb.mid.toFixed(6)}` };
   }
 
   _getStageLow(klines, pos) {
