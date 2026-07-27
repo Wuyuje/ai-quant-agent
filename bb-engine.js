@@ -71,14 +71,14 @@ const CONFIG = {
   narrowCount: 3,                     // 连续3根收窄
   
   // 止盈
-  profitTriggerPct: 1.0,    // v126: 浮盈≥1%触发止盈（从2%降低，更快落袋）
+  profitTriggerPct: 1.5,    // v126: 浮盈≥1.5%触发止盈（平衡：不太早不太贪）
   volumeSpikeRatio: 1.8,     // 放量倍数>1.8
   volumeMaPeriod: 20,        // 20周期均量
   atrPeriod: 14,             // ATR周期
   atrTrailMultiplier: 0.5,  // v126: 0.3→0.5 ATR跟踪（锁利更快）
   
   // v126: ADX趋势强度门槛
-  adxThreshold: 25,          // ADX>25才开仓，过滤弱趋势
+  adxThreshold: 20,          // v126: ADX>20才开仓（从25降低，增加开仓机会）
   
   // v126: ATR动态止损
   atrStopMultiplier: 1.5,    // 亏1.5ATR止损
@@ -89,7 +89,7 @@ const CONFIG = {
   replenishRatios: [0.50, 0.30, 0.20], // 50% 30% 20%
   
   // 止损
-  singleKLossPct: 5,        // v126: 单K浮亏≥本金5%止损（从20%降低）
+  singleKLossPct: 3,        // v126: 单K浮亏≥本金3%止损（从5%收紧）
   ultimateLossPct: 15,       // v126: 总浮亏≥15%终极止损（从70%降低）
   
   // v126: ATR 波动率最低门槛 — 排除低波动币
@@ -806,6 +806,28 @@ class BBEngine {
       };
     }
 
+    // v126: 趋势追踪开仓 — 强趋势突破时即使未触轨也开仓
+    // 强趋势上涨: ADX>30 + 收盘价突破布林上轨附近(上轨*0.99) + EMA多头 → 做多
+    if (isUptrend && adx > 30 && lastClose >= bb.upper * 0.99 && lastClose < bb.upper) {
+      return { 
+        allowed: true, 
+        direction: 'LONG', 
+        bb, 
+        bwPercentile, 
+        reason: `趋势追踪做多: ADX=${adx.toFixed(1)}>30 + 收盘逼近上轨 + EMA多头排列` 
+      };
+    }
+    // 强趋势下跌: ADX>30 + 收盘价跌破布林下轨附近(下轨*1.01) + EMA空头 → 做空
+    if (isDowntrend && adx > 30 && lastClose <= bb.lower * 1.01 && lastClose > bb.lower) {
+      return { 
+        allowed: true, 
+        direction: 'SHORT', 
+        bb, 
+        bwPercentile, 
+        reason: `趋势追踪做空: ADX=${adx.toFixed(1)}>30 + 收盘逼近下轨 + EMA空头排列` 
+      };
+    }
+
     return { allowed: false, reason: `收盘价${lastClose.toFixed(6)}在轨道内，未触发`, bwPercentile };
   }
 
@@ -818,9 +840,16 @@ class BBEngine {
     const close = lastK.close;
     const pnlPct = this._calcPnlPct(pos, close);
 
-    // 浮盈≥触发门槛才止盈
+    // 浮盈≥1.5%才触发止盈
     if (pnlPct < CONFIG.profitTriggerPct) {
       return { action: 'HOLD', pnlPct, reason: `浮盈${pnlPct.toFixed(2)}%<${CONFIG.profitTriggerPct}%` };
+    }
+
+    // v126: 移动止盈 — 浮盈超1.5%后，从峰值回撤0.5%就锁利
+    if (!pos._peakPnlPct || pnlPct > pos._peakPnlPct) pos._peakPnlPct = pnlPct;
+    const drawdown = pos._peakPnlPct - pnlPct;
+    if (pos._peakPnlPct > CONFIG.profitTriggerPct + 0.5 && drawdown >= 0.5) {
+      return { action: 'CLOSE', reason: `移动止盈: 峰值${pos._peakPnlPct.toFixed(2)}%回撤${drawdown.toFixed(2)}%`, pnlPct };
     }
 
     // 轨道止盈：收盘触中轨全平
