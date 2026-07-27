@@ -217,7 +217,7 @@ class StrategyManager {
       analysis: {
         multiTimeframe: multiTimeframeResult,
         grid: null, // v128: grid策略已移除
-        dca: dcaAnalysis,
+        dca: null, // v128: dca策略已移除
         volatility: volatilityResult,
         volatilityAdvice,
         anomalyCheck,
