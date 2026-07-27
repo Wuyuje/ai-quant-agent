@@ -24,7 +24,7 @@ const path = require('path');
 const CONFIG = {
   // 交易参数
   symbols: [],              // 运行时动态选币
-  maxPositions: 0,          // v126: 设为0，B策略不开新仓，只管理现有持仓止盈止损
+  maxPositions: 5,          // v126: 恢复5，B策略正常开仓
   topN: 50,                 // 前50强流动性
   floatProfitPct: 1.0,      // 浮盈±≤1%
   leverage: 3,              // 默认杠杆
@@ -1158,7 +1158,31 @@ class BBEngine {
           continue;
         }
 
-        // v126: 趋势反转止损已去除（避免频繁止损亏损）
+        // ── v126: 趋势反转止损 + 立即反向开仓 ──
+        const reversalResult = this.checkTrendReversal(klines, pos);
+        if (reversalResult.action === 'CLOSE') {
+          this._log(`🔄 ${symbol} ${reversalResult.reason}`);
+          await this._closePosition(symbol, pos, reversalResult.reason);
+          // 止损后立即检查反向开仓
+          if (reversalResult.reverseDirection) {
+            this._log(`🔄 ${symbol} 趋势反转，尝试反向开仓 ${reversalResult.reverseDirection}`);
+            const bb = Indicators.bollinger(klines, CONFIG.bbPeriod, CONFIG.bbStd);
+            const ema25 = Indicators.ema(klines, 25);
+            const ema99 = Indicators.ema(klines, 99);
+            if (bb && ema25 && ema99) {
+              const canReverseLong = reversalResult.reverseDirection === 'LONG' && lastClose <= bb.lower && ema25 > ema99;
+              const canReverseShort = reversalResult.reverseDirection === 'SHORT' && lastClose >= bb.upper && ema25 < ema99;
+              if (canReverseLong || canReverseShort) {
+                const revDir = canReverseLong ? 'LONG' : 'SHORT';
+                this._log(`🟢 ${symbol} 反向开仓信号: ${revDir} (触轨+EMA顺向)`);
+                await this._openPosition(symbol, revDir, klines);
+              } else {
+                this._log(`⏭️ ${symbol} 反向开仓条件不满足（未触轨或EMA不顺向），等待下次信号`);
+              }
+            }
+          }
+          continue;
+        }
 
         // ── 8. 终极止损 ──
         const ultimateResult = this.checkUltimateStopLoss(pos);
