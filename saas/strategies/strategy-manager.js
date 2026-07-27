@@ -216,7 +216,7 @@ class StrategyManager {
       finalSignal,
       analysis: {
         multiTimeframe: multiTimeframeResult,
-        grid: gridAnalysis,
+        grid: null, // v128: grid策略已移除
         dca: dcaAnalysis,
         volatility: volatilityResult,
         volatilityAdvice,
