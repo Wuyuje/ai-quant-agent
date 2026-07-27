@@ -1219,28 +1219,6 @@
     "loginMethod": "password",
     "createdAt": 1784903749276
   },
-  "28d300fbfd2624c487a44b0656c2a9b98a9555192d8ddcb2629dcbe8a57d61e3": {
-    "wallet": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
-    "username": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
-    "walletAddress": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
-    "arkBalance": 0,
-    "bnbBalance": 0,
-    "usdtBalance": 426,
-    "vaultAddress": null,
-    "loginMethod": "password",
-    "createdAt": 1784992742634
-  },
-  "e2912e23cf85559b59e7756ea7b9d199b6800eb1cd4dd0d330221f851ac608c0": {
-    "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "walletAddress": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "arkBalance": 0,
-    "bnbBalance": 0,
-    "usdtBalance": 0,
-    "vaultAddress": null,
-    "loginMethod": "password",
-    "createdAt": 1785031832681
-  },
   "3bf70d09f12494773ce02aae75b8bf4ee2682f009dd7310b7fb2635c420c0e9b": {
     "wallet": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
     "username": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
@@ -1262,5 +1240,27 @@
     "vaultAddress": null,
     "loginMethod": "password",
     "createdAt": 1785057904458
+  },
+  "b8fec8591a4f63869a0568fc4e0ab85dfc0ba98f16ee02e6cdbb39a1b81c3b30": {
+    "wallet": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
+    "username": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
+    "walletAddress": "0xaaf52c91da934c7e7477ad9e37fa65c9bf2e468f",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 426,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1785142013269
+  },
+  "83dcf5d4b92736afd9157773ba801273b9d6f659499b825a8957635996697e49": {
+    "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "walletAddress": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 0,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1785157982089
   }
 }
