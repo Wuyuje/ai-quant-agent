@@ -24,11 +24,21 @@ const path = require('path');
 const CONFIG = {
   // 交易参数
   symbols: [],              // 运行时动态选币
-  maxPositions: 5,          // v126: 恢复5，B策略正常开仓
+  maxPositions: 5,          // 基础仓位数（运行时按资金量动态调整）
   topN: 50,                 // 前50强流动性
   floatProfitPct: 1.0,      // 浮盈±≤1%
   leverage: 3,              // 默认杠杆
-  perPositionPct: 0.15,    // 单仓位占总资金15%
+  perPositionPct: 0.15,    // 单仓位占总资金15%（基础值）
+  
+  // v128: 资金分级仓位 — 余额多开7仓, 余额少开5仓
+  //   < $200 → 5仓 (趋势3 + BB2), 单仓8-15%
+  //   ≥ $200 → 7仓 (趋势4 + BB3), 单仓6-12%
+  //   ≥ $500 → 7仓 (趋势4 + BB3), 单仓6-11%
+  positionTiers: [
+    { minBalance: 0,   maxPositions: 5, trendMax: 3, bbMax: 2, highVolPct: 0.08, midVolPct: 0.12, lowVolPct: 0.15 },
+    { minBalance: 200, maxPositions: 7, trendMax: 4, bbMax: 3, highVolPct: 0.07, midVolPct: 0.10, lowVolPct: 0.12 },
+    { minBalance: 500, maxPositions: 7, trendMax: 4, bbMax: 3, highVolPct: 0.06, midVolPct: 0.09, lowVolPct: 0.11 },
+  ],
   
   // v122: 交易对黑名单 — 这些币种永不选入持仓
   // BANKUSDT: 2026-07-17 触发 3 次终极止损，单笔亏损 -$150+，拉入黑名单
@@ -628,7 +638,41 @@ class BBEngine {
     this.running = false;
     this.wallet = null;       // 钱包地址（UserBBEngine设置，用于算力费判断）
     this._feeState = null;   // 算力费状态
-    this._log('BB Engine 初始化完成');
+  }
+
+  // v128: 根据余额获取当前资金档位
+  getPositionTier() {
+    const tiers = CONFIG.positionTiers;
+    let tier = tiers[0]; // 默认最低档
+    for (const t of tiers) {
+      if (this.balance >= t.minBalance) tier = t;
+    }
+    return tier;
+  }
+
+  // v128: 获取趋势仓最大数量
+  getTrendMax() {
+    return this.getPositionTier().trendMax;
+  }
+
+  // v128: 获取BB仓最大数量
+  getBbMax() {
+    return this.getPositionTier().bbMax;
+  }
+
+  // v128: 统计当前趋势仓和BB仓数量
+  countPositionsByMode() {
+    let trend = 0, bb = 0;
+    for (const s in this.positions) {
+      if (this.positions[s].mode === '趋势') trend++;
+      else bb++;
+    }
+    return { trend, bb, total: trend + bb };
+  }
+
+  // v128: 获取动态最大仓位
+  getDynamicMaxPositions() {
+    return this.getPositionTier().maxPositions;
   }
 
   _log(msg) {
@@ -1268,9 +1312,12 @@ class BBEngine {
     }
 
     // ── 4. 开仓新币种 ──
-    const positionCount = Object.keys(this.positions).length;
-    if (positionCount >= CONFIG.maxPositions) {
-      this._log(`📊 持仓${positionCount}/${CONFIG.maxPositions}已满，不开新仓`);
+    // v128: 动态仓位限制 — 根据余额档位决定5仓或7仓
+    const tier = this.getPositionTier();
+    const maxPos = tier.maxPositions;
+    const { trend: trendCount, bb: bbCount, total: positionCount } = this.countPositionsByMode();
+    if (positionCount >= maxPos) {
+      this._log(`📊 持仓${positionCount}/${maxPos}已满（趋势${trendCount}/${tier.trendMax} BB${bbCount}/${tier.bbMax}），不开新仓`);
       this._saveState();
       return;
     }
@@ -1279,7 +1326,7 @@ class BBEngine {
     const symbolsToScan = candidateSymbols.filter(s => !this.positions[s]);
     
     for (const symbol of symbolsToScan) {
-      if (Object.keys(this.positions).length >= CONFIG.maxPositions) break;
+      if (this.countPositionsByMode().total >= maxPos) break;
 
       try {
         // 特殊时间检查
@@ -1343,20 +1390,30 @@ class BBEngine {
       return;
     }
     
-    // 修复：开仓前再次检查持仓数（防御性双重检查，防止 _syncPositions 接管孤儿仓位后超限）
-    const currentCount = Object.keys(this.positions).length;
-    if (currentCount >= CONFIG.maxPositions) {
-      this._log(`📊 ${symbol} ${direction} 跳过开仓: 持仓${currentCount}/${CONFIG.maxPositions}已满`);
+    // v128: 动态仓位检查 — 根据资金档位+mode分名额
+    const tier = this.getPositionTier();
+    const { trend: trendCount, bb: bbCount, total: currentCount } = this.countPositionsByMode();
+    if (currentCount >= tier.maxPositions) {
+      this._log(`📊 ${symbol} ${direction} 跳过开仓: 持仓${currentCount}/${tier.maxPositions}已满`);
+      return;
+    }
+    // v128: mode分名额检查
+    if (mode === '趋势' && trendCount >= tier.trendMax) {
+      this._log(`📊 ${symbol} ${direction} 跳过开仓: 趋势仓${trendCount}/${tier.trendMax}已满`);
+      return;
+    }
+    if (mode === '轨道' && bbCount >= tier.bbMax) {
+      this._log(`📊 ${symbol} ${direction} 跳过开仓: BB仓${bbCount}/${tier.bbMax}已满`);
       return;
     }
     
-    // 计算仓位大小
-    // 计算仓位大小 — v126: 根据币种波动率自动配比
+    // v128: 仓位大小 — 根据资金档位+波动率自动配比
     const atr = Indicators.atr(klines, CONFIG.atrPeriod);
     const atrPct = atr / price * 100;
-    let positionPct = CONFIG.perPositionPct; // 默认15%
-    if (atrPct > 0.5) positionPct = 0.08; // 高波动→8%
-    else if (atrPct > 0.2) positionPct = 0.12; // 中波动→12%
+    let positionPct;
+    if (atrPct > 0.5) positionPct = tier.highVolPct;
+    else if (atrPct > 0.2) positionPct = tier.midVolPct;
+    else positionPct = tier.lowVolPct;
     
     const positionMargin = this.balance * positionPct;
     const notional = positionMargin * CONFIG.leverage;
