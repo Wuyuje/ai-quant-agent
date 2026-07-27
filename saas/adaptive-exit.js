@@ -29,9 +29,10 @@ class AdaptiveExitManager {
     // 新参数(2/8/2.5/1.5%): 盈亏比=1.24 → 50%胜率也盈利 ✅
     // 核心: 止损收紧(3→2 ATR), 止盈放大(6→8 ATR), 锁利回撤放大(0.5→1.5%)
     // v123: 止损3 ATR(放宽), 止盈5 ATR(降低), 回撤2 ATR
-    this.slAtrMult = config.slAtrMult || 3.0;
-    this.tpAtrMult = config.tpAtrMult || 5.0;
-    this.trailingAtrMult = config.trailingAtrMult || 2.0;
+    // v126: 盈亏比3:1优化 — 止损1.5ATR, 止盈4.5ATR, 回撤1.0ATR
+    this.slAtrMult = config.slAtrMult || 1.5;
+    this.tpAtrMult = config.tpAtrMult || 4.5;
+    this.trailingAtrMult = config.trailingAtrMult || 1.0;
 
     // ═══ 交易成本 ═══
     this.FEE_RATE = 0.0004;
@@ -159,10 +160,11 @@ class AdaptiveExitManager {
       const structureSl = Math.max(slFromStructure, minStructureSl);
       slPct = Math.max(slPct, -Math.min(structureSl, atrPct * slMult));
     }
-    // 绝对上限-5%
+    // v126: 绝对上限-5%, 下限1.5%
     slPct = Math.max(slPct, -5.0);
-    // 止损至少 > 成本×2 (v120: 从1.5提高到2, 确保止损空间>成本)
-    const minSlAbs = Math.max(costPct * 2, 0.3);
+    slPct = Math.min(slPct, -1.5);
+    // 止损至少 > 成本×2
+    const minSlAbs = Math.max(costPct * 2, 1.5);
     slPct = Math.min(slPct, -minSlAbs);
 
     // ═══ 止盈 = ATR × tpMult (对标Two Sigma 3-5R) ═══
@@ -171,11 +173,11 @@ class AdaptiveExitManager {
       tpPct = Math.max(tpFromStructure, atrPct * 1.5);
       tpPct = Math.min(tpPct, atrPct * tpMult);
     }
-    // 止盈下限 = 成本 + 0.3%安全垫 (v118)
-    // v120: 进一步提高到确保到手>0.5% → 成本 + 0.5/0.7 + 0.3
+    // v126: 止盈下限2%, 上限8%
     const MIN_TAKE_HOME = 0.5;
-    const minGrossForTakeHome = costPct + MIN_TAKE_HOME / 0.70 + 0.3;
+    const minGrossForTakeHome = Math.max(costPct + MIN_TAKE_HOME / 0.70 + 0.3, 2.0);
     tpPct = Math.max(tpPct, minGrossForTakeHome);
+    tpPct = Math.min(tpPct, 8.0);
 
     // ═══ R值 ═══
     const rDist = Math.abs(slPct);
