@@ -55,19 +55,7 @@ const CONFIG = {
   //   SymbolEngine 的股票/ETF/商品合约全部不在白名单里，即使新加品种也不会被误接管
   //   空数组 = 不启用白名单（退回 blacklist 模式）；非空 = 启用白名单
   orphanAllowPrefixes: [
-    'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 'DOGE', 'AVAX', 'DOT', 'MATIC',
-    'LINK', 'UNI', 'LTC', 'BCH', 'ATOM', 'NEAR', 'APT', 'ARB', 'OP', 'INJ',
-    'SUI', 'TIA', 'SEI', 'ORDI', 'PEPE', 'WIF', 'BONK', 'SHIB', 'FIL', 'FTM',
-    'ALGO', 'AAVE', 'SAND', 'MANA', 'AXS', 'FET', 'RNDR', 'GRT', 'ICP', 'EGLD',
-    'THETA', 'XLM', 'VET', 'FLOW', 'XTZ', 'KAVA', 'ONE', 'GALA', 'CHZ', 'ENJ',
-    'SUSHI', 'CRV', 'SNX', 'COMP', 'YFI', 'BAL', '1INCH', 'KSM', 'OCEAN', 'DASH',
-    'ZEC', 'XMR', 'DASH', 'NEO', 'IOTA', 'WAVES', 'LSK', 'ICX', 'ONT', 'BTG',
-    'XEC', 'FLR', 'KAITO', 'SKHY', 'HYPE', 'ONDO', 'KORU', 'SPCX', 'SNXX', 'INTC',
-    'MU', 'SYN', '1000XEC', '1000SATS', '1000PEPE', '1000BONK', '1000SHIB',
-    'WLD', 'JUP', 'PYTH', 'STX', 'RUNE', 'DYDX', 'GMX', 'CRV', 'KAVA', 'ROSE',
-    'STRK', 'MANTA', 'JTO', 'TIA', 'BLUR', 'GAS', 'CFX', 'ACH', 'ID', 'JASMY',
-    'LDO', 'ARKM', 'CYBER', 'NTRN', 'YGG', 'DODO', 'BAKE', 'XVS', 'ALPACA', 'WING',
-    'TRB', 'FIL', 'MTL', 'DODO', 'WAVES', 'CELO', 'KSM', 'CFG', 'ANKR', 'PERP', 'DUSK'
+    '*', // v126: 接管所有Binance持仓，不让任何仓位失去止盈止损保护
   ],
   
   // K线参数
