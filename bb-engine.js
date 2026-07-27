@@ -1725,7 +1725,7 @@ class BBEngine {
           // v126: 接管白名单内的孤儿仓位（让 BB 止盈止损保护资金）
           const orphanAllow = CONFIG.orphanAllowPrefixes || [];
           const prefix = symbol.replace('USDT', '');
-          const isAllowed = orphanAllow.some(p => prefix.startsWith(p));
+          const isAllowed = orphanAllow.includes('*') || orphanAllow.some(p => prefix.startsWith(p));
           
           if (isAllowed && Math.abs(amt) > 0) {
             // 接管孤儿仓位，用 BB 止盈止损管理，标记为 orphan 不补仓
