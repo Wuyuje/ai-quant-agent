@@ -74,19 +74,15 @@ class StrategyManager {
     // 尝试加载已训练的神经网络模型
     this.strategies.neuralNet.load();
 
-    // v126: 策略权重重构 — 提升胜率
-    // 保留：MultiTimeframe + RegimeDetect + Ensemble（可靠的技术策略）
-    // 降低：NeuralNet(数据少不可靠) + ML(和NN矛盾)
-    // 清除：Volatility(已用ATR替代) + DynamicWeight(已用固定权重)
+    // v126: 停用NN/ML(过拟合31%胜率)，MultiTimeframe升为唯一主力
     this.weights = {
-      multiTimeframe: 0.35,     // 多时间框架趋势 — 主权重（最可靠）
-      ensemble: 0.25,          // 投票融合（多数同意才开）
-      regimeDetect: 0.20,      // 市场状态检测
-      neuralNet: 0.10,         // 神经网络（降低权重，数据少）
-      ml: 0.10,                // ML预测（降低权重，和NN矛盾时抵消）
-      // 以下清除（权重=0，不再调用analyze）
-      volatility: 0.00,        // v126清除 — 已用ATR替代波动率判断
-      dynamicWeight: 0.00,     // v126清除 — 已用固定权重替代
+      multiTimeframe: 0.60,     // 多时间框架趋势 — 唯一主力
+      ensemble: 0.25,          // 投票融合
+      regimeDetect: 0.15,      // 市场状态检测
+      neuralNet: 0.00,         // v126停用 — 过拟合
+      ml: 0.00,               // v126停用
+      volatility: 0.00,
+      dynamicWeight: 0.00,
       kelly: 0.00,
       tailRisk: 0.00,
       grid: 0.00,
@@ -157,22 +153,11 @@ class StrategyManager {
     const dynamicWeightResult = { weights: this.weights, regime: 'normal' };
     const activeWeights = this.weights;
 
-    // v73: 直接使用ML预测，LSTM微服务已禁用
-    const effectiveMlResult = this.strategies.ml.predict(klines, simulatedInd);
+    // v126: 停用ML和NN预测（过拟合，权重=0不需要）
+    const effectiveMlResult = { valid: false, direction: 0, confidence: 0, action: 'HOLD' };
 
-    // ═══ 4b. v63: 神经网络预测 ═══
-    const nnFeatures = this.strategies.neuralNet.extractFeatures(klines, simulatedInd);
-    nnFeatures._symbol = symbol;
-    const nnResult = this.strategies.neuralNet.predict(nnFeatures);
-    // 神经网络结果转换为 ML 兼容格式
-    const nnSignal = {
-      valid: nnResult.valid,
-      direction: nnResult.direction,
-      confidence: nnResult.confidence,
-      action: nnResult.action,
-      probabilities: nnResult.probabilities,
-      source: 'neural-net',
-    };
+    const nnResult = { valid: false, direction: 0, confidence: 0, action: 'HOLD' };
+    const nnSignal = { valid: false, direction: 0, confidence: 0, action: 'HOLD', source: 'disabled' };
 
     // v126: Grid/DCA 权重=0 跳过分析（节省CPU+避免干扰）
     let gridSignal = { action: 'HOLD', reason: '网格权重=0跳过' };

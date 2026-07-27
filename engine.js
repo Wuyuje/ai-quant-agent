@@ -913,7 +913,8 @@ class Engine {
         // v113.48: 降低开仓门槛 — 神经网络权重已提高+止盈止损已修复
         const isBTC = symbol === 'BTCUSDT';
         const _isTrendAligned = (dir === 'LONG' && price > ma99) || (dir === 'SHORT' && price < ma99);
-        const minStrength = _isTrendAligned ? (isBTC ? 2.0 : 1.5) : (isBTC ? 3.5 : 2.5);
+        // v126: 提高信号门槛 — 只开强信号
+        const minStrength = _isTrendAligned ? (isBTC ? 4.0 : 3.0) : (isBTC ? 6.0 : 5.0);
         // v113.48: 趋势偏离门槛从1.0%降到0.5%
         // v123: 门槛从0.5%降到0.1%
         if (_isTrendAligned && ma99Distance < 0.1 && !isBTC) {
