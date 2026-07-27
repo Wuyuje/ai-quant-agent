@@ -175,20 +175,9 @@ class StrategyManager {
       source: 'neural-net',
     };
 
-    // ═══ 5. 网格分析 ═══
-    const gridAnalysis = this.strategies.grid.analyze(klines);
-    let gridSignal = { action: 'HOLD', reason: '网格不适用' };
-    if (gridAnalysis.suitable) {
-      const gridSetup = this.strategies.grid.setupGrid(currentPrice, gridAnalysis.high, gridAnalysis.low);
-      gridSignal = this.strategies.grid.generateSignal(currentPrice);
-    }
-
-    // ═══ 6. DCA分析 ═══
-    const dcaAnalysis = this.strategies.dca.analyze(klines, currentPrice);
-    let dcaSignal = { action: 'HOLD', reason: 'DCA不适用' };
-    if (dcaAnalysis.suitable) {
-      dcaSignal = this.strategies.dca.generateSignal(currentPrice);
-    }
+    // v126: Grid/DCA 权重=0 跳过分析（节省CPU+避免干扰）
+    let gridSignal = { action: 'HOLD', reason: '网格权重=0跳过' };
+    let dcaSignal = { action: 'HOLD', reason: 'DCA权重=0跳过' };
 
     // ═══ v85: Ensemble多策略投票 ═══
     let ensembleResult = null;
@@ -241,12 +230,12 @@ class StrategyManager {
     this._riskLevel = riskAssessment.riskLevel;
     this._riskAction = riskAssessment.action;
 
-    // v60: 如果风险等级高，降低信号
-    if (riskAssessment.action === 'stop' || riskAssessment.action === 'liquidate') {
+    // v126: 风险等级高时降低信号但不强制HOLD（避免误杀好信号）
+    if (riskAssessment.action === 'liquidate') {
       finalSignal.action = 'HOLD';
       finalSignal.reasons.push(`TAIL_RISK: ${riskAssessment.reason}`);
-    } else if (riskAssessment.action === 'reduce') {
-      finalSignal.confidence *= (1 - riskAssessment.reducePct);
+    } else if (riskAssessment.action === 'stop' || riskAssessment.action === 'reduce') {
+      finalSignal.confidence *= 0.7; // 只降30%不强制HOLD
       finalSignal.reasons.push(`TAIL_RISK_REDUCE: ${riskAssessment.reason}`);
     }
 
@@ -335,10 +324,10 @@ class StrategyManager {
 
     // v114: 已杀死的策略(grid/dca/fundingRate/sentiment等)不再计算分数
 
-    // 波动率调整
+    // v126: 波动率调整 — 放宽衰减从×0.5到×0.8
     if (signals.volatility.regime === 'extreme') {
-      score *= 0.5;
-      reasons.push('波动率极端: 评分×0.5');
+      score *= 0.8;
+      reasons.push('波动率极端: 评分×0.8');
     }
 
     // 一致性加成
@@ -373,11 +362,11 @@ class StrategyManager {
     const { score, normalized } = compositeScore;
     const { volatilityAdvice, anomalyCheck, consistency, ml, ensemble, neuralNet } = allSignals;
 
-    // v113.53: 神经网络高置信度覆盖 — 不让其他策略淹没NN强信号
-    // 当 NN 置信度>=0.80 且方向明确时，直接提升到至少 moderate 门槛
+    // v126: NN高置信度覆盖门槛从0.80提高到0.90
+    // v113.53: 神经网络高置信度覆盖
     let _nnOverride = false;
     let _overrideDir = 0;
-    if (neuralNet?.valid && neuralNet.direction !== 0 && neuralNet.confidence >= 0.80) {
+    if (neuralNet?.valid && neuralNet.direction !== 0 && neuralNet.confidence >= 0.90) {
       const nnDir = neuralNet.direction; // 1=LONG, -1=SHORT
       const techDir = normalized > 0 ? 1 : normalized < 0 ? -1 : 0;
       
