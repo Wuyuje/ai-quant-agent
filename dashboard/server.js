@@ -162,7 +162,19 @@ class Dashboard {
             balance = this._cachedBalance || { balance: 0, available: 0, unrealizedPnl: 0, _error: 'API限速', _cached: true };
           }
         }
-        res.json({ ...status, balance, totalUsers: totalUserCount });
+        // v128: 如果旧引擎余额为0, 尝试用BB引擎余额
+        let finalBalance = balance;
+        if ((!finalBalance || finalBalance.balance === 0) && this.bbStrategyManager) {
+          const adminStatus = this.bbStrategyManager.getAdminStatus?.();
+          if (adminStatus && adminStatus.balance > 0) {
+            finalBalance = {
+              balance: adminStatus.balance,
+              available: adminStatus.balance,
+              unrealizedPnl: adminStatus.totalPnlUsd || 0,
+            };
+          }
+        }
+        res.json({ ...status, balance: finalBalance, totalUsers: totalUserCount });
       } catch (e) {
         res.status(500).json({ error: e.message });
       }

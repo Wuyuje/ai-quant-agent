@@ -454,7 +454,16 @@ class UserBBEngine extends BBEngine {
       wallet: this.wallet,
       balance: this.balance,
       positionCount: positions.length,
-      maxPositions: CONFIG.maxPositions,
+      maxPositions: this.getDynamicMaxPositions(), // v128: 动态仓位
+      trendMax: this.getTrendMax(), // v128: 趋势仓上限
+      bbMax: this.getBbMax(), // v128: BB仓上限
+      trendCount: positions.filter(p => p.mode === '趋势').length, // v128: 当前趋势仓数
+      bbCount: positions.filter(p => p.mode !== '趋势').length, // v128: 当前BB仓数
+      tier: { // v128: 当前资金档位
+        maxPositions: this.getDynamicMaxPositions(),
+        trendMax: this.getTrendMax(),
+        bbMax: this.getBbMax(),
+      },
       positions,
       totalPnlUsd: parseFloat(totalPnlUsd.toFixed(2)),
       totalPnlPct: parseFloat(totalPnlPct.toFixed(2)),
@@ -874,12 +883,15 @@ class BBStrategyManager {
       trades: realizedStats.trades || 0,
       realizedPnl: parseFloat((realizedStats.totalPnl || 0).toFixed(4)),
       config: {
-        maxPositions: CONFIG.maxPositions,
+        maxPositions: CONFIG.maxPositions, // 基础值(运行时按余额动态调整)
         leverage: CONFIG.leverage,
         klineInterval: CONFIG.klineInterval,
         profitTriggerPct: CONFIG.profitTriggerPct,
+        trendProfitTriggerPct: CONFIG.trendProfitTriggerPct, // v128: 趋势仓止盈
         singleKLossPct: CONFIG.singleKLossPct,
         ultimateLossPct: CONFIG.ultimateLossPct,
+        atrStopMultiplier: CONFIG.atrStopMultiplier, // v128: ATR止损倍数
+        positionTiers: CONFIG.positionTiers, // v128: 资金分级
       },
     };
   }

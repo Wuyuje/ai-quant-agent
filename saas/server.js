@@ -1565,16 +1565,27 @@ class SaasServer {
 
       // CEX模式交易统计
       let totalPnl = 0, totalTrades = 0;
-      if (hasCexKey && this.cexUserTrader) {
-        const cexStats = this.cexUserTrader.getUserStats(session.wallet);
-        if (cexStats) {
-          totalPnl = cexStats.totalPnl || 0;
-          totalTrades = cexStats.totalTrades || 0;
+      // v128: 优先用BB策略统计
+      if (this.bbStrategyManager) {
+        const bbStatus = this.bbStrategyManager.getUserStatus?.(session.wallet);
+        if (bbStatus) {
+          const bbStats = this.bbStrategyManager._stats?.[session.wallet] || this.bbStrategyManager._stats?.[session.wallet?.toLowerCase()] || {};
+          totalPnl = bbStats.totalPnl || bbStatus.totalPnlUsd || 0;
+          totalTrades = bbStats.trades || 0;
         }
-      } else {
-        // 链上模式统计
-        totalPnl = userState.totalPnl || 0;
-        totalTrades = userState.totalTrades || 0;
+      }
+      if (totalPnl === 0 && totalTrades === 0) {
+        if (hasCexKey && this.cexUserTrader) {
+          const cexStats = this.cexUserTrader.getUserStats(session.wallet);
+          if (cexStats) {
+            totalPnl = cexStats.totalPnl || 0;
+            totalTrades = cexStats.totalTrades || 0;
+          }
+        } else {
+          // 链上模式统计
+          totalPnl = userState.totalPnl || 0;
+          totalTrades = userState.totalTrades || 0;
+        }
       }
 
       // v121: 获取用户提现权限和费用转账状态
