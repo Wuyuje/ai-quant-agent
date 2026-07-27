@@ -806,36 +806,37 @@ class BBEngine {
       };
     }
 
-    // v126: 趋势追踪开仓 — 趋势刚启动时就开仓，不等趋势跑久了
-    // 判断趋势刚启动: 本轮EMA20穿过EMA60(金叉/死叉) + ADX上升中 + 成交量放大
-    const prevEma20 = Indicators.ema(klines.slice(0, -1), 20);
-    const prevEma60 = Indicators.ema(klines.slice(0, -1), 60);
-    if (prevEma20 && prevEma60) {
-      const goldenCross = prevEma20 <= prevEma60 && ema20 > ema60; // 本轮金叉
-      const deathCross = prevEma20 >= prevEma60 && ema20 < ema60; // 本轮死叉
-      const volMA = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
-      const volSpike = lastK.volume > volMA * 1.5; // 成交量放大1.5倍
+    // v127: 趋势启动开仓 — 趋势刚启动阶段就立即开仓
+    // 判断"刚启动": EMA20/60已交叉(不是等交叉那根) + EMA间距小(趋势早期) + ADX>15+上升中 + 放量
+    const emaGapPct = Math.abs(ema20 - ema60) / ema60 * 100; // EMA间距百分比
+    const isEarlyTrend = emaGapPct < 0.8; // EMA刚拉开不到0.8%=趋势早期
+    const adxRising = adx > 15 && adx < 40; // ADX>15有趋势但<40没到后期
+    const volMA = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
+    const volSpike = lastK.volume > volMA * 1.3; // 放量1.3倍
+    // ADX上升中: 近3根ADX在升
+    const prevAdx1 = Indicators.adx(klines.slice(0, -1), 14);
+    const prevAdx2 = Indicators.adx(klines.slice(0, -2), 14);
+    const adxGoingUp = prevAdx1 && prevAdx2 && adx > prevAdx1 && prevAdx1 > prevAdx2;
 
-      // 金叉做多: EMA20刚上穿EMA60 + ADX>15(趋势刚启动) + 成交量放大
-      if (goldenCross && adx > 15 && volSpike) {
-        return { 
-          allowed: true, 
-          direction: 'LONG', 
-          bb, 
-          bwPercentile, 
-          reason: `趋势启动做多: EMA20金叉EMA60 + ADX=${adx.toFixed(1)}>15 + 放量` 
-        };
-      }
-      // 死叉做空: EMA20刚下穿EMA60 + ADX>15 + 成交量放大
-      if (deathCross && adx > 15 && volSpike) {
-        return { 
-          allowed: true, 
-          direction: 'SHORT', 
-          bb, 
-          bwPercentile, 
-          reason: `趋势启动做空: EMA20死叉EMA60 + ADX=${adx.toFixed(1)}>15 + 放量` 
-        };
-      }
+    // 做多: EMA多头排列 + 趋势早期 + ADX>15且上升 + 放量
+    if (isUptrend && isEarlyTrend && adxRising && adxGoingUp && volSpike) {
+      return { 
+        allowed: true, 
+        direction: 'LONG', 
+        bb, 
+        bwPercentile, 
+        reason: `趋势启动做多: EMA多头排列+间距${emaGapPct.toFixed(2)}%(早期) + ADX=${adx.toFixed(1)}↑ + 放量` 
+      };
+    }
+    // 做空: EMA空头排列 + 趋势早期 + ADX>15且上升 + 放量
+    if (isDowntrend && isEarlyTrend && adxRising && adxGoingUp && volSpike) {
+      return { 
+        allowed: true, 
+        direction: 'SHORT', 
+        bb, 
+        bwPercentile, 
+        reason: `趋势启动做空: EMA空头排列+间距${emaGapPct.toFixed(2)}%(早期) + ADX=${adx.toFixed(1)}↑ + 放量` 
+      };
     }
 
     return { allowed: false, reason: `收盘价${lastClose.toFixed(6)}在轨道内，未触发`, bwPercentile };
