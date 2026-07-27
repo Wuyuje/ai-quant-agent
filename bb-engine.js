@@ -92,7 +92,7 @@ const CONFIG = {
   adxThreshold: 20,          // v126: ADX>20才开仓（从25降低，增加开仓机会）
   
   // v126: ATR动态止损
-  atrStopMultiplier: 1.5,    // 亏1.5ATR止损
+  atrStopMultiplier: 2.0,    // v128: 亏2.0ATR止损（回测验证：1.5太敏感，2.0最优）
   
   // 补仓 (v128: 从3次减为2次，降低风险放大)
   maxReplenish: 2,           // v128: 最多补2次（从3次减少）
@@ -809,10 +809,10 @@ class BBEngine {
     // 趋势启动开仓不需要带宽收窄、不需要ADX>20，只要ADX>15且上升中 + EMA早期排列 + 放量
     // 判断"刚启动": EMA20/60已交叉 + EMA间距小(趋势早期) + ADX>15+上升中 + 放量
     const emaGapPct = Math.abs(ema20 - ema60) / ema60 * 100;
-    const isEarlyTrend = emaGapPct < 2.0; // v128: EMA刚拉开不到2%=趋势早期(0.8太窄)
-    const adxRising = adx > 15 && adx < 40; // ADX>15有趋势但<40没到后期
+    const isEarlyTrend = emaGapPct < 0.8; // v128: EMA间距<0.8%=趋势早期（回测：2.0太宽假信号多）
+    const adxRising = adx > 25 && adx < 45; // v128: ADX>25才开仓（回测：15太宽假信号多）
     const volMA = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
-    const volSpike = lastK.volume > volMA * 1.3; // 放量1.3倍
+    const volSpike = lastK.volume > volMA * 2.0; // v128: 放量2倍（回测：1.3太容易满足）
     // ADX上升中: 近3根ADX在升
     const prevAdx1 = Indicators.adx(klines.slice(0, -1), 14);
     const prevAdx2 = Indicators.adx(klines.slice(0, -2), 14);
