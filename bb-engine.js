@@ -806,26 +806,36 @@ class BBEngine {
       };
     }
 
-    // v126: 趋势追踪开仓 — 强趋势突破时即使未触轨也开仓
-    // 强趋势上涨: ADX>30 + 收盘价突破布林上轨附近(上轨*0.99) + EMA多头 → 做多
-    if (isUptrend && adx > 30 && lastClose >= bb.upper * 0.99 && lastClose < bb.upper) {
-      return { 
-        allowed: true, 
-        direction: 'LONG', 
-        bb, 
-        bwPercentile, 
-        reason: `趋势追踪做多: ADX=${adx.toFixed(1)}>30 + 收盘逼近上轨 + EMA多头排列` 
-      };
-    }
-    // 强趋势下跌: ADX>30 + 收盘价跌破布林下轨附近(下轨*1.01) + EMA空头 → 做空
-    if (isDowntrend && adx > 30 && lastClose <= bb.lower * 1.01 && lastClose > bb.lower) {
-      return { 
-        allowed: true, 
-        direction: 'SHORT', 
-        bb, 
-        bwPercentile, 
-        reason: `趋势追踪做空: ADX=${adx.toFixed(1)}>30 + 收盘逼近下轨 + EMA空头排列` 
-      };
+    // v126: 趋势追踪开仓 — 趋势刚启动时就开仓，不等趋势跑久了
+    // 判断趋势刚启动: 本轮EMA20穿过EMA60(金叉/死叉) + ADX上升中 + 成交量放大
+    const prevEma20 = Indicators.ema(klines.slice(0, -1), 20);
+    const prevEma60 = Indicators.ema(klines.slice(0, -1), 60);
+    if (prevEma20 && prevEma60) {
+      const goldenCross = prevEma20 <= prevEma60 && ema20 > ema60; // 本轮金叉
+      const deathCross = prevEma20 >= prevEma60 && ema20 < ema60; // 本轮死叉
+      const volMA = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
+      const volSpike = lastK.volume > volMA * 1.5; // 成交量放大1.5倍
+
+      // 金叉做多: EMA20刚上穿EMA60 + ADX>15(趋势刚启动) + 成交量放大
+      if (goldenCross && adx > 15 && volSpike) {
+        return { 
+          allowed: true, 
+          direction: 'LONG', 
+          bb, 
+          bwPercentile, 
+          reason: `趋势启动做多: EMA20金叉EMA60 + ADX=${adx.toFixed(1)}>15 + 放量` 
+        };
+      }
+      // 死叉做空: EMA20刚下穿EMA60 + ADX>15 + 成交量放大
+      if (deathCross && adx > 15 && volSpike) {
+        return { 
+          allowed: true, 
+          direction: 'SHORT', 
+          bb, 
+          bwPercentile, 
+          reason: `趋势启动做空: EMA20死叉EMA60 + ADX=${adx.toFixed(1)}>15 + 放量` 
+        };
+      }
     }
 
     return { allowed: false, reason: `收盘价${lastClose.toFixed(6)}在轨道内，未触发`, bwPercentile };
