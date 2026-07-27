@@ -83,11 +83,17 @@ const CONFIG = {
   narrowCount: 3,                     // 连续3根收窄
   
   // 止盈
-  profitTriggerPct: 2.0,    // 浮盈≥2%触发止盈
+  profitTriggerPct: 1.0,    // v126: 浮盈≥1%触发止盈（从2%降低，更快落袋）
   volumeSpikeRatio: 1.8,     // 放量倍数>1.8
   volumeMaPeriod: 20,        // 20周期均量
   atrPeriod: 14,             // ATR周期
-  atrTrailMultiplier: 0.3,  // 0.3 ATR跟踪
+  atrTrailMultiplier: 0.5,  // v126: 0.3→0.5 ATR跟踪（锁利更快）
+  
+  // v126: ADX趋势强度门槛
+  adxThreshold: 25,          // ADX>25才开仓，过滤弱趋势
+  
+  // v126: ATR动态止损
+  atrStopMultiplier: 1.5,    // 亏1.5ATR止损
   
   // 补仓
   maxReplenish: 3,           // 最多补3次
@@ -95,8 +101,8 @@ const CONFIG = {
   replenishRatios: [0.50, 0.30, 0.20], // 50% 30% 20%
   
   // 止损
-  singleKLossPct: 20,       // 单K浮亏≥本金20%止损
-  ultimateLossPct: 70,       // 总浮亏≥70%终极止损
+  singleKLossPct: 5,        // v126: 单K浮亏≥本金5%止损（从20%降低）
+  ultimateLossPct: 15,       // v126: 总浮亏≥15%终极止损（从70%降低）
   
   // v126: ATR 波动率最低门槛 — 排除低波动币
   minAtrPct: 0.10,          // ATR/价格 < 0.10% 不开仓
@@ -496,6 +502,27 @@ class Indicators {
     return ema;
   }
 
+  // v126: ADX 趋势强度指标
+  static adx(klines, period = 14) {
+    if (klines.length < period * 2) return 0;
+    let plusDM = 0, minusDM = 0, tr = 0;
+    for (let i = klines.length - period; i < klines.length; i++) {
+      const up = klines[i].high - klines[i - 1].high;
+      const down = klines[i - 1].low - klines[i].low;
+      const high = klines[i].high;
+      const low = klines[i].low;
+      const prevClose = klines[i - 1].close;
+      tr += Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+      if (up > down && up > 0) plusDM += up;
+      else if (down > up && down > 0) minusDM += down;
+    }
+    if (tr === 0) return 0;
+    const plusDI = plusDM / tr * 100;
+    const minusDI = minusDM / tr * 100;
+    const dx = Math.abs(plusDI - minusDI) / Math.max(plusDI + minusDI, 0.001) * 100;
+    return dx;
+  }
+
   // 标准差
   static std(values, period) {
     if (values.length < period) return 0;
@@ -718,6 +745,12 @@ class BBEngine {
     
     if (bwPercentile > CONFIG.bandwidthOpenBlock) {
       return { allowed: false, reason: `带宽分位${bwPercentile.toFixed(0)}%>90% — 禁开仓`, bwPercentile };
+    }
+
+    // v126: ADX趋势强度过滤 — ADX>25才开仓
+    const adx = Indicators.adx(klines, 14);
+    if (adx < CONFIG.adxThreshold) {
+      return { allowed: false, reason: `ADX=${adx.toFixed(1)}<${CONFIG.adxThreshold} — 趋势不够强不开仓`, bwPercentile };
     }
 
     // (2) 开仓解禁：必须同时满足
@@ -994,6 +1027,20 @@ class BBEngine {
     return { action: 'HOLD' };
   }
 
+  // ═══ v126: ATR动态止损 ═══
+  checkAtrStopLoss(klines, pos) {
+    const atr = Indicators.atr(klines, CONFIG.atrPeriod);
+    const lastClose = klines[klines.length - 1].close;
+    const atrPct = atr / lastClose * 100;
+    const stopPct = atrPct * CONFIG.atrStopMultiplier; // 1.5 ATR
+    
+    const pnlPct = this._calcPnlPct(pos, lastClose);
+    if (pnlPct <= -stopPct) {
+      return { action: 'CLOSE', reason: `ATR止损: 浮亏${pnlPct.toFixed(2)}%≤-${stopPct.toFixed(2)}%(1.5ATR=${atrPct.toFixed(3)}%)` };
+    }
+    return { action: 'HOLD' };
+  }
+
   // ═══ 7. 单K线止损 ═══
   checkSingleKStopLoss(klines, pos) {
     // 单K线浮亏达到单笔本金20%，直接全仓止损
@@ -1149,6 +1196,14 @@ class BBEngine {
 
         const lastClose = klines[klines.length - 1].close;
         pos.currentPrice = lastClose;
+
+        // ── v126: ATR动态止损（最先检查，亏1.5ATR就跑）──
+        const atrStopResult = this.checkAtrStopLoss(klines, pos);
+        if (atrStopResult.action === 'CLOSE') {
+          this._log(`🔴 ${symbol} ${atrStopResult.reason}`);
+          await this._closePosition(symbol, pos, atrStopResult.reason);
+          continue;
+        }
 
         // ── 7. 单K线止损 ──
         const slResult = this.checkSingleKStopLoss(klines, pos);
