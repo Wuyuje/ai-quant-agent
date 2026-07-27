@@ -74,29 +74,29 @@ class StrategyManager {
     // 尝试加载已训练的神经网络模型
     this.strategies.neuralNet.load();
 
-    // v114: 策略权重重构 — 对标世界顶级量化基金
-    // 权重之和不需要=1, 最终会被归一化
-    // 杀死: grid, dca, crossSpread, deltaNeutral, fundingRate(假), sentiment(假), riskParity, marketMaking
-    // 保留并加强: neuralNet, ml, multiTimeframe, volatility, regimeDetect
+    // v126: 策略权重重构 — 提升胜率
+    // 保留：MultiTimeframe + RegimeDetect + Ensemble（可靠的技术策略）
+    // 降低：NeuralNet(数据少不可靠) + ML(和NN矛盾)
+    // 清除：Volatility(已用ATR替代) + DynamicWeight(已用固定权重)
     this.weights = {
-      neuralNet: 0.30,          // 神经网络 — 主权重 (对标Renaissance统计模型)
-      ml: 0.25,                 // 多因子ML预测 (对标Two Sigma多因子)
-      multiTimeframe: 0.20,     // 多时间框架趋势 (对标Citadel趋势跟踪)
-      regimeDetect: 0.15,       // 市场体制检测 (对标AQR regime switching)
-      volatility: 0.10,         // 波动率自适应 (风控)
-      // 以下策略权重=0 但保留代码做风控参考
-      kelly: 0.00,              // Kelly仓位已在PositionSizer处理
-      dynamicWeight: 0.00,      // 动态权重已被固定权重替代
-      tailRisk: 0.00,           // 尾部风险(仅保护不参与开仓)
-      // 已杀死的策略(权重=0, 不参与决策)
-      grid: 0.00,               // 网格交易 — 趋势市场必亏
-      dca: 0.00,                // DCA定投 — 与趋势策略矛盾
-      fundingRate: 0.00,        // 资金费率套利 — 没有实际计算funding rate
-      deltaNeutral: 0.00,       // Delta中性 — 没有期权无法实现
-      crossSpread: 0.00,        // 跨所价差 — 只有一个交易所
-      sentiment: 0.00,          // 情绪驱动 — 没有真实情绪数据源
-      pairsTrading: 0.00,       // 配对交易 — 需要协整检验
-      riskParity: 0.00,         // 风险平价 — 仓位已在PositionSizer处理
+      multiTimeframe: 0.35,     // 多时间框架趋势 — 主权重（最可靠）
+      ensemble: 0.25,          // 投票融合（多数同意才开）
+      regimeDetect: 0.20,      // 市场状态检测
+      neuralNet: 0.10,         // 神经网络（降低权重，数据少）
+      ml: 0.10,                // ML预测（降低权重，和NN矛盾时抵消）
+      // 以下清除（权重=0，不再调用analyze）
+      volatility: 0.00,        // v126清除 — 已用ATR替代波动率判断
+      dynamicWeight: 0.00,     // v126清除 — 已用固定权重替代
+      kelly: 0.00,
+      tailRisk: 0.00,
+      grid: 0.00,
+      dca: 0.00,
+      fundingRate: 0.00,
+      deltaNeutral: 0.00,
+      crossSpread: 0.00,
+      sentiment: 0.00,
+      pairsTrading: 0.00,
+      riskParity: 0.00,
     };
 
     // v114: 只启用有效策略
@@ -147,16 +147,15 @@ class StrategyManager {
     const multiTimeframeSignal = this.strategies.multiTimeframe.generateSignal(multiTimeframeResult);
     const consistency = this.strategies.multiTimeframe.checkConsistency(multiTimeframeResult);
 
-    // ═══ 2. 波动率分析 ═══
-    const volatilityResult = this.strategies.volatility.calculateVolatility(klines);
-    const volatilityAdvice = this.strategies.volatility.getRegimeAdvice();
-    const anomalyCheck = this.strategies.volatility.checkAnomaly();
+    // v126: 跳过 Volatility 和 DynamicWeight（权重=0，已用ATR和固定权重替代）
+    const volatilityResult = { regime: 'normal', anomaly: false };
+    const volatilityAdvice = { regime: 'normal' };
+    const anomalyCheck = { anomaly: false };
 
-    // ═══ 3. v60: 动态权重（根据市场状态调整） ═══
-    // 构建模拟indicators供DynamicWeight使用
+    // v126: 跳过 DynamicWeight
     const simulatedInd = this._buildSimulatedIndicators(klines, currentPrice);
-    const dynamicWeightResult = this.strategies.dynamicWeight.evaluate(simulatedInd, volatilityResult);
-    const activeWeights = dynamicWeightResult.weights;
+    const dynamicWeightResult = { weights: this.weights, regime: 'normal' };
+    const activeWeights = this.weights;
 
     // v73: 直接使用ML预测，LSTM微服务已禁用
     const effectiveMlResult = this.strategies.ml.predict(klines, simulatedInd);
@@ -220,24 +219,10 @@ class StrategyManager {
       ensemble: ensembleResult,  // v85: 新增
     });
 
-    // ═══ 9. v60: 风险评估 ═══
-    const riskAssessment = this.strategies.tailRisk.assess({
-      equity: marketData.equity || 0,
-      positions: marketData.positions || [],
-      indicators: simulatedInd,
-      klines,
-    });
+    // v126: 跳过 TailRisk.assess（权重=0，已用PositionSizer+AdaptiveExit做风控）
+    const riskAssessment = { riskLevel: 'low', action: 'none', reason: 'tailRisk跳过' };
     this._riskLevel = riskAssessment.riskLevel;
     this._riskAction = riskAssessment.action;
-
-    // v126: 风险等级高时降低信号但不强制HOLD（避免误杀好信号）
-    if (riskAssessment.action === 'liquidate') {
-      finalSignal.action = 'HOLD';
-      finalSignal.reasons.push(`TAIL_RISK: ${riskAssessment.reason}`);
-    } else if (riskAssessment.action === 'stop' || riskAssessment.action === 'reduce') {
-      finalSignal.confidence *= 0.7; // 只降30%不强制HOLD
-      finalSignal.reasons.push(`TAIL_RISK_REDUCE: ${riskAssessment.reason}`);
-    }
 
     return {
       symbol,
@@ -552,7 +537,9 @@ class StrategyManager {
    * v60: 风险平价仓位分配
    */
   allocatePositions(candidates, totalCapital, existingPositions = []) {
-    return this.strategies.riskParity.allocate(candidates, totalCapital, existingPositions);
+    // v126: 跳过riskParity（权重=0，已用PositionSizer替代）
+    const maxPer = totalCapital * 0.15; // 每个仓位15%
+    return candidates.slice(0, 5).map(c => ({ ...c, allocation: maxPer }));
   }
 
   /**
@@ -603,24 +590,16 @@ class StrategyManager {
    * 计算仓位大小
    */
   calculatePositionSize(params) {
-    const { totalCapital, winRate, avgWin, avgLoss, entryPrice, stopLoss } = params;
-    const kellyResult = this.strategies.kelly.calculateKelly(winRate, avgWin, avgLoss);
-    const volatilityResult = this.strategies.volatility.calculateVolatility(params.klines);
-    const adjustedKelly = this.strategies.kelly.adjustForMarket(kellyResult.boundedKelly, {
-      volatility: volatilityResult.volatility,
-      trendStrength: params.trendStrength || 1,
-      rsi: params.rsi || 50,
-      correlation: params.correlation || 0,
-    });
-    const positionSize = this.strategies.kelly.calculatePositionSize(
-      totalCapital, adjustedKelly.adjustedKelly, entryPrice, stopLoss
-    );
-    const drawdownCheck = this.strategies.kelly.updateDrawdown(totalCapital);
-    return { kelly: kellyResult, adjustedKelly, positionSize, drawdownCheck, recommendation: positionSize.positionSize };
+    // v126: 跳过Kelly和Volatility（权重=0，已用PositionSizer+AdaptiveExit替代）
+    const { totalCapital, entryPrice, stopLoss } = params;
+    const riskPct = Math.abs(stopLoss) / 100;
+    const positionSize = Math.min(totalCapital * 0.15, totalCapital * riskPct * 3); // 15%仓位或风险3R
+    return { recommendation: positionSize, positionSize: { positionSize }, kelly: { boundedKelly: 0.15 }, adjustedKelly: { adjustedKelly: 0.15 }, drawdownCheck: { ok: true } };
   }
 
   optimizePortfolio(positions, totalCapital) {
-    return this.strategies.kelly.optimizePortfolio(positions, totalCapital);
+    // v126: 简化（PositionSizer已处理仓位分配）
+    return { recommendation: totalCapital * 0.15 };
   }
 
   getState() {
