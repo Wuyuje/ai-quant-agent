@@ -15,10 +15,9 @@ const fs = require('fs');
 const path = require('path');
 
 const CONFIG = {
-  maxPositions: 5,           // 同时5仓
+  maxPositions: 3,           // BB策略最多3仓
   leverage: 3,
   topN: 50,
-  floatProfitPct: 1.0,       // 前十浮盈±≤1%选币
   
   blacklist: [
     'BANKUSDT', 'BTCUSDT', 'BNBUSDT',
@@ -38,24 +37,21 @@ const CONFIG = {
   bandwidthPercentileLookback: 100,
   bandwidthOpenBlock: 90,
   bandwidthOpenAllow: 85,
-  narrowCount: 3,                     // 连续3根收窄
+  narrowCount: 2,
   
-  profitTriggerPct: 2.0,      // 浮盈≥2%触发止盈
-  volumeSpikeRatio: 1.8,      // 放量倍数>1.8
-  volumeMaPeriod: 20,         // 20周期均量
-  atrTrailMultiplier: 0.3,   // ATR跟踪0.3
+  profitTriggerPct: 1.5,
   
   adxThreshold: 20,
   atrPeriod: 14,
   minAtrPct: 0.10,
   atrStopMultiplier: 2.0,
   
-  maxReplenish: 3,           // 最多补3次
-  replenishInterval: 3,      // 收口后间隔3根K线
-  replenishRatios: [0.50, 0.30, 0.20], // 50% 30% 20%
+  maxReplenish: 2,
+  replenishInterval: 3,
+  replenishRatios: [0.40, 0.20],
   
-  singleKLossPct: 20,        // 单K浮亏≥本金20%止损(含杠杆)
-  ultimateLossPct: 70,       // 3次补完+总浮亏≥70%终极止损
+  singleKLossPct: 2,
+  ultimateLossPct: 15,
   
   fundingPauseMin: 15,
   scanIntervalMs: 30000,
@@ -118,18 +114,11 @@ class BBStrategy {
   // ═══ 选币 ═══
   async selectSymbols() {
     const tickers = await this.api.getAllTickers();
-    // 前50强流动性币种
-    const top50 = tickers
+    const usdtPerps = tickers
       .filter(t => t.symbol.endsWith('USDT') && !CONFIG.blacklist.includes(t.symbol))
       .sort((a, b) => b.volume - a.volume)
-      .slice(0, CONFIG.topN)
-      .map(t => ({ symbol: t.symbol, price: t.price, change: t.change }));
-    // 前十浮盈±≤1%币种(从top50中筛选)
-    const floatProfitSymbols = top50
-      .filter(t => Math.abs(t.change || 0) <= CONFIG.floatProfitPct)
-      .slice(0, 10)
-      .map(t => t.symbol);
-    return { top50: top50.map(t => t.symbol), floatProfitSymbols };
+      .slice(0, CONFIG.topN);
+    return usdtPerps.map(t => t.symbol);
   }
 
   // ═══ 开仓条件 ═══
@@ -137,6 +126,9 @@ class BBStrategy {
     const bwPercentile = Indicators.bandwidthPercentile(klines, CONFIG.bandwidthPercentileLookback);
     if (!bwPercentile) return { allowed: false };
     if (bwPercentile > 90) return { allowed: false };
+
+    const adx = Indicators.adx(klines, 14);
+    if (!adx || adx < CONFIG.adxThreshold) return { allowed: false };
 
     if (bwPercentile >= 85) return { allowed: false };
     if (!Indicators.isNarrowing(klines, CONFIG.narrowCount)) return { allowed: false };
@@ -162,55 +154,28 @@ class BBStrategy {
   }
 
   // ═══ 止盈 ═══
-  // ═══ 双模式止盈: 轨道止盈 + 放量ATR跟踪止盈 ═══
   checkTakeProfit(klines, pos) {
     const bb = Indicators.bollinger(klines, CONFIG.bbPeriod, CONFIG.bbStd);
     if (!bb) return { action: 'HOLD' };
-    const lastK = klines[klines.length - 1];
-    const close = lastK.close;
+    const close = klines[klines.length - 1].close;
     const pnlPct = this._calcPnlPct(pos, close);
 
-    // 统一前提: 浮盈≥2%才触发
     if (pnlPct < CONFIG.profitTriggerPct) return { action: 'HOLD' };
 
-    // 判断放量移动止盈模式: 成交量>20周期均量×1.8 + 带宽扩张
-    const volMA = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
-    const volSpike = lastK.volume > volMA * CONFIG.volumeSpikeRatio;
-    const prevBB = Indicators.bollinger(klines.slice(0, -1), CONFIG.bbPeriod, CONFIG.bbStd);
-    const bwExpanding = prevBB && bb.bandwidth > prevBB.bandwidth;
-    
-    if (volSpike && bwExpanding) {
-      // 放量移动止盈模式 — ATR跟踪
-      pos._atrMode = true;
-      const atr = Indicators.atr(klines, CONFIG.atrPeriod);
-      if (atr) {
-        if (pos.side === 'LONG') {
-          const stageLow = this._getStageLow(klines, pos);
-          const trailLine = stageLow + atr * CONFIG.atrTrailMultiplier;
-          if (close <= trailLine) return { action: 'CLOSE', reason: `放量ATR止盈: 收盘${close.toFixed(6)}≤跟踪线${trailLine.toFixed(6)}(低点+0.3ATR)` };
-        } else {
-          const stageHigh = this._getStageHigh(klines, pos);
-          const trailLine = stageHigh - atr * CONFIG.atrTrailMultiplier;
-          if (close >= trailLine) return { action: 'CLOSE', reason: `放量ATR止盈: 收盘${close.toFixed(6)}≥跟踪线${trailLine.toFixed(6)}(高点-0.3ATR)` };
-        }
-      }
-      return { action: 'HOLD' };
+    // 移动止盈
+    if (!pos._peakPnlPct || pnlPct > pos._peakPnlPct) pos._peakPnlPct = pnlPct;
+    const drawdown = pos._peakPnlPct - pnlPct;
+    if (pos._peakPnlPct > CONFIG.profitTriggerPct + 0.5 && drawdown >= 0.5) {
+      return { action: 'CLOSE', reason: `移动止盈: 峰值${pos._peakPnlPct.toFixed(1)}%回撤${drawdown.toFixed(1)}%` };
     }
-    
-    // 布林带收口后切回轨道止盈模式
-    if (pos._atrMode && Indicators.isContracting && Indicators.isContracting(klines)) {
-      pos._atrMode = false;
-    }
-    if (pos._atrMode) return { action: 'HOLD' };
 
-    // 常态轨道止盈
-    // 一级止盈: 收盘触中轨全平
-    if (pos.side === 'LONG' && close >= bb.mid) return { action: 'CLOSE', reason: `轨道止盈: 触中轨` };
-    if (pos.side === 'SHORT' && close <= bb.mid) return { action: 'CLOSE', reason: `轨道止盈: 触中轨` };
+    // 中轨止盈
+    if (pos.side === 'LONG' && close >= bb.mid) return { action: 'CLOSE', reason: `中轨止盈` };
+    if (pos.side === 'SHORT' && close <= bb.mid) return { action: 'CLOSE', reason: `中轨止盈` };
 
-    // 二级兜底: 反向轨道触碰止盈
-    if (pos.side === 'LONG' && close >= bb.upper) return { action: 'CLOSE', reason: `二级兜底: 触上轨` };
-    if (pos.side === 'SHORT' && close <= bb.lower) return { action: 'CLOSE', reason: `二级兜底: 触下轨` };
+    // 反向轨道兜底
+    if (pos.side === 'LONG' && close >= bb.upper) return { action: 'CLOSE', reason: `触上轨兜底` };
+    if (pos.side === 'SHORT' && close <= bb.lower) return { action: 'CLOSE', reason: `触下轨兜底` };
 
     return { action: 'HOLD' };
   }
@@ -226,26 +191,23 @@ class BBStrategy {
     return { action: 'HOLD' };
   }
 
-  // ═══ 单K止损 (含杠杆, ≥本金20%) ═══
+  // ═══ 单K止损 (不含杠杆) ═══
   checkSingleKStopLoss(klines, pos) {
     const lastK = klines[klines.length - 1];
     const prevK = klines[klines.length - 2];
     if (!prevK) return { action: 'HOLD' };
     let klineLossPct;
-    if (pos.side === 'LONG') klineLossPct = (prevK.close - lastK.close) / prevK.close * 100 * pos.leverage;
-    else klineLossPct = (lastK.close - prevK.close) / prevK.close * 100 * pos.leverage;
+    if (pos.side === 'LONG') klineLossPct = (prevK.close - lastK.close) / prevK.close * 100;
+    else klineLossPct = (lastK.close - prevK.close) / prevK.close * 100;
     if (klineLossPct >= CONFIG.singleKLossPct) return { action: 'CLOSE', reason: `单K止损: ${klineLossPct.toFixed(1)}%≥${CONFIG.singleKLossPct}%` };
     return { action: 'HOLD' };
   }
 
-  // ═══ 终极止损: 3次补完+总浮亏≥70%(含杠杆) ═══
+  // ═══ 终极止损 (不含杠杆, 所有仓位生效) ═══
   checkUltimateStopLoss(pos) {
-    if (pos.replenishCount < CONFIG.maxReplenish) return { action: 'HOLD' };
-    const price = pos.currentPrice || pos.entryPrice;
-    let lossPct;
-    if (pos.side === 'LONG') lossPct = (pos.entryPrice - price) / pos.entryPrice * 100 * pos.leverage;
-    else lossPct = (price - pos.entryPrice) / pos.entryPrice * 100 * pos.leverage;
-    if (lossPct >= CONFIG.ultimateLossPct) return { action: 'CLOSE', reason: `终极止损: 3次补完+总浮亏${lossPct.toFixed(1)}%≥${CONFIG.ultimateLossPct}%` };
+    const lossPct = this._calcLossPct(pos);
+    const threshold = pos._orphan ? 5 : CONFIG.ultimateLossPct;
+    if (lossPct >= threshold) return { action: 'CLOSE', reason: pos._orphan ? `孤儿仓止损: ${lossPct.toFixed(1)}%≥5%` : `终极止损: ${lossPct.toFixed(1)}%≥${threshold}%` };
     return { action: 'HOLD' };
   }
 
@@ -435,16 +397,12 @@ class BBStrategy {
 
     await this._syncPositions(this._trendPositions);
 
-    // 管理现有持仓
+    // 管理现有持仓 — 止损止盈不受插针过滤影响
     for (const symbol of Object.keys(this.positions)) {
       const pos = this.positions[symbol];
       try {
         const klines = await this.api.getKlines(symbol, CONFIG.klineInterval, CONFIG.klineLimit);
         if (klines.length < 60) continue;
-        // 插针过滤: 单K>3%该K线所有信号作废, 不执行任何风控动作
-        const lastK = klines[klines.length - 1];
-        const changePct = Math.abs((lastK.close - lastK.open) / lastK.open * 100);
-        if (changePct > 3) { this._log(`⚪ ${symbol} 毛刺K线(${changePct.toFixed(1)}%) 跳过`); continue; }
         pos.currentPrice = klines[klines.length - 1].close;
 
         // ATR止损(先检查)
@@ -472,11 +430,9 @@ class BBStrategy {
       } catch(e) { this._log(`⚠️ ${symbol} 管理异常: ${e.message}`); }
     }
 
-    // 开新仓 — 有交易结束自动选币补充满足5仓
+    // 开新仓
     if (Object.keys(this.positions).length >= CONFIG.maxPositions) return;
-    const { top50, floatProfitSymbols } = await this.selectSymbols();
-    // 优先浮盈±≤1%的币, 再用top50补充
-    const symbols = [...new Set([...floatProfitSymbols, ...top50])];
+    const symbols = await this.selectSymbols();
     for (const symbol of symbols) {
       if (this.positions[symbol]) continue;
       if (Object.keys(this.positions).length >= CONFIG.maxPositions) break;
