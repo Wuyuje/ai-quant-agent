@@ -124,7 +124,7 @@ class Dashboard {
     this.app.get('/api/status', async (req, res) => {
       try {
         // v124: running 反映 BBStrategyManager 状态（主引擎已停用，只有 BB 策略在跑）
-        const bbMgr = this.bbStrategyManager || this.engine?._bbStrategyManager;
+        const bbMgr = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
         const bbRunning = !!(bbMgr && bbMgr.running);
         const status = this.engine.getStatus();
         status.running = bbRunning; // 覆盖 engine.running=false，让 watchdog 判定健康
@@ -737,7 +737,7 @@ class Dashboard {
         try { cexTrades = JSON.parse(fs.readFileSync(cexTradesFile, 'utf8')); } catch(e) {}
 
         // 管理员钱包地址
-        const bbMgr = this.bbStrategyManager || this.engine?._bbStrategyManager;
+        const bbMgr = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
         const adminWallet = bbMgr?.ADMIN_WALLETS?.[0] || '0xfa3b90c574469909d20848273c06752a22fde74a';
 
         // 管理员引擎数据（当前运行中的 Engine）
@@ -1039,7 +1039,7 @@ class Dashboard {
         const userInfo = saasUsers[userKey];
 
         // 停止该用户的BB引擎
-        const bbMgr = this.bbStrategyManager || this.engine?._bbStrategyManager;
+        const bbMgr = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
         if (bbMgr && bbMgr._engines && bbMgr._engines[userKey]) {
           try {
             bbMgr._engines[userKey].stop();
@@ -2252,7 +2252,7 @@ class Dashboard {
 
     // B策略总览（管理员+所有用户）
     app.get('/api/bb-strategy/overview', (req, res) => {
-      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
       if (!bb) return res.json({ error: 'BB策略未启动' });
       const adminStatus = bb.getAdminStatus();
       const allUsers = bb.getAllUsersStatus();
@@ -2279,21 +2279,21 @@ class Dashboard {
 
     // B策略管理员持仓
     app.get('/api/bb-strategy/admin', (req, res) => {
-      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
       if (!bb) return res.json({ error: 'BB策略未启动' });
       res.json(bb.getAdminStatus() || { positions: [], positionCount: 0 });
     });
 
     // B策略所有用户持仓
     app.get('/api/bb-strategy/users', (req, res) => {
-      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
       if (!bb) return res.json({ error: 'BB策略未启动' });
       res.json(bb.getAllUsersStatus());
     });
 
     // B策略单个用户持仓
     app.get('/api/bb-strategy/user/:wallet', (req, res) => {
-      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
       if (!bb) return res.json({ error: 'BB策略未启动' });
       const status = bb.getUserStatus(req.params.wallet);
       res.json(status || { positions: [], positionCount: 0 });
@@ -2371,7 +2371,7 @@ class Dashboard {
         const fs = require('fs');
         const path = require('path');
         const dataDir = path.join(__dirname, '..', 'data');
-        const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+        const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
         
         // 获取所有用户wallet
         const adminWallet = bb?.ADMIN_WALLETS?.[0] || '0xfa3b90c574469909d20848273c06752a22fde74a';
@@ -2480,7 +2480,7 @@ class Dashboard {
         });
       }
       // v125 兼容模式: 返回完整状态 (与 /api/strategy/status 一致)
-      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
       const strategy = bb ? bb.getActiveStrategy() : 'bb';
       const isBB = strategy === 'bb';
       const bbStats = bb?.getStats?.() || {};
@@ -2559,7 +2559,7 @@ class Dashboard {
       }
 
       // 兼容旧模式：只改文件标记
-      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
       if (!bb) return res.status(500).json({ error: '策略管理器未启动' });
       const cfg = bb.setActiveStrategy(strategy);
       const name = strategy === 'bb' ? 'B策略 (布林带)' : 'A策略 (均衡)';
@@ -2573,7 +2573,7 @@ class Dashboard {
         return res.json(um.getStatus());
       }
       // v125: 兼容模式 — 没有 unifiedManager 时返回当前 B 策略状态
-      const bb = this.bbStrategyManager || this.engine?._bbStrategyManager;
+      const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
       const strategy = bb ? bb.getActiveStrategy() : 'bb';
       const isBB = strategy === 'bb';
       const bbStats = bb?.getStats?.() || {};

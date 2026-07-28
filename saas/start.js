@@ -204,19 +204,9 @@ async function main() {
     console.log('[启动] ⏸️ CEXUserTrader 已停用' + (ENABLE_A_STRATEGY ? ' (模块未加载)' : ' (B策略模式)'));
   }
 
-  // ═══ 9. BBStrategyManager — B策略 (默认启动) ═══
+  // ═══ 9. 旧BBStrategyManager — 已停用, 由DualStrategyManager接管 ═══
   let bbStrategyManager = null;
-  try {
-    bbStrategyManager = new BBStrategyManager({
-      userDB: server.userDB,
-      intervalMs: 30000,
-    });
-    bbStrategyManager.start();
-    server.bbStrategyManager = bbStrategyManager;
-    engine._bbStrategyManager = bbStrategyManager;
-    dashboard.bbStrategyManager = bbStrategyManager; // 注入仪表盘
-    console.log('[启动] 📊 BBStrategyManager B策略已启动');
-  } catch (e) { console.log('[启动] ⚠️ BBStrategyManager 启动失败:', e.message); }
+  console.log('[启动] ⏸️ 旧BBStrategyManager已停用 — 由DualStrategyManager(BB+趋势)接管');
 
   // ═══ 9.1 DualStrategyManager — 纯BB+趋势双策略 ═══
   let dualStrategyManager = null;
