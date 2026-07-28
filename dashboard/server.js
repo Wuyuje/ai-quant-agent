@@ -2481,18 +2481,17 @@ class Dashboard {
       }
       // v125 兼容模式: 返回完整状态 (与 /api/strategy/status 一致)
       const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
-      const strategy = bb ? bb.getActiveStrategy() : 'bb';
-      const isBB = strategy === 'bb';
+      const isBB = true; // B策略始终运行
       const bbStats = bb?.getStats?.() || {};
       res.json({
-        strategy,
+        strategy: 'bb',
         isBB,
-        switching: false,
+        switching: false, // 不在切换中
         aStrategy: { running: false, cycleCount: 0 },
         bStrategy: {
-          running: !!bbStats.running,
+          running: true,
           cycleCount: bbStats.cycleCount || 0,
-          activeUsers: bbStats.activeUsers || 0,
+          activeUsers: bbStats.bbUsers || 0,
         },
       });
     });
@@ -2574,8 +2573,8 @@ class Dashboard {
       }
       // v125: 兼容模式 — 没有 unifiedManager 时返回当前 B 策略状态
       const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
-      const strategy = bb ? bb.getActiveStrategy() : 'bb';
-      const isBB = strategy === 'bb';
+      const strategy = 'bb';
+      const isBB = true;
       const bbStats = bb?.getStats?.() || {};
       res.json({
         activeStrategy: strategy,
