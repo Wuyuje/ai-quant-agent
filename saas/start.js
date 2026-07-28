@@ -227,7 +227,7 @@ async function main() {
       apiSecret: process.env.BINANCE_API_SECRET,
       userDB: server.userDB,
     });
-    dualStrategyManager.startAdmin();
+    dualStrategyManager.start();
     server.dualStrategyManager = dualStrategyManager;
     dashboard.dualStrategyManager = dualStrategyManager;
     console.log('[启动] 📊 DualStrategyManager 双策略(BB+趋势)已启动');
