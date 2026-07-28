@@ -1261,11 +1261,12 @@ class BBEngine {
         const klines = await this.api.getKlines(symbol, CONFIG.klineInterval, CONFIG.klineLimit);
         if (klines.length < 60) continue;
 
-        // 插针过滤：检查最新K线是否为毛刺
+        // v128: 插针过滤只用于开仓信号, 止盈止损不受插针过滤影响
+        // 之前: 大跌时K线被判定为毛刺→continue→止损被跳过→亏损放大
         const pinCheck = this.checkPinBar(klines);
-        if (!pinCheck.valid) {
-          this._log(`⚪ ${symbol} ${pinCheck.reason} — 该K线信号作废`);
-          continue;
+        const pinBarInvalid = !pinCheck.valid;
+        if (pinBarInvalid) {
+          this._log(`⚪ ${symbol} ${pinCheck.reason} — 开仓信号作废(止盈止损仍执行)`);
         }
 
         const lastClose = klines[klines.length - 1].close;
