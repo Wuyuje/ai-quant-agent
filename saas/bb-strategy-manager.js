@@ -485,6 +485,7 @@ class BBStrategyManager {
     this.ADMIN_WALLETS = [
       '0xfa3b90c574469909d20848273c06752a22fde74a',
       '0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e',
+      '0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5', // 白名单用户,免算力费
     ];
     
     // 管理员 API Key（从 .env）
@@ -637,9 +638,11 @@ class BBStrategyManager {
       // 必须同意算力 Token模式
       if (!u.withdrawConsent) continue;
       // ═══ 自动扣费模式：只检查记账余额，不检查授权 ═══
-      // 用户充值到Trader钱包，系统自动transfer扣费
-      // gatesFeeLow=true时暂停开新仓，但继续监控现有持仓
-      if (u.gatesFeeLow) {
+      // 白名单用户(ADMIN_WALLETS)免算力费, 不检查余额
+      const isWhitelisted = this.ADMIN_WALLETS.some(a => a.toLowerCase() === wallet.toLowerCase());
+      if (isWhitelisted) {
+        u._gatesFeePaused = false;
+      } else if (u.gatesFeeLow) {
         if (this._cycleCount % 10 === 0) {
           this._log(`⏸️ ${wallet.slice(0,10)}... 算力 Token记账余额不足($${(u.gatesFeeBalance||0).toFixed(2)})，暂停开新仓，继续监控持仓`);
         }
