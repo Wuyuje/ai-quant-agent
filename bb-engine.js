@@ -42,13 +42,6 @@ const CONFIG = {
     'BANKUSDT',   // 单笔巨亏 -$150（3次终极止损）
     'BTCUSDT',    // 波动率低，盈利空间小
     'BNBUSDT',    // 波动率低，盈利空间小
-    // ── SymbolEngine 股票/ETF 合约（PERP） ──
-    'TSLAUSDT', 'NVDAUSDT', 'AAPLUSDT', 'METAUSDT', 'MSFTUSDT',
-    'GOOGLUSDT', 'SPYUSDT', 'QQQUSDT',
-    // ── SymbolEngine 商品合约 ──
-    'XAGUSDT', 'XAUUSDT', 'COPPERUSDT', 'NATGASUSDT',
-    // ── SymbolEngine 债券合约 ──
-    'UVXYUSDT', 'URNMUSDT',
   ],
   
   // v124: 允许 BB 接管的「白名单」前缀 — 只接管纯加密合约品种
