@@ -5,11 +5,11 @@
  *   1. 50强流动性选币 + 浮盈±≤1% + 同时5个币种
  *   2. 5min布林带开仓，收盘价判定
  *   3. 插针过滤：只用收盘价，单K>3%作废，插针回归不执行
- *   4. 开仓准入(双路径): 趋势启动开仓(EMA早期+ADX上升+放量) | BB轨道开仓(带宽<85%+2根收窄+触轨)
- *   5. 分模式止盈: 轨道仓1.5%触发中轨止盈 | 趋势仓2.5%触发移动止盈+反向轨道兜底
- *   6. 补仓: 收口后间隔3根K线，40%/20% 两次（趋势仓/孤儿仓不补仓）
- *   7. 单K线价格变动≥3%全仓止损（不含杠杆，过滤正常波动）
- *   8. 总浮亏≥15%终极止损全平（对所有仓位生效，不要求补完）
+ *   4. 开仓准入：带宽分位>90%禁开，<85%+连续3根收窄才解禁
+ *   5. 双模式止盈：浮盈≥2%触发，常态轨道止盈 + 放量ATR跟踪止盈
+ *   6. 补仓：收口后间隔3根K线，50%/30%/20% 三次
+ *   7. 单K线浮亏≥本金20%全仓止损
+ *   8. 3次补完+总浮亏≥70%终极止损全平
  *   9. 特殊时间禁交易：资金费率前15min / 交割前1h / 布林带开口期间
  */
 
@@ -24,21 +24,11 @@ const path = require('path');
 const CONFIG = {
   // 交易参数
   symbols: [],              // 运行时动态选币
-  maxPositions: 5,          // 基础仓位数（运行时按资金量动态调整）
+  maxPositions: 5,          // v126: 恢复5，B策略正常开仓
   topN: 50,                 // 前50强流动性
   floatProfitPct: 1.0,      // 浮盈±≤1%
   leverage: 3,              // 默认杠杆
-  perPositionPct: 0.15,    // 单仓位占总资金15%（基础值）
-  
-  // v128: 资金分级仓位 — 余额多开7仓, 余额少开5仓
-  //   < $200 → 5仓 (趋势3 + BB2), 单仓8-15%
-  //   ≥ $200 → 7仓 (趋势4 + BB3), 单仓6-12%
-  //   ≥ $500 → 7仓 (趋势4 + BB3), 单仓6-11%
-  positionTiers: [
-    { minBalance: 0,   maxPositions: 5, trendMax: 3, bbMax: 2, highVolPct: 0.08, midVolPct: 0.12, lowVolPct: 0.15 },
-    { minBalance: 200, maxPositions: 7, trendMax: 4, bbMax: 3, highVolPct: 0.07, midVolPct: 0.10, lowVolPct: 0.12 },
-    { minBalance: 500, maxPositions: 7, trendMax: 4, bbMax: 3, highVolPct: 0.06, midVolPct: 0.09, lowVolPct: 0.11 },
-  ],
+  perPositionPct: 0.15,    // 单仓位占总资金15%
   
   // v122: 交易对黑名单 — 这些币种永不选入持仓
   // BANKUSDT: 2026-07-17 触发 3 次终极止损，单笔亏损 -$150+，拉入黑名单
@@ -78,31 +68,29 @@ const CONFIG = {
   bandwidthPercentileLookback: 100,  // 100根K线带宽分位
   bandwidthOpenBlock: 90,             // >90%禁开
   bandwidthOpenAllow: 85,             // <85%解禁
-  narrowCount: 2,                     // v128: 连续2根收窄（从3减为2，增加BB开仓机会）
+  narrowCount: 3,                     // 连续3根收窄
   
   // 止盈
-  profitTriggerPct: 1.5,    // v126: 浮盈≥1.5%触发止盈（轨道仓）
-  trendProfitTriggerPct: 2.5, // v128: 趋势仓浮盈≥2.5%才触发（让利润跑）
+  profitTriggerPct: 1.0,    // v126: 浮盈≥1%触发止盈（从2%降低，更快落袋）
   volumeSpikeRatio: 1.8,     // 放量倍数>1.8
   volumeMaPeriod: 20,        // 20周期均量
   atrPeriod: 14,             // ATR周期
   atrTrailMultiplier: 0.5,  // v126: 0.3→0.5 ATR跟踪（锁利更快）
   
   // v126: ADX趋势强度门槛
-  adxThreshold: 20,          // v126: ADX>20才开仓（从25降低，增加开仓机会）
+  adxThreshold: 25,          // ADX>25才开仓，过滤弱趋势
   
   // v126: ATR动态止损
-  atrStopMultiplier: 2.0,    // v128: 亏2.0ATR止损（轨道仓）
-  trendAtrStopMultiplier: 3.0, // v128: 趋势仓用3.0ATR止损（更宽,给趋势喘息空间）
+  atrStopMultiplier: 1.5,    // 亏1.5ATR止损
   
-  // 补仓 (v128: 从3次减为2次，降低风险放大)
-  maxReplenish: 2,           // v128: 最多补2次（从3次减少）
+  // 补仓
+  maxReplenish: 3,           // 最多补3次
   replenishInterval: 3,      // 收口后间隔3根K线
-  replenishRatios: [0.40, 0.20], // v128: 40% 20%（从50/30/20减少）
+  replenishRatios: [0.50, 0.30, 0.20], // 50% 30% 20%
   
   // 止损
-  singleKLossPct: 2,        // v128: 单K价格变动≥2%止损（3%太晚, 2%更及时）
-  ultimateLossPct: 15,       // v128: 原始价格跌≥15%终极止损（不含杠杆，对所有仓位生效）
+  singleKLossPct: 5,        // v126: 单K浮亏≥本金5%止损（从20%降低）
+  ultimateLossPct: 15,       // v126: 总浮亏≥15%终极止损（从70%降低）
   
   // v126: ATR 波动率最低门槛 — 排除低波动币
   minAtrPct: 0.10,          // ATR/价格 < 0.10% 不开仓
@@ -639,41 +627,7 @@ class BBEngine {
     this.running = false;
     this.wallet = null;       // 钱包地址（UserBBEngine设置，用于算力费判断）
     this._feeState = null;   // 算力费状态
-  }
-
-  // v128: 根据余额获取当前资金档位
-  getPositionTier() {
-    const tiers = CONFIG.positionTiers;
-    let tier = tiers[0]; // 默认最低档
-    for (const t of tiers) {
-      if (this.balance >= t.minBalance) tier = t;
-    }
-    return tier;
-  }
-
-  // v128: 获取趋势仓最大数量
-  getTrendMax() {
-    return this.getPositionTier().trendMax;
-  }
-
-  // v128: 获取BB仓最大数量
-  getBbMax() {
-    return this.getPositionTier().bbMax;
-  }
-
-  // v128: 统计当前趋势仓和BB仓数量
-  countPositionsByMode() {
-    let trend = 0, bb = 0;
-    for (const s in this.positions) {
-      if (this.positions[s].mode === '趋势') trend++;
-      else bb++;
-    }
-    return { trend, bb, total: trend + bb };
-  }
-
-  // v128: 获取动态最大仓位
-  getDynamicMaxPositions() {
-    return this.getPositionTier().maxPositions;
+    this._log('BB Engine 初始化完成');
   }
 
   _log(msg) {
@@ -770,34 +724,52 @@ class BBEngine {
   }
 
   // ═══ 4. 开仓准入检查 ═══
-  async checkOpenCondition(klines, symbol) {
+  checkOpenCondition(klines) {
     // (1) 禁开仓条件：带宽100根K线历史分位 > 90%
     const bwPercentile = Indicators.bandwidthPercentile(klines, CONFIG.bandwidthPercentileLookback);
     if (bwPercentile === null) {
       return { allowed: false, reason: '带宽分位数据不足' };
     }
     
-    // v128: 带宽>90%只禁BB轨道开仓, 不禁趋势启动开仓
-    // 趋势启动时布林带张开(带宽高), 这是正常的
-    const blockBbOnly = bwPercentile > CONFIG.bandwidthOpenBlock;
+    if (bwPercentile > CONFIG.bandwidthOpenBlock) {
+      return { allowed: false, reason: `带宽分位${bwPercentile.toFixed(0)}%>90% — 禁开仓`, bwPercentile };
+    }
 
-    // v126: ADX趋势强度过滤 — ADX>20才开仓
+    // v126: ADX趋势强度过滤 — ADX>25才开仓
     const adx = Indicators.adx(klines, 14);
+    if (adx < CONFIG.adxThreshold) {
+      return { allowed: false, reason: `ADX=${adx.toFixed(1)}<${CONFIG.adxThreshold} — 趋势不够强不开仓`, bwPercentile };
+    }
 
-    // v127: ATR 波动率过滤（基本风险过滤，两条开仓路径都要过）
+    // (2) 开仓解禁：必须同时满足
+    //    - 带宽分位 < 85%
+    //    - 连续3根5min K线布林轨道间距持续收窄（收口）
+    if (bwPercentile >= CONFIG.bandwidthOpenAllow) {
+      return { allowed: false, reason: `带宽分位${bwPercentile.toFixed(0)}%≥85% — 未解禁`, bwPercentile };
+    }
+
+    const isNarrowing = Indicators.isNarrowing(klines, CONFIG.narrowCount);
+    if (!isNarrowing) {
+      return { allowed: false, reason: `布林带未连续${CONFIG.narrowCount}根收窄`, bwPercentile };
+    }
+
+    // v126: ATR 波动率过滤 — 排除低波动币
     const atr = Indicators.atr(klines, CONFIG.atrPeriod);
     const lastClose = klines[klines.length - 1].close;
-    const lastK = klines[klines.length - 1];
     const atrPct = atr / lastClose * 100;
     if (atrPct < CONFIG.minAtrPct) {
       return { allowed: false, reason: `ATR波动率${atrPct.toFixed(3)}%<${CONFIG.minAtrPct}% — 低波动不开仓`, bwPercentile };
     }
 
-    // (3) 布林带 + EMA
+    // (3) 开仓信号确认
     const bb = Indicators.bollinger(klines, CONFIG.bbPeriod, CONFIG.bbStd);
     if (!bb) {
       return { allowed: false, reason: '布林带数据不足' };
     }
+
+    // lastClose 已在 ATR 过滤中声明
+    
+    // v126: EMA 趋势过滤 — 只顺趋势开仓
     const ema20 = Indicators.ema(klines, 20);
     const ema60 = Indicators.ema(klines, 60);
     if (!ema20 || !ema60) {
@@ -805,84 +777,6 @@ class BBEngine {
     }
     const isUptrend = ema20 > ema60;
     const isDowntrend = ema20 < ema60;
-
-    // ═══ v127: 趋势启动开仓路径（独立于BB轨道开仓）═══
-    // 趋势启动开仓不需要带宽收窄、不需要ADX>20，只要ADX>15且上升中 + EMA早期排列 + 放量
-    // 判断"刚启动": EMA20/60已交叉 + EMA间距小(趋势早期) + ADX>15+上升中 + 放量
-    const emaGapPct = Math.abs(ema20 - ema60) / ema60 * 100;
-    const isEarlyTrend = emaGapPct < 2.0; // v128: EMA间距<2.0%=趋势早期
-    const adxRising = adx > 15 && adx < 50; // v128: ADX>15即可（20太严, 下跌趋势启动时ADX可能只有15-18）
-    const volMA = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
-    const volSpike = lastK.volume > volMA * 1.5; // v128: 放量1.5倍（2.0太严）
-    const prevAdx1 = Indicators.adx(klines.slice(0, -1), 14);
-    // v128: ADX上升 OR EMA间距在扩大(趋势正在形成)
-    const prevEma20 = Indicators.ema(klines.slice(0, -1), 20);
-    const prevEma60 = Indicators.ema(klines.slice(0, -1), 60);
-    const prevGap = (prevEma20 && prevEma60) ? Math.abs(prevEma20 - prevEma60) / prevEma60 * 100 : 0;
-    const emaGapExpanding = emaGapPct > prevGap; // EMA间距在扩大=趋势在增强
-    const adxGoingUp = (prevAdx1 && adx > prevAdx1) || emaGapExpanding; // v128: ADX上升或EMA间距扩大
-
-    // v128: 趋势开仓前拉15min K线确认大方向一致
-    let htfConfirmed = true;
-    try {
-      const htfKlines = await this.api.getKlines(symbol, '15m', 100);
-      if (htfKlines.length >= 60) {
-        const htfEma20 = Indicators.ema(htfKlines, 20);
-        const htfEma60 = Indicators.ema(htfKlines, 60);
-        if (htfEma20 && htfEma60) {
-          if (isUptrend && htfEma20 <= htfEma60) htfConfirmed = false;
-          if (isDowntrend && htfEma20 >= htfEma60) htfConfirmed = false;
-        }
-      }
-    } catch(e) { /* 拉取失败不阻塞 */ }
-
-
-    // 趋势启动做多: EMA多头排列 + 趋势早期 + ADX>20且上升 + 15min确认
-    if (isUptrend && isEarlyTrend && adxRising && adxGoingUp && htfConfirmed) {
-      return {
-        allowed: true,
-        direction: 'LONG',
-        bb,
-        bwPercentile,
-        mode: '趋势',
-        reason: `趋势启动做多: EMA多头排列+间距${emaGapPct.toFixed(2)}%(早期) + ADX=${adx.toFixed(1)}↑ + 放量`
-      };
-    }
-    // 趋势启动做空: EMA空头排列 + 趋势早期 + ADX>20且上升 + 15min确认
-    if (isDowntrend && isEarlyTrend && adxRising && adxGoingUp && htfConfirmed) {
-      return {
-        allowed: true,
-        direction: 'SHORT',
-        bb,
-        bwPercentile,
-        mode: '趋势',
-        reason: `趋势启动做空: EMA空头排列+间距${emaGapPct.toFixed(2)}%(早期) + ADX=${adx.toFixed(1)}↑ + 放量`
-      };
-    }
-
-    // ═══ BB轨道开仓路径（原B策略逻辑）═══
-    // 需要: ADX>20 + 带宽分位<85% + 连续2根收窄 + 触轨 + EMA顺向 + 15min确认
-    // v128: 带宽>90%时只禁BB轨道, 不禁趋势启动(上面已处理)
-    if (blockBbOnly) {
-      return { allowed: false, reason: `带宽分位${bwPercentile.toFixed(0)}%>90% — BB轨道禁开仓(趋势开仓不受限)`, bwPercentile };
-    }
-    // v128: BB轨道开仓也用15min确认, 下跌趋势禁开多, 上涨趋势禁开空
-    if (!htfConfirmed) {
-      return { allowed: false, reason: `15min大趋势与5min不一致 — BB轨道不开逆势仓`, bwPercentile };
-    }
-    if (adx < CONFIG.adxThreshold) {
-      return { allowed: false, reason: `ADX=${adx.toFixed(1)}<${CONFIG.adxThreshold} — BB轨道开仓趋势不够强`, bwPercentile };
-    }
-
-    // (2) BB开仓解禁：带宽分位 < 85% + 连续3根收窄
-    if (bwPercentile >= CONFIG.bandwidthOpenAllow) {
-      return { allowed: false, reason: `带宽分位${bwPercentile.toFixed(0)}%≥85% — BB未解禁`, bwPercentile };
-    }
-
-    const isNarrowing = Indicators.isNarrowing(klines, CONFIG.narrowCount);
-    if (!isNarrowing) {
-      return { allowed: false, reason: `布林带未连续${CONFIG.narrowCount}根收窄`, bwPercentile };
-    }
     
     // 开多：5min收盘价触及/跌破下轨 + EMA多头排列
     if (lastClose <= bb.lower) {
@@ -924,35 +818,12 @@ class BBEngine {
     const close = lastK.close;
     const pnlPct = this._calcPnlPct(pos, close);
 
-    // v128: 趋势仓和轨道仓用不同止盈触发门槛
-    const triggerPct = pos.mode === '趋势' ? CONFIG.trendProfitTriggerPct : CONFIG.profitTriggerPct;
-
-    // 浮盈≥触发门槛才触发止盈
-    if (pnlPct < triggerPct) {
-      return { action: 'HOLD', pnlPct, reason: `浮盈${pnlPct.toFixed(2)}%<${triggerPct}%` };
+    // 浮盈≥触发门槛才止盈
+    if (pnlPct < CONFIG.profitTriggerPct) {
+      return { action: 'HOLD', pnlPct, reason: `浮盈${pnlPct.toFixed(2)}%<${CONFIG.profitTriggerPct}%` };
     }
 
-    // v128: 移动止盈 — 浮盈超触发门槛后，从峰值回撤0.5%就锁利
-    if (!pos._peakPnlPct || pnlPct > pos._peakPnlPct) pos._peakPnlPct = pnlPct;
-    const drawdown = pos._peakPnlPct - pnlPct;
-    if (pos._peakPnlPct > triggerPct + 0.5 && drawdown >= 0.5) {
-      return { action: 'CLOSE', reason: `移动止盈: 峰值${pos._peakPnlPct.toFixed(2)}%回撤${drawdown.toFixed(2)}%`, pnlPct };
-    }
-
-    // v127: 趋势仓止盈 — 只用移动止盈+反向轨道兑底，不用中轨止盈
-    // 趋势仓开仓时价格在轨道中间，中轨止盈会导致开仓即平仓
-    if (pos.mode === '趋势') {
-      // 二级兜底：趋势走到反向轨道才止盈
-      if (pos.side === 'LONG' && close >= bb.upper) {
-        return { action: 'CLOSE', reason: `趋势止盈: 多单收盘触碰上轨${bb.upper.toFixed(6)}`, pnlPct };
-      }
-      if (pos.side === 'SHORT' && close <= bb.lower) {
-        return { action: 'CLOSE', reason: `趋势止盈: 空单收盘触碰下轨${bb.lower.toFixed(6)}`, pnlPct };
-      }
-      return { action: 'HOLD', pnlPct, reason: `趋势止盈等待: 收盘${close.toFixed(6)} 上轨${bb.upper.toFixed(6)} 下轨${bb.lower.toFixed(6)}` };
-    }
-
-    // BB轨道仓止盈：收盘触中轨全平
+    // 轨道止盈：收盘触中轨全平
     if (pos.side === 'LONG' && close >= bb.mid) {
       return { action: 'CLOSE', reason: `轨道止盈: 多单收盘${close.toFixed(6)}触碰中轨${bb.mid.toFixed(6)}`, pnlPct };
     }
@@ -994,31 +865,15 @@ class BBEngine {
 
   // ═══ 6. 补仓检查 ═══
   async checkReplenish(klines, pos) {
-    // 已补完，不再补仓
+    // 已补完3次，不再补仓
     if (pos.replenishCount >= CONFIG.maxReplenish) {
-      return { action: 'HOLD', reason: `已补完${CONFIG.maxReplenish}次` };
+      return { action: 'HOLD', reason: '已补完3次' };
     }
 
     // ═══ v123 硬性防御：孤儿仓位永不补仓 ═══
+    // 孤儿仓位是手动/其他系统开的，BB 不应该补仓放大风险
     if (pos._orphan) {
       return { action: 'HOLD', reason: '孤儿仓位不补仓（v123 安全防御）' };
-    }
-
-    // v128: 浮亏超过ATR止损线时不补仓 — 防止补仓拉高均价放大亏损
-    const atr = Indicators.atr(klines, CONFIG.atrPeriod);
-    const lastClose = klines[klines.length - 1].close;
-    if (atr && lastClose) {
-      const atrPct = atr / lastClose * 100;
-      const stopPct = atrPct * CONFIG.atrStopMultiplier;
-      const pnlPct = this._calcPnlPct(pos, lastClose);
-      if (pnlPct <= -stopPct * 0.8) { // 达到ATR止损线的80%就停止补仓
-        return { action: 'HOLD', reason: `浮亏${pnlPct.toFixed(1)}%接近ATR止损线, 不补仓防放大亏损` };
-      }
-    }
-
-    // v127: 趋势仓不补仓 — 趋势仓用移动止盈管理，不适用收口补仓逻辑
-    if (pos.mode === '趋势') {
-      return { action: 'HOLD', reason: '趋势仓不补仓（v127）' };
     }
 
     // 补仓前提：布林带收口后间隔3根K线
@@ -1054,41 +909,41 @@ class BBEngine {
     };
   }
 
-  // ═══ v128: 趋势反转止损 + 反向开仓 ═══
-  // 统一用 EMA20/60（和开仓一致）
-  // 做多后 EMA20<EMA60 + 2根收盘价在EMA20下方 → 止损 + 反向做空
-  // 做空后 EMA20>EMA60 + 2根收盘价在EMA20上方 → 止损 + 反向做多
+  // ═══ v126: 趋势反转止损 + 反向开仓 ═══
+  // 用 EMA25/99 + 3根收盘价确认判断趋势反转
+  // 做多后 EMA25<EMA99 + 3根收盘价都在EMA25下方 → 止损 + 反向做空
+  // 做空后 EMA25>EMA99 + 3根收盘价都在EMA25上方 → 止损 + 反向做多
   checkTrendReversal(klines, pos) {
-    if (klines.length < 60) return { action: 'HOLD' };
+    if (klines.length < 100) return { action: 'HOLD' };
     
-    const ema20 = Indicators.ema(klines, 20);
-    const ema60 = Indicators.ema(klines, 60);
-    if (!ema20 || !ema60) return { action: 'HOLD' };
+    const ema25 = Indicators.ema(klines, 25);
+    const ema99 = Indicators.ema(klines, 99);
+    if (!ema25 || !ema99) return { action: 'HOLD' };
     
-    // v128: 2根收盘价确认（3根太慢）
-    const last2Closes = klines.slice(-2).map(k => k.close);
+    // 最近3根K线收盘价
+    const last3Closes = klines.slice(-3).map(k => k.close);
     
-    // 做多持仓：趋势转空（EMA20<EMA60 + 2根收盘价都在EMA20下方）
-    if (pos.side === 'LONG' && ema20 < ema60) {
-      const allBelow = last2Closes.every(c => c < ema20);
+    // 做多持仓：趋势转空（EMA25<EMA99 + 3根收盘价都在EMA25下方）
+    if (pos.side === 'LONG' && ema25 < ema99) {
+      const allBelow = last3Closes.every(c => c < ema25);
       if (allBelow) {
-        const pnlPct = this._calcPnlPct(pos, last2Closes[1]);
+        const pnlPct = this._calcPnlPct(pos, last3Closes[2]);
         return {
           action: 'CLOSE',
-          reason: `趋势反转止损: 做多但EMA20<EMA60 + 2根收盘在EMA20下方 (PnL=${pnlPct.toFixed(2)}%)`,
+          reason: `趋势反转止损: 做多但EMA25(${ema25.toFixed(6)})<EMA99(${ema99.toFixed(6)}) + 3根收盘价都在EMA25下方 (PnL=${pnlPct.toFixed(2)}%)`,
           reverseDirection: 'SHORT',
         };
       }
     }
     
-    // 做空持仓：趋势转多（EMA20>EMA60 + 2根收盘价都在EMA20上方）
-    if (pos.side === 'SHORT' && ema20 > ema60) {
-      const allAbove = last2Closes.every(c => c > ema20);
+    // 做空持仓：趋势转多（EMA25>EMA99 + 3根收盘价都在EMA25上方）
+    if (pos.side === 'SHORT' && ema25 > ema99) {
+      const allAbove = last3Closes.every(c => c > ema25);
       if (allAbove) {
-        const pnlPct = this._calcPnlPct(pos, last2Closes[1]);
+        const pnlPct = this._calcPnlPct(pos, last3Closes[2]);
         return {
           action: 'CLOSE',
-          reason: `趋势反转止损: 做空但EMA20>EMA60 + 2根收盘在EMA20上方 (PnL=${pnlPct.toFixed(2)}%)`,
+          reason: `趋势反转止损: 做空但EMA25(${ema25.toFixed(6)})>EMA99(${ema99.toFixed(6)}) + 3根收盘价都在EMA25上方 (PnL=${pnlPct.toFixed(2)}%)`,
           reverseDirection: 'LONG',
         };
       }
@@ -1102,38 +957,35 @@ class BBEngine {
     const atr = Indicators.atr(klines, CONFIG.atrPeriod);
     const lastClose = klines[klines.length - 1].close;
     const atrPct = atr / lastClose * 100;
-    // v128: 趋势仓用更宽的ATR止损(3.0), 轨道仓用2.0
-    const mult = pos.mode === '趋势' ? CONFIG.trendAtrStopMultiplier : CONFIG.atrStopMultiplier;
-    const stopPct = atrPct * mult;
+    const stopPct = atrPct * CONFIG.atrStopMultiplier; // 1.5 ATR
     
     const pnlPct = this._calcPnlPct(pos, lastClose);
     if (pnlPct <= -stopPct) {
-      return { action: 'CLOSE', reason: `ATR止损: 浮亏${pnlPct.toFixed(2)}%≤-${stopPct.toFixed(2)}%(${mult}ATR=${atrPct.toFixed(3)}%)` };
+      return { action: 'CLOSE', reason: `ATR止损: 浮亏${pnlPct.toFixed(2)}%≤-${stopPct.toFixed(2)}%(1.5ATR=${atrPct.toFixed(3)}%)` };
     }
     return { action: 'HOLD' };
   }
 
-  // ═══ 7. 单K线止损 (v128: 不含杠杆，看原始价格波动) ═══
+  // ═══ 7. 单K线止损 ═══
   checkSingleKStopLoss(klines, pos) {
-    // v128: singleKLossPct=3% 是原始价格波动，不是杠杆后浮亏
-    // 之前: 价格跌1% × 3倍杠杆 = 3% → 触发止损（太敏感，频繁插针打掉）
-    // 现在: 价格跌3% 才触发止损（过滤正常波动，只在真正暴跌时止损）
+    // 单K线浮亏达到单笔本金20%，直接全仓止损
     const lastK = klines[klines.length - 1];
     const prevK = klines[klines.length - 2];
     if (!prevK) return { action: 'HOLD' };
 
-    // 单K线原始价格变动百分比（不含杠杆）
+    // 单K线浮亏 = 本金 × (这根K线的亏损比例)
+    // 用收盘价计算
     let klineLossPct;
     if (pos.side === 'LONG') {
-      klineLossPct = (prevK.close - lastK.close) / prevK.close * 100;
+      klineLossPct = (prevK.close - lastK.close) / prevK.close * 100 * pos.leverage;
     } else {
-      klineLossPct = (lastK.close - prevK.close) / prevK.close * 100;
+      klineLossPct = (lastK.close - prevK.close) / prevK.close * 100 * pos.leverage;
     }
 
     if (klineLossPct >= CONFIG.singleKLossPct) {
       return { 
         action: 'CLOSE', 
-        reason: `⚠️单K止损: 单根K线价格变动${klineLossPct.toFixed(1)}%≥${CONFIG.singleKLossPct}%`,
+        reason: `⚠️单K止损: 第${klines.length}根K线浮亏${klineLossPct.toFixed(1)}%≥本金${CONFIG.singleKLossPct}%`,
         klineLossPct 
       };
     }
@@ -1142,18 +994,17 @@ class BBEngine {
   }
 
   // ═══ 8. 终极止损 ═══
-  // v128: 终极止损对所有仓位生效，不再要求3次补完
-  // v128: 孤儿仓位用更严的止损线(5%), 因为不是BB策略开的仓
   checkUltimateStopLoss(pos) {
+    // 触发条件：3次补仓全部完成 + 总浮亏 ≥ 持仓金额70%
+    if (pos.replenishCount < CONFIG.maxReplenish) {
+      return { action: 'HOLD' };
+    }
+
     const totalLossPct = this._calcTotalLossPct(pos);
-    // v128: 孤儿仓位快速止损 — 原始价格变动≥5%就止损
-    const stopThreshold = pos._orphan ? 5 : CONFIG.ultimateLossPct;
-    if (totalLossPct >= stopThreshold) {
+    if (totalLossPct >= CONFIG.ultimateLossPct) {
       return { 
         action: 'CLOSE', 
-        reason: pos._orphan 
-          ? `🚨孤儿仓快速止损: 价格变动${totalLossPct.toFixed(1)}%≥5%`
-          : `🚨终极止损: 价格变动${totalLossPct.toFixed(1)}%≥${CONFIG.ultimateLossPct}%`,
+        reason: `🚨终极止损: 3次补完+总浮亏${totalLossPct.toFixed(1)}%≥${CONFIG.ultimateLossPct}%`,
         totalLossPct 
       };
     }
@@ -1172,14 +1023,14 @@ class BBEngine {
   }
 
   _calcTotalLossPct(pos) {
-    // v128: 终极止损看原始价格变动(不含杠杆), 15% = 价格跌15%才触发
-    // 之前含杠杆: 15%÷3x = 价格跌5%就触发, 太敏感
+    // 总浮亏 = (开仓价 - 当前价) / 开仓价 × 杠杆 × 100 (做多)
+    // 或 (当前价 - 开仓价) / 开仓价 × 杠杆 × 100 (做空)
     const currentPrice = pos.currentPrice || pos.entryPrice;
     let lossPct;
     if (pos.side === 'LONG') {
-      lossPct = (pos.entryPrice - currentPrice) / pos.entryPrice * 100;
+      lossPct = (pos.entryPrice - currentPrice) / pos.entryPrice * 100 * pos.leverage;
     } else {
-      lossPct = (currentPrice - pos.entryPrice) / pos.entryPrice * 100;
+      lossPct = (currentPrice - pos.entryPrice) / pos.entryPrice * 100 * pos.leverage;
     }
     return Math.max(0, lossPct);
   }
@@ -1261,12 +1112,11 @@ class BBEngine {
         const klines = await this.api.getKlines(symbol, CONFIG.klineInterval, CONFIG.klineLimit);
         if (klines.length < 60) continue;
 
-        // v128: 插针过滤只用于开仓信号, 止盈止损不受插针过滤影响
-        // 之前: 大跌时K线被判定为毛刺→continue→止损被跳过→亏损放大
+        // 插针过滤：检查最新K线是否为毛刺
         const pinCheck = this.checkPinBar(klines);
-        const pinBarInvalid = !pinCheck.valid;
-        if (pinBarInvalid) {
-          this._log(`⚪ ${symbol} ${pinCheck.reason} — 开仓信号作废(止盈止损仍执行)`);
+        if (!pinCheck.valid) {
+          this._log(`⚪ ${symbol} ${pinCheck.reason} — 该K线信号作废`);
+          continue;
         }
 
         const lastClose = klines[klines.length - 1].close;
@@ -1297,40 +1147,17 @@ class BBEngine {
           if (reversalResult.reverseDirection) {
             this._log(`🔄 ${symbol} 趋势反转，尝试反向开仓 ${reversalResult.reverseDirection}`);
             const bb = Indicators.bollinger(klines, CONFIG.bbPeriod, CONFIG.bbStd);
-            const ema20r = Indicators.ema(klines, 20);
-            const ema60r = Indicators.ema(klines, 60);
-            if (bb && ema20r && ema60r) {
-              // v128: 反向开仓先检查趋势启动条件, 符合就用趋势mode
-              const adxRev = Indicators.adx(klines, 14);
-              const emaGapRev = Math.abs(ema20r - ema60r) / ema60r * 100;
-              const volMARev = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
-              const lastKRev = klines[klines.length - 1];
-              const volSpikeRev = lastKRev.volume > volMARev * 2.0;
-              const prevAdx1Rev = Indicators.adx(klines.slice(0,-1), 14);
-              const prevAdx2Rev = Indicators.adx(klines.slice(0,-2), 14);
-              const adxGoingUpRev = prevAdx1Rev && prevAdx2Rev && adxRev > prevAdx1Rev && prevAdx1Rev > prevAdx2Rev;
-              const isEarlyTrendRev = emaGapRev < 0.8;
-              const adxRisingRev = adxRev > 25 && adxRev < 45;
-              
-              // 趋势启动反向开仓
-              const trendReverseLong = reversalResult.reverseDirection === 'LONG' && ema20r > ema60r && isEarlyTrendRev && adxRisingRev && adxGoingUpRev && volSpikeRev;
-              const trendReverseShort = reversalResult.reverseDirection === 'SHORT' && ema20r < ema60r && isEarlyTrendRev && adxRisingRev && adxGoingUpRev && volSpikeRev;
-              
-              if (trendReverseLong || trendReverseShort) {
-                const revDir = trendReverseLong ? 'LONG' : 'SHORT';
-                this._log(`🟢 ${symbol} 反向开仓信号: ${revDir} (趋势启动)`);
-                await this._openPosition(symbol, revDir, klines, '趋势');
+            const ema25 = Indicators.ema(klines, 25);
+            const ema99 = Indicators.ema(klines, 99);
+            if (bb && ema25 && ema99) {
+              const canReverseLong = reversalResult.reverseDirection === 'LONG' && lastClose <= bb.lower && ema25 > ema99;
+              const canReverseShort = reversalResult.reverseDirection === 'SHORT' && lastClose >= bb.upper && ema25 < ema99;
+              if (canReverseLong || canReverseShort) {
+                const revDir = canReverseLong ? 'LONG' : 'SHORT';
+                this._log(`🟢 ${symbol} 反向开仓信号: ${revDir} (触轨+EMA顺向)`);
+                await this._openPosition(symbol, revDir, klines);
               } else {
-                // BB轨道反向开仓
-                const canReverseLong = reversalResult.reverseDirection === 'LONG' && lastClose <= bb.lower && ema20r > ema60r;
-                const canReverseShort = reversalResult.reverseDirection === 'SHORT' && lastClose >= bb.upper && ema20r < ema60r;
-                if (canReverseLong || canReverseShort) {
-                  const revDir = canReverseLong ? 'LONG' : 'SHORT';
-                  this._log(`🟢 ${symbol} 反向开仓信号: ${revDir} (触轨+EMA顺向)`);
-                  await this._openPosition(symbol, revDir, klines, '轨道');
-                } else {
-                  this._log(`⏭️ ${symbol} 反向开仓条件不满足（未触轨或EMA不顺向），等待下次信号`);
-                }
+                this._log(`⏭️ ${symbol} 反向开仓条件不满足（未触轨或EMA不顺向），等待下次信号`);
               }
             }
           }
@@ -1380,12 +1207,9 @@ class BBEngine {
     }
 
     // ── 4. 开仓新币种 ──
-    // v128: 动态仓位限制 — 根据余额档位决定5仓或7仓
-    const tier = this.getPositionTier();
-    const maxPos = tier.maxPositions;
-    const { trend: trendCount, bb: bbCount, total: positionCount } = this.countPositionsByMode();
-    if (positionCount >= maxPos) {
-      this._log(`📊 持仓${positionCount}/${maxPos}已满（趋势${trendCount}/${tier.trendMax} BB${bbCount}/${tier.bbMax}），不开新仓`);
+    const positionCount = Object.keys(this.positions).length;
+    if (positionCount >= CONFIG.maxPositions) {
+      this._log(`📊 持仓${positionCount}/${CONFIG.maxPositions}已满，不开新仓`);
       this._saveState();
       return;
     }
@@ -1394,7 +1218,7 @@ class BBEngine {
     const symbolsToScan = candidateSymbols.filter(s => !this.positions[s]);
     
     for (const symbol of symbolsToScan) {
-      if (this.countPositionsByMode().total >= maxPos) break;
+      if (Object.keys(this.positions).length >= CONFIG.maxPositions) break;
 
       try {
         // 特殊时间检查
@@ -1416,7 +1240,7 @@ class BBEngine {
         }
 
         // 开仓准入检查
-        const openCheck = await this.checkOpenCondition(klines, symbol);
+        const openCheck = this.checkOpenCondition(klines);
         if (!openCheck.allowed) {
           // 静默跳过，不刷屏
           continue;
@@ -1424,7 +1248,7 @@ class BBEngine {
 
         // 执行开仓
         this._log(`🟢 ${symbol} ${openCheck.direction} 信号: ${openCheck.reason} | 带宽分位=${openCheck.bwPercentile?.toFixed(0)}%`);
-        await this._openPosition(symbol, openCheck.direction, klines, openCheck.mode || '轨道');
+        await this._openPosition(symbol, openCheck.direction, klines);
 
       } catch (e) {
         // 打印错误，不再静默吞掉
@@ -1436,7 +1260,7 @@ class BBEngine {
   }
 
   // ═══ 开仓执行 ═══
-  async _openPosition(symbol, direction, klines, mode = '轨道') {
+  async _openPosition(symbol, direction, klines) {
     const price = klines[klines.length - 1].close;
     
     // v122: 黑名单币种禁止开仓
@@ -1458,30 +1282,20 @@ class BBEngine {
       return;
     }
     
-    // v128: 动态仓位检查 — 根据资金档位+mode分名额
-    const tier = this.getPositionTier();
-    const { trend: trendCount, bb: bbCount, total: currentCount } = this.countPositionsByMode();
-    if (currentCount >= tier.maxPositions) {
-      this._log(`📊 ${symbol} ${direction} 跳过开仓: 持仓${currentCount}/${tier.maxPositions}已满`);
-      return;
-    }
-    // v128: mode分名额检查
-    if (mode === '趋势' && trendCount >= tier.trendMax) {
-      this._log(`📊 ${symbol} ${direction} 跳过开仓: 趋势仓${trendCount}/${tier.trendMax}已满`);
-      return;
-    }
-    if (mode === '轨道' && bbCount >= tier.bbMax) {
-      this._log(`📊 ${symbol} ${direction} 跳过开仓: BB仓${bbCount}/${tier.bbMax}已满`);
+    // 修复：开仓前再次检查持仓数（防御性双重检查，防止 _syncPositions 接管孤儿仓位后超限）
+    const currentCount = Object.keys(this.positions).length;
+    if (currentCount >= CONFIG.maxPositions) {
+      this._log(`📊 ${symbol} ${direction} 跳过开仓: 持仓${currentCount}/${CONFIG.maxPositions}已满`);
       return;
     }
     
-    // v128: 仓位大小 — 根据资金档位+波动率自动配比
+    // 计算仓位大小
+    // 计算仓位大小 — v126: 根据币种波动率自动配比
     const atr = Indicators.atr(klines, CONFIG.atrPeriod);
     const atrPct = atr / price * 100;
-    let positionPct;
-    if (atrPct > 0.5) positionPct = tier.highVolPct;
-    else if (atrPct > 0.2) positionPct = tier.midVolPct;
-    else positionPct = tier.lowVolPct;
+    let positionPct = CONFIG.perPositionPct; // 默认15%
+    if (atrPct > 0.5) positionPct = 0.08; // 高波动→8%
+    else if (atrPct > 0.2) positionPct = 0.12; // 中波动→12%
     
     const positionMargin = this.balance * positionPct;
     const notional = positionMargin * CONFIG.leverage;
@@ -1506,7 +1320,7 @@ class BBEngine {
         replenishCount: 0,
         lastNarrowTime: null,
         klinesSinceNarrow: 0,
-        mode: mode,
+        mode: '轨道',
         atrTrailPrice: null,
         currentPrice: price,
       };
@@ -1923,7 +1737,7 @@ class BBEngine {
               currentPrice: markPrice,
               margin: Math.abs(amt) * entry / leverage,
               leverage,
-              replenishCount: 2, // v128: 标记已补完，不补仓
+              replenishCount: 3, // 标记已补完，不补仓
               mode: '轨道',
               openTime: Date.now(),
               _orphan: true, // 标记为孤儿仓位
