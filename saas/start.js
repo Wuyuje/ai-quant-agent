@@ -218,6 +218,21 @@ async function main() {
     console.log('[启动] 📊 BBStrategyManager B策略已启动');
   } catch (e) { console.log('[启动] ⚠️ BBStrategyManager 启动失败:', e.message); }
 
+  // ═══ 9.1 DualStrategyManager — 纯BB+趋势双策略 ═══
+  let dualStrategyManager = null;
+  try {
+    const { DualStrategyManager } = require('../lib/dual-strategy-manager');
+    dualStrategyManager = new DualStrategyManager({
+      apiKey: process.env.BINANCE_API_KEY,
+      apiSecret: process.env.BINANCE_API_SECRET,
+      userDB: server.userDB,
+    });
+    dualStrategyManager.startAdmin();
+    server.dualStrategyManager = dualStrategyManager;
+    dashboard.dualStrategyManager = dualStrategyManager;
+    console.log('[启动] 📊 DualStrategyManager 双策略(BB+趋势)已启动');
+  } catch (e) { console.log('[启动] ⚠️ DualStrategyManager 启动失败:', e.message); }
+
   // ═══ 9.5 UnifiedStrategyManager — A/B 策略统一切换 ═══
   // 让仪表盘的 A/B 切换按钮真正能启停引擎
   try {
