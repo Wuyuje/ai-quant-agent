@@ -810,14 +810,12 @@ class BBEngine {
     // 趋势启动开仓不需要带宽收窄、不需要ADX>20，只要ADX>15且上升中 + EMA早期排列 + 放量
     // 判断"刚启动": EMA20/60已交叉 + EMA间距小(趋势早期) + ADX>15+上升中 + 放量
     const emaGapPct = Math.abs(ema20 - ema60) / ema60 * 100;
-    const isEarlyTrend = emaGapPct < 1.2; // v128: EMA间距<1.2%=趋势早期（0.8太严触发少, 2.0太宽假信号多）
-    const adxRising = adx > 25 && adx < 45; // v128: ADX>25才开仓（回测：15太宽假信号多）
+    const isEarlyTrend = emaGapPct < 2.0; // v128: EMA间距<2.0%=趋势早期
+    const adxRising = adx > 20 && adx < 50; // v128: ADX>20才开仓（放宽）
     const volMA = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
-    const volSpike = lastK.volume > volMA * 2.0; // v128: 放量2倍（回测：1.3太容易满足）
-    // ADX上升中: 近3根ADX在升
+    const volSpike = lastK.volume > volMA * 1.5; // v128: 放量1.5倍（2.0太严）
     const prevAdx1 = Indicators.adx(klines.slice(0, -1), 14);
-    const prevAdx2 = Indicators.adx(klines.slice(0, -2), 14);
-    const adxGoingUp = prevAdx1 && adx > prevAdx1; // v128: ADX连续2根上升即可（3根太严）
+    const adxGoingUp = prevAdx1 && adx > prevAdx1; // v128: ADX连续2根上升
 
     // v128: 趋势开仓前拉15min K线确认大方向一致
     let htfConfirmed = true;
@@ -834,8 +832,8 @@ class BBEngine {
     } catch(e) { /* 拉取失败不阻塞 */ }
 
 
-    // 趋势启动做多: EMA多头排列 + 趋势早期 + ADX>15且上升 + 放量
-    if (isUptrend && isEarlyTrend && adxRising && adxGoingUp && volSpike && htfConfirmed) {
+    // 趋势启动做多: EMA多头排列 + 趋势早期 + ADX>20且上升 + 15min确认
+    if (isUptrend && isEarlyTrend && adxRising && adxGoingUp && htfConfirmed) {
       return {
         allowed: true,
         direction: 'LONG',
@@ -845,8 +843,8 @@ class BBEngine {
         reason: `趋势启动做多: EMA多头排列+间距${emaGapPct.toFixed(2)}%(早期) + ADX=${adx.toFixed(1)}↑ + 放量`
       };
     }
-    // 趋势启动做空: EMA空头排列 + 趋势早期 + ADX>15且上升 + 放量
-    if (isDowntrend && isEarlyTrend && adxRising && adxGoingUp && volSpike && htfConfirmed) {
+    // 趋势启动做空: EMA空头排列 + 趋势早期 + ADX>20且上升 + 15min确认
+    if (isDowntrend && isEarlyTrend && adxRising && adxGoingUp && htfConfirmed) {
       return {
         allowed: true,
         direction: 'SHORT',
@@ -858,10 +856,14 @@ class BBEngine {
     }
 
     // ═══ BB轨道开仓路径（原B策略逻辑）═══
-    // 需要: ADX>20 + 带宽分位<85% + 连续2根收窄 + 触轨 + EMA顺向
+    // 需要: ADX>20 + 带宽分位<85% + 连续2根收窄 + 触轨 + EMA顺向 + 15min确认
     // v128: 带宽>90%时只禁BB轨道, 不禁趋势启动(上面已处理)
     if (blockBbOnly) {
       return { allowed: false, reason: `带宽分位${bwPercentile.toFixed(0)}%>90% — BB轨道禁开仓(趋势开仓不受限)`, bwPercentile };
+    }
+    // v128: BB轨道开仓也用15min确认, 下跌趋势禁开多, 上涨趋势禁开空
+    if (!htfConfirmed) {
+      return { allowed: false, reason: `15min大趋势与5min不一致 — BB轨道不开逆势仓`, bwPercentile };
     }
     if (adx < CONFIG.adxThreshold) {
       return { allowed: false, reason: `ADX=${adx.toFixed(1)}<${CONFIG.adxThreshold} — BB轨道开仓趋势不够强`, bwPercentile };
@@ -1048,9 +1050,9 @@ class BBEngine {
   }
 
   // ═══ v128: 趋势反转止损 + 反向开仓 ═══
-  // 统一用 EMA20/60（和开仓一致），不再用 EMA25/99
-  // 做多后 EMA20<EMA60 + 3根收盘价都在EMA20下方 → 止损 + 反向做空
-  // 做空后 EMA20>EMA60 + 3根收盘价都在EMA20上方 → 止损 + 反向做多
+  // 统一用 EMA20/60（和开仓一致）
+  // 做多后 EMA20<EMA60 + 2根收盘价在EMA20下方 → 止损 + 反向做空
+  // 做空后 EMA20>EMA60 + 2根收盘价在EMA20上方 → 止损 + 反向做多
   checkTrendReversal(klines, pos) {
     if (klines.length < 60) return { action: 'HOLD' };
     
@@ -1058,30 +1060,30 @@ class BBEngine {
     const ema60 = Indicators.ema(klines, 60);
     if (!ema20 || !ema60) return { action: 'HOLD' };
     
-    // 最近3根K线收盘价
-    const last3Closes = klines.slice(-3).map(k => k.close);
+    // v128: 2根收盘价确认（3根太慢）
+    const last2Closes = klines.slice(-2).map(k => k.close);
     
-    // 做多持仓：趋势转空（EMA20<EMA60 + 3根收盘价都在EMA20下方）
+    // 做多持仓：趋势转空（EMA20<EMA60 + 2根收盘价都在EMA20下方）
     if (pos.side === 'LONG' && ema20 < ema60) {
-      const allBelow = last3Closes.every(c => c < ema20);
+      const allBelow = last2Closes.every(c => c < ema20);
       if (allBelow) {
-        const pnlPct = this._calcPnlPct(pos, last3Closes[2]);
+        const pnlPct = this._calcPnlPct(pos, last2Closes[1]);
         return {
           action: 'CLOSE',
-          reason: `趋势反转止损: 做多但EMA20(${ema20.toFixed(6)})<EMA60(${ema60.toFixed(6)}) + 3根收盘价都在EMA20下方 (PnL=${pnlPct.toFixed(2)}%)`,
+          reason: `趋势反转止损: 做多但EMA20<EMA60 + 2根收盘在EMA20下方 (PnL=${pnlPct.toFixed(2)}%)`,
           reverseDirection: 'SHORT',
         };
       }
     }
     
-    // 做空持仓：趋势转多（EMA20>EMA60 + 3根收盘价都在EMA20上方）
+    // 做空持仓：趋势转多（EMA20>EMA60 + 2根收盘价都在EMA20上方）
     if (pos.side === 'SHORT' && ema20 > ema60) {
-      const allAbove = last3Closes.every(c => c > ema20);
+      const allAbove = last2Closes.every(c => c > ema20);
       if (allAbove) {
-        const pnlPct = this._calcPnlPct(pos, last3Closes[2]);
+        const pnlPct = this._calcPnlPct(pos, last2Closes[1]);
         return {
           action: 'CLOSE',
-          reason: `趋势反转止损: 做空但EMA20(${ema20.toFixed(6)})>EMA60(${ema60.toFixed(6)}) + 3根收盘价都在EMA20上方 (PnL=${pnlPct.toFixed(2)}%)`,
+          reason: `趋势反转止损: 做空但EMA20>EMA60 + 2根收盘在EMA20上方 (PnL=${pnlPct.toFixed(2)}%)`,
           reverseDirection: 'LONG',
         };
       }
@@ -1136,13 +1138,17 @@ class BBEngine {
 
   // ═══ 8. 终极止损 ═══
   // v128: 终极止损对所有仓位生效，不再要求3次补完
-  // 趋势仓不补仓、孤儿仓不补仓，但都需要终极止损兜底
+  // v128: 孤儿仓位用更严的止损线(5%), 因为不是BB策略开的仓
   checkUltimateStopLoss(pos) {
     const totalLossPct = this._calcTotalLossPct(pos);
-    if (totalLossPct >= CONFIG.ultimateLossPct) {
+    // v128: 孤儿仓位快速止损 — 原始价格变动≥5%就止损
+    const stopThreshold = pos._orphan ? 5 : CONFIG.ultimateLossPct;
+    if (totalLossPct >= stopThreshold) {
       return { 
         action: 'CLOSE', 
-        reason: `🚨终极止损: 总浮亏${totalLossPct.toFixed(1)}%≥${CONFIG.ultimateLossPct}%`,
+        reason: pos._orphan 
+          ? `🚨孤儿仓快速止损: 价格变动${totalLossPct.toFixed(1)}%≥5%`
+          : `🚨终极止损: 价格变动${totalLossPct.toFixed(1)}%≥${CONFIG.ultimateLossPct}%`,
         totalLossPct 
       };
     }
