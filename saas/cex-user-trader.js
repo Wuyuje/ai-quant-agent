@@ -505,6 +505,7 @@ class CEXUserTrader {
     this.ADMIN_WALLETS = [
       '0xfA3b90c574469909D20848273C06752a22fdE74a',  // 你的钱包（主管理员）
       '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e',  // 交易器钱包
+      '0x41c89c7DF1AD4c8dd251C5AFE45aa1c791FB6ea5',  // 白名单用户，免算力费
     ];
 
     // 状态持久化
