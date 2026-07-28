@@ -811,11 +811,16 @@ class BBEngine {
     // 判断"刚启动": EMA20/60已交叉 + EMA间距小(趋势早期) + ADX>15+上升中 + 放量
     const emaGapPct = Math.abs(ema20 - ema60) / ema60 * 100;
     const isEarlyTrend = emaGapPct < 2.0; // v128: EMA间距<2.0%=趋势早期
-    const adxRising = adx > 20 && adx < 50; // v128: ADX>20才开仓（放宽）
+    const adxRising = adx > 15 && adx < 50; // v128: ADX>15即可（20太严, 下跌趋势启动时ADX可能只有15-18）
     const volMA = Indicators.volumeMA(klines, CONFIG.volumeMaPeriod);
     const volSpike = lastK.volume > volMA * 1.5; // v128: 放量1.5倍（2.0太严）
     const prevAdx1 = Indicators.adx(klines.slice(0, -1), 14);
-    const adxGoingUp = prevAdx1 && adx > prevAdx1; // v128: ADX连续2根上升
+    // v128: ADX上升 OR EMA间距在扩大(趋势正在形成)
+    const prevEma20 = Indicators.ema(klines.slice(0, -1), 20);
+    const prevEma60 = Indicators.ema(klines.slice(0, -1), 60);
+    const prevGap = (prevEma20 && prevEma60) ? Math.abs(prevEma20 - prevEma60) / prevEma60 * 100 : 0;
+    const emaGapExpanding = emaGapPct > prevGap; // EMA间距在扩大=趋势在增强
+    const adxGoingUp = (prevAdx1 && adx > prevAdx1) || emaGapExpanding; // v128: ADX上升或EMA间距扩大
 
     // v128: 趋势开仓前拉15min K线确认大方向一致
     let htfConfirmed = true;
