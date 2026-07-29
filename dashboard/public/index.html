@@ -626,7 +626,7 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
   </div>
 
   <div class="card" style="margin-bottom:14px">
-    <h3 style="color:#00d4ff">📊 管理员 B策略持仓 (A策略持仓在「持仓详情」tab)</h3>
+    <h3 style="color:#00d4ff">📊 管理员持仓 (BB策略 + 趋势策略)</h3>
     <div style="overflow-x:auto">
       <table id="bbAdminTable" style="width:100%;border-collapse:collapse;font-size:.85em">
         <thead><tr style="border-bottom:2px solid #2a3a5c">
@@ -1916,6 +1916,8 @@ async function loadBBStrategy(){
   if(admin&&admin.positions&&admin.positions.length>0){
     adminRows.innerHTML=admin.positions.map(p=>{
       const pc=p.pnlPct>=0?'#3fb950':'#f85149';
+      const modeColor=p.mode==='趋势'?'#bc8cff':'#58a6ff';
+      const modeTag=p.mode==='趋势'?'<span style="font-size:.7em;padding:1px 6px;border-radius:4px;background:#2d1f4e;color:#bc8cff">趋势</span>':'<span style="font-size:.7em;padding:1px 6px;border-radius:4px;background:#0a1f2e;color:#58a6ff">BB</span>';
       return '<tr style="border-bottom:1px solid #161b22">'+
         '<td style="padding:8px;text-align:left;font-weight:600">'+p.symbol+'</td>'+
         '<td style="padding:8px;color:'+(p.side==='LONG'?'#3fb950':'#f85149')+'">'+p.side+'</td>'+
@@ -1925,8 +1927,8 @@ async function loadBBStrategy(){
         '<td style="padding:8px">'+(p.leverage||3)+'x</td>'+
         '<td style="padding:8px;color:'+pc+'">'+p.pnlPct.toFixed(2)+'%</td>'+
         '<td style="padding:8px;color:'+pc+'">$'+p.pnlUsd.toFixed(2)+'</td>'+
-        '<td style="padding:8px">'+p.replenishCount+'/3</td>'+
-        '<td style="padding:8px">'+(p.mode||'轨道')+'</td>'+
+        '<td style="padding:8px">'+(p.replenishCount||0)+'/3</td>'+
+        '<td style="padding:8px">'+modeTag+'</td>'+
         '</tr>';
     }).join('');
   } else {
