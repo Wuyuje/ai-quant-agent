@@ -174,19 +174,10 @@ async function main() {
   dashboard.start();
   console.log(`[启动] 📊 Dashboard 运行在端口 ${dashboardPort}`);
 
-  // ═══ 7. UserTrader 用户自动跟单 ═══
-  const userTrader = new UserTrader({
-    userDB: server.userDB,
-    dataBus,
-    traderKey: process.env.TRADER_PRIVATE_KEY,
-    intervalMs: 60000,
-  });
-  _userTrader = userTrader;
-  server.userTrader = userTrader;
-  userTrader.start();
-  console.log('[启动] 🤖 UserTrader 用户自动跟单已启动');
+  // ═══ 7. UserTrader 用户自动跟单 — 已停用, 由DualStrategyManager接管 ═══
+  console.log('[启动] ⏸️ UserTrader已停用 — 由DualStrategyManager(BB+趋势)接管');
 
-  // ═══ 8. CEXUserTrader (A 策略一部分) ═══
+  // ═══ 8. CEXUserTrader (A 策略一部分) — 已停用 ═══
   if (ENABLE_A_STRATEGY && CEXUserTrader) {
     try {
       cexUserTrader = new CEXUserTrader({
