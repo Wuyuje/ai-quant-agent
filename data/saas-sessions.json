@@ -1252,7 +1252,7 @@
     "loginMethod": "password",
     "createdAt": 1785142013269
   },
-  "83dcf5d4b92736afd9157773ba801273b9d6f659499b825a8957635996697e49": {
+  "a92e17b78836628784b390f626e79d729a7ecec544aeb1856f8b8bee1eb1629c": {
     "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
     "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
     "walletAddress": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
@@ -1261,6 +1261,6 @@
     "usdtBalance": 0,
     "vaultAddress": null,
     "loginMethod": "password",
-    "createdAt": 1785157982089
+    "createdAt": 1785287141324
   }
 }
