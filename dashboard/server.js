@@ -2416,14 +2416,14 @@ class Dashboard {
           }
           // 按时间倒序
           trades.sort((a, b) => (b.closeTime || 0) - (a.closeTime || 0));
-          const recent50 = trades.slice(0, 50); // v3: 显示最近50笔
+          const recent10 = trades.slice(0, 10); // v3: 显示最近10笔
           
           // v3: 统计全部交易(不只是最近10笔)
           const stats = {
-            total: trades.length,
-            wins: trades.filter(t => t.pnlUsd > 0).length,
-            losses: trades.filter(t => t.pnlUsd <= 0).length,
-            totalPnl: parseFloat(trades.reduce((s, t) => s + (t.pnlUsd || 0), 0).toFixed(4)),
+            total: recent10.length,
+            wins: recent10.filter(t => t.pnlUsd > 0).length,
+            losses: recent10.filter(t => t.pnlUsd <= 0).length,
+            totalPnl: parseFloat(recent10.reduce((s, t) => s + (t.pnlUsd || 0), 0).toFixed(4)),
             totalMargin: parseFloat(trades.reduce((s, t) => s + (t.margin || 0), 0).toFixed(4)),
             avgPnlPct: trades.length > 0 ? parseFloat((trades.reduce((s, t) => s + (t.pnlPct || 0), 0) / trades.length).toFixed(2)) : 0,
           };
@@ -2434,7 +2434,7 @@ class Dashboard {
             isAdmin,
             label: isAdmin ? '管理员' : `用户 ${wallet.slice(0, 8)}...`,
             stats,
-            trades: recent50,
+            trades: recent10,
           };
         }
         res.json(result);
