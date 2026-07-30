@@ -2448,6 +2448,13 @@ class Dashboard {
         res.json([]);
       }
     });
+    // A策略模拟实盘
+    app.get('/api/a-strategy-sim', (req, res) => {
+      const sim = this.aStrategySim;
+      if (!sim) return res.json({ error: 'A策略模拟未启动' });
+      res.json(sim.getSummary());
+    });
+
     // B策略算力 Token状态
     app.get('/api/bb-strategy/fees', (req, res) => {
       try {

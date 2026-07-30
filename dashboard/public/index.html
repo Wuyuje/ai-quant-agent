@@ -677,6 +677,15 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
   </div>
 
   <div class="card" style="margin-top:14px">
+    <h3 style="color:#bc8cff">🧠 A策略模拟实盘 (AI选币+指标确认)</h3>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+      <div class="card"><h3>模拟资金</h3><div id="aSimBalance" class="val purple">--</div></div>
+      <div class="card"><h3>持仓</h3><div id="aSimPositions" class="val blue">--</div></div>
+      <div class="card"><h3>胜率</h3><div id="aSimWinRate" class="val green">--</div><div class="sub" id="aSimTrades">--</div></div>
+      <div class="card"><h3>总盈亏</h3><div id="aSimPnl" class="val green">--</div><div class="sub" id="aSimPnlSub">--</div></div>
+    </div>
+    <div id="aSimRows" style="font-size:.82em;color:#8b949e">加载中...</div>
+    <hr style="border:0;border-top:1px solid #21262d;margin:16px 0">
     <h3 style="color:#00d4ff">📋 B策略平仓记录（按用户）</h3>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
       <label style="color:#8b949e;font-size:.9em">选择用户：</label>
@@ -1795,6 +1804,8 @@ async function loadBBStrategy(){
   // 加载当前策略状态
   loadActiveStrategy();
   loadAdminExchangeMode();
+  // v3: 加载A策略模拟数据
+  loadASim();
   const data=await api('/api/bb-strategy/overview');
   if(!data||data.error){
     document.getElementById('bbStatus').textContent='未启动';
@@ -2567,6 +2578,40 @@ async function doAdminLogin(){
 function updateAdminStatus(authed){var el=document.getElementById('adminStatus');if(!el)return;if(authed){el.textContent='✅ 管理员';el.style.color='#3fb950';el.style.borderColor='#238636';el.onclick=function(){if(confirm('退出管理员模式?')){localStorage.removeItem('ark_admin_key');updateAdminStatus(false);location.reload();}};}else{el.textContent='🔒 未认证';el.style.color='#8b949e';el.style.borderColor='#21262d';el.onclick=showAdminLogin;}}
 function checkAdminAuth(){var key=localStorage.getItem('ark_admin_key');if(key&&key.length>0)updateAdminStatus(true);else updateAdminStatus(false);}
 checkAdminAuth();
+
+// v3: A策略模拟数据加载
+async function loadASim(){
+  try{
+    const d=await api('/api/a-strategy-sim');
+    if(!d||d.error){
+      document.getElementById('aSimBalance').textContent='未启动';
+      return;
+    }
+    document.getElementById('aSimBalance').textContent='$'+d.balance.toFixed(2);
+    document.getElementById('aSimPositions').textContent=d.positionCount+'/'+d.maxPositions;
+    const wr=d.winRate||0;
+    const wrEl=document.getElementById('aSimWinRate');
+    wrEl.textContent=wr.toFixed(1)+'%';
+    wrEl.style.color=wr>=50?'#3fb950':'#f85149';
+    document.getElementById('aSimTrades').textContent=(d.trades||0)+'笔 '+(d.wins||0)+'胜'+(d.losses||0)+'负';
+    const totalPnl=(d.floatPnl||0)+(d.realizedPnl||0);
+    const pnlEl=document.getElementById('aSimPnl');
+    pnlEl.textContent='$'+totalPnl.toFixed(2);
+    pnlEl.style.color=totalPnl>=0?'#3fb950':'#f85149';
+    document.getElementById('aSimPnlSub').textContent='浮动$'+(d.floatPnl||0).toFixed(2)+' 已实现$'+(d.realizedPnl||0).toFixed(2);
+    // 持仓明细
+    const rows=document.getElementById('aSimRows');
+    if(d.positions&&d.positions.length>0){
+      rows.innerHTML='<table style="width:100%;border-collapse:collapse"><tr style="color:#8b949e;font-size:.8em"><th style="text-align:left;padding:4px">币种</th><th>方向</th><th>杠杆</th><th>PnL%</th><th>AI分</th></tr>'+
+        d.positions.map(p=>{
+          const pc=p.pnlPct>=0?'#3fb950':'#f85149';
+          return '<tr style="border-bottom:1px solid #161b22"><td style="padding:4px;font-weight:600">'+p.symbol+'</td><td style="color:'+(p.side==='LONG'?'#3fb950':'#f85149')+'">'+p.side+'</td><td>'+(p.leverage||3)+'x</td><td style="color:'+pc+'">'+p.pnlPct.toFixed(1)+'%</td><td>'+(p.confidence||0).toFixed(2)+'</td></tr>';
+        }).join('')+'</table>';
+    } else {
+      rows.innerHTML='<span style="color:#484f58">暂无持仓</span>';
+    }
+  }catch(e){}
+}
 
 </script>
 </body>
