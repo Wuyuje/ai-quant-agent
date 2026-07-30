@@ -1038,14 +1038,29 @@ class Dashboard {
         const userKey = saasUsers[wallet.toLowerCase()] ? wallet.toLowerCase() : wallet;
         const userInfo = saasUsers[userKey];
 
-        // 停止该用户的BB引擎
+        // 停止该用户的BB引擎和趋势引擎
         const bbMgr = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
-        if (bbMgr && bbMgr._engines && bbMgr._engines[userKey]) {
-          try {
-            bbMgr._engines[userKey].stop();
-            delete bbMgr._engines[userKey];
-            console.log(`[Dashboard] 已停止用户 ${userKey.slice(0,10)}... 的BB引擎`);
-          } catch(e) { console.log(`[Dashboard] 停止引擎失败: ${e.message}`); }
+        if (bbMgr) {
+          // BB引擎
+          if (bbMgr._bbEngines && bbMgr._bbEngines[userKey]) {
+            try {
+              bbMgr._bbEngines[userKey].running = false;
+              delete bbMgr._bbEngines[userKey];
+              console.log(`[Dashboard] 已停止用户 ${userKey.slice(0,10)}... 的BB引擎`);
+            } catch(e) {}
+          }
+          // 旧引擎兼容
+          if (bbMgr._engines && bbMgr._engines[userKey]) {
+            try { bbMgr._engines[userKey].running = false; delete bbMgr._engines[userKey]; } catch(e) {}
+          }
+          // 趋势引擎
+          if (bbMgr._trendEngines && bbMgr._trendEngines[userKey]) {
+            try {
+              bbMgr._trendEngines[userKey].running = false;
+              delete bbMgr._trendEngines[userKey];
+              console.log(`[Dashboard] 已停止用户 ${userKey.slice(0,10)}... 的趋势引擎`);
+            } catch(e) {}
+          }
         }
 
         // 从saas-users.json删除用户
