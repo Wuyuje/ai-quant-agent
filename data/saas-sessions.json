@@ -1197,17 +1197,6 @@
     "loginMethod": "password",
     "createdAt": 1785142013269
   },
-  "a92e17b78836628784b390f626e79d729a7ecec544aeb1856f8b8bee1eb1629c": {
-    "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "walletAddress": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
-    "arkBalance": 0,
-    "bnbBalance": 0,
-    "usdtBalance": 0,
-    "vaultAddress": null,
-    "loginMethod": "password",
-    "createdAt": 1785287141324
-  },
   "dbf3dc689471c2dcc797a2edfbbd4c6435e7a48521995263b057aee4d93a1bf2": {
     "wallet": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
     "username": "0x588ff823e3b50ebc4691c567cee23485b97d7025",
@@ -1218,5 +1207,38 @@
     "vaultAddress": null,
     "loginMethod": "password",
     "createdAt": 1785320150972
+  },
+  "9665f5c60590e414a12a72c9bc9a3ac0588f7b777b5b3b46f554aba1a640761e": {
+    "wallet": "0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5",
+    "username": "0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5",
+    "walletAddress": "0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 0,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1785406336009
+  },
+  "289abc93c178902577567622fd3b97c50ba733f5efabeea8932a9f7d48abb2b5": {
+    "wallet": "0xc6dbb4cd3b6a12068c7388248da2bd32df7ef9b7",
+    "username": "0xc6dbb4cd3b6a12068c7388248da2bd32df7ef9b7",
+    "walletAddress": "0xc6dbb4cd3b6a12068c7388248da2bd32df7ef9b7",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 0,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1785406567243
+  },
+  "1d321c428bbb4abf2ce6ab74f2806305adb7ff44865b99b4ba398b93bfe37553": {
+    "wallet": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "username": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "walletAddress": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "arkBalance": 0,
+    "bnbBalance": 0,
+    "usdtBalance": 214.85625563,
+    "vaultAddress": null,
+    "loginMethod": "password",
+    "createdAt": 1785408992414
   }
 }
