@@ -841,6 +841,11 @@ class Dashboard {
         }
 
         for (const [addr, u] of Object.entries(saasUsers)) {
+          // v3: 跳过已注销的用户
+          if (u.deleted === true) continue;
+          // v3: 跳过管理员(已单独添加)
+          if (addr.toLowerCase() === adminWallet.toLowerCase()) continue;
+          
           const userState = traderState.userStates?.[addr] || { positions: {} };
           const positions = userState.positions || {};
           // 合并CEX持仓（静态来源）
