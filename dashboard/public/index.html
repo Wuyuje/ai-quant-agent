@@ -1881,7 +1881,8 @@ async function loadBBStrategy(){
       const pnlColor=uPnl>=0?'#3fb950':'#f85149';
       const paused=u.gatesFeePaused;
       const pauseTag=paused?' <span style="font-size:.7em;padding:1px 6px;border-radius:4px;background:#490b0b;color:#f85149">算力 Token暂停</span>':' <span style="font-size:.7em;padding:1px 6px;border-radius:4px;background:#0d4429;color:#3fb950">交易中</span>';
-      return '<div style="padding:4px 0;border-bottom:1px solid #161b22"><span style="color:#58a6ff">'+(u.wallet||'').slice(0,12)+'...</span>'+pauseTag+'<span style="color:#8b949e;margin-left:8px">余额 '+uBal+'</span><span style="color:'+pnlColor+';margin-left:8px">浮动 $'+uPnl.toFixed(2)+'</span><span style="color:#8b949e;margin-left:8px">'+(u.positionCount||0)+'仓</span></div>';
+      const feeBal=u.gatesFeeBalance!=null?'$'+u.gatesFeeBalance.toFixed(2):'--';
+      return '<div style="padding:4px 0;border-bottom:1px solid #161b22"><span style="color:#58a6ff">'+(u.wallet||'').slice(0,12)+'...</span>'+pauseTag+'<span style="color:#8b949e;margin-left:8px">余额 '+uBal+'</span><span style="color:'+pnlColor+';margin-left:8px">浮动 $'+uPnl.toFixed(2)+'</span><span style="color:#8b949e;margin-left:8px">'+(u.positionCount||0)+'仓</span><span style="color:#d29922;margin-left:8px">算力费 '+feeBal+'</span></div>';
     }).join('');
   } else {
     userListEl.innerHTML='<span style="color:#484f58">暂无B策略用户</span>';
