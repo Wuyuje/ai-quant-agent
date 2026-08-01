@@ -215,7 +215,16 @@ async function main() {
   } catch (e) { console.log('[启动] ⚠️ DualStrategyManager 启动失败:', e.message); }
 
   // ═══ 9.2 A策略模拟实盘 — 已停止 ═══
-  console.log('[启动] ⏸️ A策略模拟已停止');
+  // ═══ 9.2 A策略模拟实盘 (独立运行,不碰B策略) ═══
+  let aStrategySim = null;
+  try {
+    const { AStrategySim } = require('../lib/a-strategy-sim');
+    aStrategySim = new AStrategySim(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET);
+    aStrategySim.start();
+    server.aStrategySim = aStrategySim;
+    dashboard.aStrategySim = aStrategySim;
+    console.log('[启动] 🧠 A策略模拟实盘已启动 (v4: AI分过滤+做空+止损10%+回撤2%)');
+  } catch (e) { console.log('[启动] ⚠️ A策略模拟启动失败:', e.message); }
 
   // ═══ 9.5 UnifiedStrategyManager — A/B 策略统一切换 ═══
   // 让仪表盘的 A/B 切换按钮真正能启停引擎
