@@ -219,11 +219,15 @@ async function main() {
   let aStrategySim = null;
   try {
     const { AStrategySim } = require('../lib/a-strategy-sim');
-    aStrategySim = new AStrategySim(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET);
+    const { SharedMarket } = require('../lib/shared-market');
+    // A策略独立共享行情缓存(与B策略隔离,绝不互相影响)
+    aStrategySim = new AStrategySim(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, {
+      sharedMarket: new SharedMarket(),
+    });
     aStrategySim.start();
     server.aStrategySim = aStrategySim;
     dashboard.aStrategySim = aStrategySim;
-    console.log('[启动] 🧠 A策略模拟实盘已启动 (v4: AI分过滤+做空+止损10%+回撤2%)');
+    console.log('[启动] 🧠 A策略模拟实盘已启动 (v4: AI分过滤+做空+共享行情缓存)');
   } catch (e) { console.log('[启动] ⚠️ A策略模拟启动失败:', e.message); }
 
   // ═══ 9.5 UnifiedStrategyManager — A/B 策略统一切换 ═══
