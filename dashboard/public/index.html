@@ -9,7 +9,7 @@
 <title>ARK Quant Agent — A策略实时仪表盘</title>
 <script>
 // 强制版本更新 — 不管旧缓存
-var _VER='v125.2';
+var _VER='v126.0';
 var _stored=localStorage.getItem('dashVer')||'';
 if(_stored!==_VER){
   localStorage.setItem('dashVer',_VER);
@@ -2701,7 +2701,10 @@ async function loadAFees(){
 async function loadAUsers(){
   try{
     const d=await api('/api/a-strategy-sim');
-    if(!d||d.error) return;
+    if(!d||d.error){
+      document.getElementById('ausrRows').textContent='⚠️ 加载失败'+(d?(': '+d.error):'(api返回空)');
+      return;
+    }
     document.getElementById('ausrBalance').textContent='$'+(d.balance||0).toFixed(1);
     document.getElementById('ausrPositions').textContent=(d.positionCount||0);
     document.getElementById('ausrEngines').textContent=(d.engineCount||0);
@@ -2740,7 +2743,10 @@ async function loadAUsers(){
 async function loadAUserFees(){
   try{
     const d=await api('/api/a-strategy/fees');
-    if(!d||d.error) return;
+    if(!d||d.error){
+      document.getElementById('feeARows').textContent='⚠️ 加载失败'+(d?(': '+d.error):'(api返回空)');
+      return;
+    }
     document.getElementById('feeAPlatform').textContent='$'+(d.totalPlatformFee||0).toFixed(2);
     document.getElementById('feeAEco').textContent='$'+(d.totalEcoFund||0).toFixed(2);
     document.getElementById('feeAPending').textContent='$'+(d.totalPending||0).toFixed(2);
