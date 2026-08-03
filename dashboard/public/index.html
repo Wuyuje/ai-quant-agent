@@ -1839,7 +1839,7 @@ async function loadBBStrategy(){
   // 加载当前策略状态
   loadActiveStrategy();
   loadAdminExchangeMode();
-  // v3: 加载A策略模拟数据
+  // v3: 加载A策略实盘数据
   loadASim();
   loadAFees();
   loadAUsers();
@@ -2618,7 +2618,7 @@ function updateAdminStatus(authed){var el=document.getElementById('adminStatus')
 function checkAdminAuth(){var key=localStorage.getItem('ark_admin_key');if(key&&key.length>0)updateAdminStatus(true);else updateAdminStatus(false);}
 checkAdminAuth();
 
-// v3: A策略模拟数据加载
+// v3: A策略实盘数据加载
 async function loadASim(){
   try{
     const d=await api('/api/a-strategy-sim');
