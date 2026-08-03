@@ -2600,9 +2600,31 @@ async function loadASim(){
     pnlEl.textContent='$'+totalPnl.toFixed(2);
     pnlEl.style.color=totalPnl>=0?'#3fb950':'#f85149';
     document.getElementById('aSimPnlSub').textContent='浮动$'+(d.floatPnl||0).toFixed(2)+' 已实现$'+(d.realizedPnl||0).toFixed(2);
-    // 持仓明细
+    // ★ 各用户A策略资金/持仓总览(多用户时渲染)
     const rows=document.getElementById('aSimRows');
-    if(d.positions&&d.positions.length>0){
+    if(d.users && d.users.length>0){
+      let html='<div style="font-size:.9em;font-weight:600;color:#8b949e;margin:6px 0 4px">📊 各用户A策略 (引擎'+d.engineCount+'个)</div>';
+      html+='<table style="width:100%;border-collapse:collapse;font-size:.78em"><tr style="color:#8b949e;border-bottom:1px solid #30363d"><th style="text-align:left;padding:4px">用户</th><th>类型</th><th>资金</th><th>持仓数</th><th>交易</th><th>胜率</th><th>盈亏</th><th>运行</th></tr>';
+      for(const u of d.users){
+        const tag=u.isAdmin?'白名单':'普通';
+        const wr=u.trades>0?(u.wins/u.trades*100):0;
+        const pnlColor=u.realizedPnl>=0?'#3fb950':'#f85149';
+        html+='<tr style="border-bottom:1px solid #21262d"><td style="padding:4px;font-weight:600">'+u.wallet.slice(0,10)+'...'+(u.isAdmin?' 👑':'')+'</td><td style="color:#8b949e">'+tag+'</td><td>$'+ (u.balance||0).toFixed(1) +'</td><td>'+(u.positionCount||0)+'</td><td>'+(u.trades||0)+'</td><td style="color:'+(wr>=50?'#3fb950':'#f85149')+'">'+wr.toFixed(0)+'%</td><td style="color:'+pnlColor+';font-weight:600">$'+ (u.realizedPnl||0).toFixed(2) +'</td><td style="color:'+(u.running?'#3fb950':'#f85149')+'">'+(u.running?'✅':'❌')+'</td></tr>';
+      }
+      html+='</table>';
+      // 各用户持仓明细
+      for(const u of d.users){
+        if(!u.positions || u.positions.length===0) continue;
+        html+='<div style="font-size:.85em;color:#8b949e;margin:8px 0 2px">• '+u.wallet.slice(0,10)+'...'+(u.isAdmin?' 👑':'')+'持仓:</div>';
+        html+='<table style="width:100%;border-collapse:collapse;font-size:.75em"><tr style="color:#8b949e"><th style="text-align:left;padding:3px">币种</th><th>方向</th><th>PnL%</th><th>杠杆</th></tr>';
+        for(const p of u.positions){
+          const pc=p.pnlPct>=0?'#3fb950':'#f85149';
+          html+='<tr style="border-bottom:1px solid #161b22"><td style="padding:3px;font-weight:600">'+p.symbol+'</td><td style="color:'+(p.side==='LONG'?'#3fb950':'#f85149')+'">'+p.side+'</td><td style="color:'+pc+'">'+p.pnlPct.toFixed(1)+'%</td><td>'+ (p.leverage||3) +'x</td></tr>';
+        }
+        html+='</table>';
+      }
+      rows.innerHTML=html;
+    } else if(d.positions&&d.positions.length>0){
       rows.innerHTML='<table style="width:100%;border-collapse:collapse"><tr style="color:#8b949e;font-size:.8em"><th style="text-align:left;padding:4px">币种</th><th>方向</th><th>杠杆</th><th>PnL%</th><th>AI分</th></tr>'+
         d.positions.map(p=>{
           const pc=p.pnlPct>=0?'#3fb950':'#f85149';
