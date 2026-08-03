@@ -164,11 +164,14 @@ async function main() {
   if (!process.env.PRIVATE_ACCESS) process.env.PRIVATE_ACCESS = 'no';
   const Dashboard = require('../dashboard/server');
   const dashboardPort = process.env.DASHBOARD_PORT || 10010;
+  // 独立启用新闻中心(无害,提供新闻数据,不干扰A策略)
+  let newsHub = null;
+  try { const NewsHub = require('./news-hub'); newsHub = new NewsHub({}); console.log('[启动] 📰 新闻中心已启用'); } catch(e) { console.log('[启动] ⚠️ 新闻中心未启用:', e.message); }
   const dashboard = new Dashboard(engine, dashboardPort, {
     capitalRouter: null, sharedRisk: null, signalBus: null, crossArb: null,
     goldEngine: null, forexEngine: null, symbolEngines: {},
     masterdAgent: null,
-    newsHub: null,
+    newsHub,
   });
   _dashboard = dashboard;
   dashboard.start();
