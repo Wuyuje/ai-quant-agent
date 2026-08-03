@@ -165,6 +165,27 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
 </div>
 
 <div id="tab-positions" class="panel">
+  <!-- ★ 各用户A策略资金/持仓总览 + 自动扣算力费 (管理员仪表盘主视图) -->
+  <div class="card" style="margin-bottom:14px;border:1px solid #2a3a5c">
+    <h3 style="color:#bc8cff">🧠 A策略实时 · 各用户资金/持仓</h3>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
+      <div class="card"><h3>总资金</h3><div id="ausrBalance" class="val purple">--</div></div>
+      <div class="card"><h3>总持仓</h3><div id="ausrPositions" class="val blue">--</div></div>
+      <div class="card"><h3>引擎数</h3><div id="ausrEngines" class="val green">--</div></div>
+      <div class="card"><h3>总盈亏</h3><div id="ausrPnl" class="val green">--</div></div>
+    </div>
+    <div id="ausrRows" style="font-size:.8em;color:#8b949e">加载中...</div>
+  </div>
+  <div class="card" style="margin-bottom:14px;border:1px solid #2a3a5c">
+    <h3 style="color:#3fb950">💰 自动扣算力费 (普通用户盈利→管理员钱包)</h3>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
+      <div class="card"><h3>平台费累计</h3><div id="feeAPlatform" class="val blue">--</div></div>
+      <div class="card"><h3>生态费累计</h3><div id="feeAEco" class="val purple">--</div></div>
+      <div class="card"><h3>待收</h3><div id="feeAPending" class="val orange">--</div></div>
+      <div class="card"><h3>已转管理员</h3><div id="feeACollected" class="val green">--</div></div>
+    </div>
+    <div id="feeARows" style="font-size:.8em;color:#8b949e">加载中...</div>
+  </div>
   <div class="grid g4" style="margin-bottom:14px">
     <div class="card"><h3>账户余额</h3><div id="posBalance" class="val blue">--</div><div id="posBalanceSub" class="sub">--</div></div>
     <div class="card"><h3>未实现盈亏</h3><div id="posUnrealized" class="val green">--</div><div id="posUnrealizedSub" class="sub">--</div></div>
@@ -1816,6 +1837,8 @@ async function loadBBStrategy(){
   // v3: 加载A策略模拟数据
   loadASim();
   loadAFees();
+  loadAUsers();
+  loadAUserFees();
   const data=await api('/api/bb-strategy/overview');
   if(!data||data.error){
     document.getElementById('bbStatus').textContent='未启动';
@@ -2662,6 +2685,68 @@ async function loadAFees(){
       for(const u of d.users){
         const pc=u.pendingTotal>=0?'#d29922':'#8b949e';
         html+='<tr style="border-bottom:1px solid #21262d"><td style="padding:4px;font-weight:600">'+u.wallet.slice(0,12)+'...</td><td>'+u.pendingCount+'/'+u.count+'</td><td style="color:#3fb950">$'+u.pendingPlatform.toFixed(2)+'</td><td style="color:#d29922">$'+u.pendingEco.toFixed(2)+'</td><td style="color:'+pc+';font-weight:600">$'+u.pendingTotal.toFixed(2)+'</td><td style="color:#3fb950">$'+u.collected.toFixed(2)+'</td></tr>';
+      }
+      html+='</table>';
+      rows.innerHTML=html;
+    } else {
+      rows.innerHTML='<span style="color:#484f58">暂无待扣算力费</span>';
+    }
+  }catch(e){}
+}
+
+// ★ 各用户A策略资金/持仓总览(管理员仪表盘主视图,tab-positions)
+async function loadAUsers(){
+  try{
+    const d=await api('/api/a-strategy-sim');
+    if(!d||d.error) return;
+    document.getElementById('ausrBalance').textContent='$'+(d.balance||0).toFixed(1);
+    document.getElementById('ausrPositions').textContent=(d.positionCount||0);
+    document.getElementById('ausrEngines').textContent=(d.engineCount||0);
+    const pnlEl=document.getElementById('ausrPnl');
+    pnlEl.textContent='$'+(d.realizedPnl||0).toFixed(2);
+    pnlEl.style.color=(d.realizedPnl||0)>=0?'#3fb950':'#f85149';
+    const rows=document.getElementById('ausrRows');
+    if(d.users&&d.users.length>0){
+      let html='<table style="width:100%;border-collapse:collapse"><tr style="color:#8b949e;border-bottom:1px solid #30363d"><th style="text-align:left;padding:4px">用户</th><th>类型</th><th>资金</th><th>持仓数</th><th>交易</th><th>胜率</th><th>盈亏</th></tr>';
+      for(const u of d.users){
+        const tag=u.isAdmin?'白名单':'普通';
+        const wr=u.trades>0?(u.wins/u.trades*100):0;
+        const pc=u.realizedPnl>=0?'#3fb950':'#f85149';
+        html+='<tr style="border-bottom:1px solid #21262d"><td style="padding:4px;font-weight:600">'+u.wallet.slice(0,10)+'...'+(u.isAdmin?' 👑':'')+'</td><td style="color:#8b949e">'+tag+'</td><td>$'+(u.balance||0).toFixed(1)+'</td><td>'+(u.positionCount||0)+'</td><td>'+(u.trades||0)+'</td><td style="color:'+(wr>=50?'#3fb950':'#f85149')+'">'+wr.toFixed(0)+'%</td><td style="color:'+pc+';font-weight:600">$'+(u.realizedPnl||0).toFixed(2)+'</td></tr>';
+      }
+      html+='</table>';
+      // 各用户持仓明细
+      for(const u of d.users){
+        if(!u.positions||u.positions.length===0) continue;
+        html+='<div style="font-size:.85em;color:#8b949e;margin:8px 0 2px">• '+u.wallet.slice(0,10)+'...'+(u.isAdmin?' 👑':'')+'持仓:</div>';
+        html+='<table style="width:100%;border-collapse:collapse;font-size:.75em"><tr style="color:#8b949e"><th style="text-align:left;padding:3px">币种</th><th>方向</th><th>PnL%</th><th>杠杆</th></tr>';
+        for(const p of u.positions){
+          const pc=p.pnlPct>=0?'#3fb950':'#f85149';
+          html+='<tr style="border-bottom:1px solid #161b22"><td style="padding:3px;font-weight:600">'+p.symbol+'</td><td style="color:'+(p.side==='LONG'?'#3fb950':'#f85149')+'">'+p.side+'</td><td style="color:'+pc+'">'+p.pnlPct.toFixed(1)+'%</td><td>'+(p.leverage||3)+'x</td></tr>';
+        }
+        html+='</table>';
+      }
+      rows.innerHTML=html;
+    } else {
+      rows.innerHTML='<span style="color:#484f58">暂无A策略用户</span>';
+    }
+  }catch(e){}
+}
+
+// ★ 自动扣算力费状态(管理员仪表盘主视图,tab-positions)
+async function loadAUserFees(){
+  try{
+    const d=await api('/api/a-strategy/fees');
+    if(!d||d.error) return;
+    document.getElementById('feeAPlatform').textContent='$'+(d.totalPlatformFee||0).toFixed(2);
+    document.getElementById('feeAEco').textContent='$'+(d.totalEcoFund||0).toFixed(2);
+    document.getElementById('feeAPending').textContent='$'+(d.totalPending||0).toFixed(2);
+    document.getElementById('feeACollected').textContent='$'+(d.totalCollectedToAdmin||0).toFixed(2);
+    const rows=document.getElementById('feeARows');
+    if(d.users&&d.users.length>0){
+      let html='<table style="width:100%;border-collapse:collapse"><tr style="color:#8b949e;border-bottom:1px solid #30363d"><th style="text-align:left;padding:4px">用户</th><th>待收笔</th><th>平台费</th><th>生态费</th><th>待收合计</th><th>已转管理员</th></tr>';
+      for(const u of d.users){
+        html+='<tr style="border-bottom:1px solid #21262d"><td style="padding:4px;font-weight:600">'+u.wallet.slice(0,12)+'...</td><td>'+u.pendingCount+'/'+u.count+'</td><td style="color:#3fb950">$'+u.pendingPlatform.toFixed(2)+'</td><td style="color:#d29922">$'+u.pendingEco.toFixed(2)+'</td><td style="color:#d29922;font-weight:600">$'+u.pendingTotal.toFixed(2)+'</td><td style="color:#3fb950">$'+u.collected.toFixed(2)+'</td></tr>';
       }
       html+='</table>';
       rows.innerHTML=html;
