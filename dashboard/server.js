@@ -2520,14 +2520,23 @@ class Dashboard {
           const pE = uncol.reduce((s,r) => s + parseFloat(r.ecoFund||0), 0);
           totalPendingPlatform += pP;
           totalPendingEco += pE;
+          // collected 可能是数组(每条含platformFee/ecoFund)或数字
+          const colRows = collected[wallet];
+          let colSum = 0;
+          if (Array.isArray(colRows)) colSum = colRows.reduce((s,r) => s + parseFloat(r.platformFee||0) + parseFloat(r.ecoFund||0), 0);
+          else if (typeof colRows === 'number') colSum = colRows;
           users.push({
             wallet, count: rows.length, pendingCount: uncol.length,
             pendingPlatform: +pP.toFixed(4), pendingEco: +pE.toFixed(4),
             pendingTotal: +(pP+pE).toFixed(4),
-            collected: +(collected[wallet]||0).toFixed(4),
+            collected: +colSum.toFixed(4),
           });
         }
-        for (const v of Object.values(collected)) totalCollected += v;
+        // 累计已转管理员: 遍历collected所有值
+        for (const v of Object.values(collected)) {
+          if (Array.isArray(v)) totalCollected += v.reduce((s,r) => s + parseFloat(r.platformFee||0) + parseFloat(r.ecoFund||0), 0);
+          else if (typeof v === 'number') totalCollected += v;
+        }
         res.json({
           totalPlatformFee: +feeState.totalPlatformFee?.toFixed(2) || 0,
           totalEcoFund: +feeState.totalEcoFund?.toFixed(2) || 0,
