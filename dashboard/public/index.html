@@ -869,6 +869,19 @@ async function loadPositions(){
     const tm=new Date(t.timestamp).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
     return '<div style="padding:4px 0;border-bottom:1px solid #161b22"><span class="'+c+'">'+actText+'</span> '+t.symbol+' <span style="color:#8b949e">$'+(t.price||0).toFixed(4)+'</span> <span class="'+c+'">'+(t.pnl>=0?'+':'')+t.pnl.toFixed(4)+'</span> <span style="color:#484f58">'+tm+'</span></div>';
   }).join('')}
+  // ★★ A策略持仓tab最终填充(确保不被旧status覆盖) ★★
+  if(aSim && aSim.users && aSim.users.length>0){
+    const tBal=aSim.users.reduce((s,u)=>s+(u.balance||0),0);
+    const rpnl=aSim.users.reduce((s,u)=>s+(u.realizedPnl||0),0);
+    const totT=aSim.users.reduce((s,u)=>s+(u.trades||0),0);
+    const tPos=aSim.users.reduce((s,u)=>s+(u.positionCount||0),0);
+    if(document.getElementById('posBalance')){document.getElementById('posBalance').textContent='$'+tBal.toFixed(2);document.getElementById('posBalanceSub').textContent='A策略多用户总资产';}
+    const rEl=document.getElementById('posRealized');if(rEl){rEl.textContent=(rpnl>=0?'+':'')+rpnl.toFixed(2);rEl.className='val '+(rpnl>=0?'green':'red');}
+    if(document.getElementById('posRealizedSub'))document.getElementById('posRealizedSub').textContent=totT+' 笔已平仓';
+    const tEl=document.getElementById('posTotal');if(tEl){tEl.textContent=(rpnl>=0?'+':'')+'$'+rpnl.toFixed(2);tEl.className='val '+(rpnl>=0?'green':'red');}
+    if(document.getElementById('posCount'))document.getElementById('posCount').textContent=tPos;
+    if(document.getElementById('binanceUserCount'))document.getElementById('binanceUserCount').textContent=aSim.users.length;
+  }
 }
 async function loadUsers(){
   console.log('[loadUsers] fetching /api/admin/users...');
@@ -1130,6 +1143,25 @@ async function loadOverview(){
   document.getElementById('ovTwap').textContent='正常';
   document.getElementById('ovNotif').textContent=notif&&notif.enabled?'正常':'关闭';
   document.getElementById('ovTrainer').textContent=trainer&&trainer.enabled?'正常':'关闭';
+  // ★★ A策略最终填充(确保不被旧status/balance覆盖) ★★
+  if(aSim && aSim.users && aSim.users.length>0){
+    const tBal=aSim.users.reduce((s,u)=>s+(u.balance||0),0);
+    const rpnl=aSim.users.reduce((s,u)=>s+(u.realizedPnl||0),0);
+    const totT=aSim.users.reduce((s,u)=>s+(u.trades||0),0);
+    const wins=aSim.users.reduce((s,u)=>s+(u.wins||0),0);
+    const losses=aSim.users.reduce((s,u)=>s+(u.losses||0),0);
+    const tPos=aSim.users.reduce((s,u)=>s+(u.positionCount||0),0);
+    document.getElementById('ovBalance').textContent='$'+tBal.toFixed(2);
+    document.getElementById('ovBalanceSub').textContent='A策略 '+aSim.users.length+'用户 '+aSim.engineCount+'引擎';
+    document.getElementById('ovPositions').textContent=tPos;
+    document.getElementById('ovPositionsSub').textContent=tPos>0?tPos+'个持仓':'空仓';
+    const rEl=document.getElementById('ovRealizedPnl');rEl.textContent=(rpnl>=0?'+':'')+rpnl.toFixed(2);rEl.className='val '+(rpnl>=0?'green':'red');
+    document.getElementById('ovRealizedPnlSub').textContent=totT+' 笔已平仓';
+    const roi=(rpnl/(tBal||1)*100);const roiEl=document.getElementById('ovTotalRoi');roiEl.textContent=(rpnl>=0?'+':'')+roi.toFixed(2)+'%';roiEl.className='val '+(rpnl>=0?'green':'red');
+    document.getElementById('ovTotalRoiSub').textContent='总损益 $'+rpnl.toFixed(2);
+    const wr=totT>0?Math.round(wins/totT*100):0;const wrEl=document.getElementById('ovWinRate');wrEl.textContent=wr+'%';wrEl.className='val '+(wr>=50?'green':'red');
+    document.getElementById('ovWinRateSub').textContent=wins+'胜 / '+losses+'负';
+  }
 }
 async function loadNeural(){
   const data=await api('/api/neural-net');if(!data)return;
