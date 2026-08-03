@@ -199,7 +199,9 @@ async function main() {
   let bbStrategyManager = null;
   console.log('[启动] ⏸️ 旧BBStrategyManager已停用 — 由DualStrategyManager(BB+趋势)接管');
 
-  // ═══ 9.1 DualStrategyManager — 纯BB+趋势双策略 ═══
+  // ═══ 9.1 B策略(DualStrategyManager) — 已停止,切换为A策略实盘 ═══
+  // 说明: A策略上实盘后,B策略(BB+趋势)全部停止,避免抢同一账户保证金
+  // 保留 dualStrategyManager 变量但不再启动, 供 dashboard 兼容读取
   let dualStrategyManager = null;
   try {
     const { DualStrategyManager } = require('../lib/dual-strategy-manager');
@@ -208,27 +210,29 @@ async function main() {
       apiSecret: process.env.BINANCE_API_SECRET,
       userDB: server.userDB,
     });
-    dualStrategyManager.start();
+    // B策略引擎已全部平仓停止,不调用 start(),避免再开实盘仓
     server.dualStrategyManager = dualStrategyManager;
     dashboard.dualStrategyManager = dualStrategyManager;
-    console.log('[启动] 📊 DualStrategyManager 双策略(BB+趋势)已启动');
-  } catch (e) { console.log('[启动] ⚠️ DualStrategyManager 启动失败:', e.message); }
+    console.log('[启动] ⏸️ B策略(BB+趋势)已停止 — 切换为A策略实盘');
+  } catch (e) { console.log('[启动] ⚠️ DualStrategyManager 创建失败:', e.message); }
 
-  // ═══ 9.2 A策略模拟实盘 — 已停止 ═══
-  // ═══ 9.2 A策略模拟实盘 (独立运行,不碰B策略) ═══
+  // ═══ 9.2 A策略实盘 (替换B策略,真实币安下单) ═══
   let aStrategySim = null;
   try {
     const { AStrategySim } = require('../lib/a-strategy-sim');
     const { SharedMarket } = require('../lib/shared-market');
-    // A策略独立共享行情缓存(与B策略隔离,绝不互相影响)
+    const { AccountCapacityGuard } = require('../lib/account-capacity-guard');
+    // A策略共享行情缓存 + 实盘模式 + 账户总风控
     aStrategySim = new AStrategySim(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, {
       sharedMarket: new SharedMarket(),
+      realTrading: true,   // 真实币安下单
+      accountGuard: new AccountCapacityGuard({ maxTotalLeverage: 5, maxSymbolLeverage: 2 }),
     });
     aStrategySim.start();
     server.aStrategySim = aStrategySim;
     dashboard.aStrategySim = aStrategySim;
-    console.log('[启动] 🧠 A策略模拟实盘已启动 (v4: AI分过滤+做空+共享行情缓存)');
-  } catch (e) { console.log('[启动] ⚠️ A策略模拟启动失败:', e.message); }
+    console.log('[启动] 🧠 A策略实盘已启动 (AI选币+真实下单+账容守卫)');
+  } catch (e) { console.log('[启动] ⚠️ A策略实盘启动失败:', e.message); }
 
   // ═══ 9.5 UnifiedStrategyManager — A/B 策略统一切换 ═══
   // 让仪表盘的 A/B 切换按钮真正能启停引擎
