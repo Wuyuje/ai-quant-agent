@@ -2499,6 +2499,49 @@ class Dashboard {
       }
     });
 
+    // ★ A策略算力费状态(自动扣费窗口用): 各用户待收/已收/管理员累计收款
+    app.get('/api/a-strategy/fees', (req, res) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const feeFile = path.join(__dirname, '..', 'data', 'bb-fee-state.json');
+        let feeState = { pending: {}, collected: {}, totalPlatformFee: 0, totalEcoFund: 0 };
+        if (fs.existsSync(feeFile)) {
+          feeState = JSON.parse(fs.readFileSync(feeFile, 'utf8'));
+        }
+        // 结构化: 每用户待收/已收
+        const users = [];
+        let totalPendingPlatform = 0, totalPendingEco = 0, totalCollected = 0;
+        const pending = feeState.pending || {};
+        const collected = feeState.collected || {};
+        for (const [wallet, rows] of Object.entries(pending)) {
+          const uncol = rows.filter(r => !r.platformCollected);
+          const pP = uncol.reduce((s,r) => s + parseFloat(r.platformFee||0), 0);
+          const pE = uncol.reduce((s,r) => s + parseFloat(r.ecoFund||0), 0);
+          totalPendingPlatform += pP;
+          totalPendingEco += pE;
+          users.push({
+            wallet, count: rows.length, pendingCount: uncol.length,
+            pendingPlatform: +pP.toFixed(4), pendingEco: +pE.toFixed(4),
+            pendingTotal: +(pP+pE).toFixed(4),
+            collected: +(collected[wallet]||0).toFixed(4),
+          });
+        }
+        for (const v of Object.values(collected)) totalCollected += v;
+        res.json({
+          totalPlatformFee: +feeState.totalPlatformFee?.toFixed(2) || 0,
+          totalEcoFund: +feeState.totalEcoFund?.toFixed(2) || 0,
+          totalPendingPlatform: +totalPendingPlatform.toFixed(2),
+          totalPendingEco: +totalPendingEco.toFixed(2),
+          totalPending: +(totalPendingPlatform+totalPendingEco).toFixed(2),
+          totalCollectedToAdmin: +totalCollected.toFixed(2),
+          users,
+        });
+      } catch (e) {
+        res.json({ error: e.message });
+      }
+    });
+
     // ═══ 全局策略切换 (管理员专用) ═══
     app.get('/api/strategy/active', (req, res) => {
       // 优先使用统一策略管理器

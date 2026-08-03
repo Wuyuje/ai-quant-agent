@@ -686,6 +686,15 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
     </div>
     <div id="aSimRows" style="font-size:.82em;color:#8b949e">加载中...</div>
     <hr style="border:0;border-top:1px solid #21262d;margin:16px 0">
+    <h3 style="color:#3fb950">💰 自动扣算力费 (普通用户盈利→管理员钱包)</h3>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+      <div class="card"><h3>平台费累计</h3><div id="feePlatform" class="val blue">--</div></div>
+      <div class="card"><h3>生态费累计</h3><div id="feeEco" class="val purple">--</div></div>
+      <div class="card"><h3>待收(未转)</h3><div id="feePending" class="val orange">--</div><div class="sub" id="feePendingSub">--</div></div>
+      <div class="card"><h3>已转管理员</h3><div id="feeCollected" class="val green">--</div></div>
+    </div>
+    <div id="feeRows" style="font-size:.82em;color:#8b949e">加载中...</div>
+    <hr style="border:0;border-top:1px solid #21262d;margin:16px 0">
     <h3 style="color:#00d4ff">📋 B策略平仓记录（按用户）</h3>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
       <label style="color:#8b949e;font-size:.9em">选择用户：</label>
@@ -1806,6 +1815,7 @@ async function loadBBStrategy(){
   loadAdminExchangeMode();
   // v3: 加载A策略模拟数据
   loadASim();
+  loadAFees();
   const data=await api('/api/bb-strategy/overview');
   if(!data||data.error){
     document.getElementById('bbStatus').textContent='未启动';
@@ -2636,6 +2646,29 @@ async function loadASim(){
   }catch(e){}
 }
 
-</script>
+// ★ 自动扣算力费状态(普通用户盈利→管理员钱包)
+async function loadAFees(){
+  try{
+    const d=await api('/api/a-strategy/fees');
+    if(!d||d.error) return;
+    document.getElementById('feePlatform').textContent='$'+(d.totalPlatformFee||0).toFixed(2);
+    document.getElementById('feeEco').textContent='$'+(d.totalEcoFund||0).toFixed(2);
+    document.getElementById('feePending').textContent='$'+(d.totalPending||0).toFixed(2);
+    document.getElementById('feePendingSub').textContent='平台$'+(d.totalPendingPlatform||0).toFixed(2)+' 生态$'+(d.totalPendingEco||0).toFixed(2);
+    document.getElementById('feeCollected').textContent='$'+(d.totalCollectedToAdmin||0).toFixed(2);
+    const rows=document.getElementById('feeRows');
+    if(d.users&&d.users.length>0){
+      let html='<table style="width:100%;border-collapse:collapse"><tr style="color:#8b949e;font-size:.8em"><th style="text-align:left;padding:4px">用户</th><th>待收笔数</th><th>平台费</th><th>生态费</th><th>待收合计</th><th>已转管理员</th></tr>';
+      for(const u of d.users){
+        const pc=u.pendingTotal>=0?'#d29922':'#8b949e';
+        html+='<tr style="border-bottom:1px solid #21262d"><td style="padding:4px;font-weight:600">'+u.wallet.slice(0,12)+'...</td><td>'+u.pendingCount+'/'+u.count+'</td><td style="color:#3fb950">$'+u.pendingPlatform.toFixed(2)+'</td><td style="color:#d29922">$'+u.pendingEco.toFixed(2)+'</td><td style="color:'+pc+';font-weight:600">$'+u.pendingTotal.toFixed(2)+'</td><td style="color:#3fb950">$'+u.collected.toFixed(2)+'</td></tr>';
+      }
+      html+='</table>';
+      rows.innerHTML=html;
+    } else {
+      rows.innerHTML='<span style="color:#484f58">暂无待扣算力费</span>';
+    }
+  }catch(e){}
+}
 </body>
 </html>
