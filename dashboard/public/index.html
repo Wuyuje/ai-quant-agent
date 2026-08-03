@@ -777,8 +777,27 @@ function switchTab(tab,el){
   currentTab=tab;loadTabData(tab);
 }
 async function loadPositions(){
-  const[status,balance,market]=await Promise.all([
-    api('/api/status'),api('/api/balance'),api('/api/market-overview')]);
+  const[status,balance,market,aSim]=await Promise.all([
+    api('/api/status'),api('/api/balance'),api('/api/market-overview'),
+    api('/api/a-strategy-sim')]);
+  // ★ A策略多用户真实数据填充持仓统计
+  if(aSim && aSim.users && aSim.users.length>0){
+    const tBal=aSim.users.reduce((s,u)=>s+(u.balance||0),0);
+    const rpnl=aSim.users.reduce((s,u)=>s+(u.realizedPnl||0),0);
+    const totTrades=aSim.users.reduce((s,u)=>s+(u.trades||0),0);
+    const tPos=aSim.users.reduce((s,u)=>s+(u.positionCount||0),0);
+    document.getElementById('posBalance').textContent='$'+tBal.toFixed(2);
+    if(document.getElementById('posBalanceSub')) document.getElementById('posBalanceSub').textContent='A策略多用户总资产';
+    document.getElementById('posRealized').textContent=(rpnl>=0?'+':'')+rpnl.toFixed(2);
+    document.getElementById('posRealized').className='val '+(rpnl>=0?'green':'red');
+    if(document.getElementById('posRealizedSub')) document.getElementById('posRealizedSub').textContent=totTrades+' 笔已平仓';
+    const totalPnl=rpnl;
+    document.getElementById('posTotal').textContent=(totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(2);
+    document.getElementById('posTotal').className='val '+(totalPnl>=0?'green':'red');
+    if(document.getElementById('posCount')) document.getElementById('posCount').textContent=tPos;
+    if(document.getElementById('binanceUserCount')) document.getElementById('binanceUserCount').textContent=aSim.users.length;
+    if(!status) return; // A数据填充完,旧status若无则跳过
+  }
   if(!status)return;
   const st=status.state||{};
   const bal=balance||{};
@@ -1004,10 +1023,35 @@ async function deleteUser(walletFull, walletShort) {
   }
 }
 async function loadOverview(){
-  const[status,balance,neural,signals,market,trainer,notif]=await Promise.all([
+  const[status,balance,neural,signals,market,trainer,notif,aSim]=await Promise.all([
     api('/api/status'),api('/api/balance'),api('/api/neural-net'),
     api('/api/strategy-signals'),api('/api/market-overview'),
-    api('/api/auto-trainer'),api('/api/notifications')]);
+    api('/api/auto-trainer'),api('/api/notifications'),
+    api('/api/a-strategy-sim')]);
+  // ★ A策略多用户真实数据填充总览(覆盖旧的status/balance空数据)
+  if(aSim && aSim.users && aSim.users.length>0){
+    const totalBalance = aSim.users.reduce((s,u)=>s+(u.balance||0),0);
+    const totalPnl = aSim.users.reduce((s,u)=>s+(u.realizedPnl||0),0);
+    const allTrades = aSim.users.reduce((s,u)=>s+(u.trades||0),0);
+    const allWins = aSim.users.reduce((s,u)=>s+(u.wins||0),0);
+    const allLosses = aSim.users.reduce((s,u)=>s+(u.losses||0),0);
+    const allPos = aSim.users.reduce((s,u)=>s+(u.positionCount||0),0);
+    document.getElementById('ovBalance').textContent='$'+totalBalance.toFixed(2);
+    if(document.getElementById('ovBalanceSub')) document.getElementById('ovBalanceSub').textContent='A策略 '+aSim.users.length+'用户 '+aSim.engineCount+'引擎';
+    document.getElementById('ovPositions').textContent=allPos;
+    if(document.getElementById('ovPositionsSub')) document.getElementById('ovPositionsSub').textContent=allPos>0?allPos+'个持仓':'空仓';
+    const pnlEl=document.getElementById('ovRealizedPnl');
+    if(pnlEl){ pnlEl.textContent=(totalPnl>=0?'+':'')+totalPnl.toFixed(2); pnlEl.className='val '+(totalPnl>=0?'green':'red'); }
+    if(document.getElementById('ovRealizedPnlSub')) document.getElementById('ovRealizedPnlSub').textContent=allTrades+' 笔已平仓';
+    const roi=(totalPnl*100/(totalBalance||1)).toFixed(2);
+    const roiEl=document.getElementById('ovTotalRoi');
+    if(roiEl){ roiEl.textContent=((totalPnl>=0?'+':'')+roi+'%'); roiEl.className='val '+(totalPnl>=0?'green':'red'); }
+    if(document.getElementById('ovTotalRoiSub')) document.getElementById('ovTotalRoiSub').textContent='总损益 $'+totalPnl.toFixed(2);
+    const wr=allTrades>0?Math.round(allWins/allTrades*100):0;
+    const wrEl=document.getElementById('ovWinRate');
+    if(wrEl){ wrEl.textContent=wr+'%'; wrEl.className='val '+(wr>=50?'green':'red'); }
+    if(document.getElementById('ovWinRateSub')) document.getElementById('ovWinRateSub').textContent=allWins+'胜 / '+allLosses+'负';
+  }
   document.getElementById('connStatus').textContent='已连接';
   document.getElementById('connStatus').style.color='#3fb950';
   if(status){
