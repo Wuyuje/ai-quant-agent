@@ -1544,8 +1544,10 @@ async function loadTabData(tab){
 }
 loadOverview();
 // ★ 立即加载各用户A策略 + 自动扣算力费(不依赖点击B策略tab)
-loadAUsers();
-loadAUserFees();
+// 用window.onload确保DOM就绪,并用setTimeout重试确保数据渲染
+function _safeLoadAWindows(attempt){ try{ if(document.readyState==='complete'||document.readyState==='interactive'){ loadAUsers(); loadAUserFees(); } }catch(e){} if(attempt<5){ setTimeout(function(){_safeLoadAWindows((attempt||0)+1);},2000*(attempt||1)); } }
+window.addEventListener('load',function(){_safeLoadAWindows(0);});
+_safeLoadAWindows(0);
 // v113.10: 降低轮询频率防API封禁 — 总览10秒 + 当前tab15秒 + 后台30秒
 setInterval(function(){loadOverview()},10000);
 setInterval(function(){loadTabData(currentTab)},15000);
@@ -2764,5 +2766,6 @@ async function loadAUserFees(){
     }
   }catch(e){}
 }
+</script>
 </body>
 </html>
