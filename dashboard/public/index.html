@@ -1414,8 +1414,18 @@ async function loadEvolution(){
   } catch (e) { console.error('autoFixer display error:', e); }
 }
 async function loadTraining(){
-  const data=await api('/api/auto-trainer');if(!data)return;
-  if(!data.enabled){document.getElementById('trStatus').textContent='未启用';return}
+  const [data, neural]=await Promise.all([api('/api/auto-trainer'), api('/api/neural-net')]);
+  // ★ 优先用A策略神经网络真实训练状态
+  if(neural && neural.trainCount){
+    if(document.getElementById('trStatus')) document.getElementById('trStatus').textContent=(neural.enabled?'启用':'启用')+' (A策略在线训练)';
+    if(document.getElementById('trLast')) document.getElementById('trLast').textContent=neural.trainCount+' 次训练';
+    if(document.getElementById('trAge')) document.getElementById('trAge').textContent=(neural.accuracy*100).toFixed(1)+'% 准确率';
+    if(document.getElementById('trHistory')) document.getElementById('trHistory').textContent=(neural.layers?neural.layers.length+'层':(data?data.historyCount||0:0));
+    const list=document.getElementById('trHistoryList');
+    if(list) list.innerHTML='<div style="color:#8b949e;padding:10px;font-size:.85em">🧠 A策略神经网络在线训练中</div><div style="color:#8b949e;padding:4px 10px;font-size:.82em">每笔平仓后自动训练,累计 '+neural.trainCount+' 次,准确率 '+(neural.accuracy*100).toFixed(1)+'%</div><div style="color:#484f58;padding:10px;font-size:.8em">(隐藏批量训练历史,优先展示A策略实时模型)';
+    return;
+  }
+  if(data&&!data.enabled){document.getElementById('trStatus').textContent='未启用';return}
   document.getElementById('trStatus').textContent=data.isTraining?'训练中':'空闲';
   document.getElementById('trLast').textContent=data.lastTrainTime>0?new Date(data.lastTrainTime).toLocaleString('zh-CN'):'从未训练';
   const age=data.modelAge>0?(data.modelAge/3600000).toFixed(1)+'小时':'未知';
