@@ -186,6 +186,10 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
     </div>
     <div id="feeARows" style="font-size:.8em;color:#8b949e">加载中...</div>
   </div>
+  <div class="card" style="margin-bottom:14px;border:1px solid #2a3a5c">
+    <h3 style="color:#58a6ff">🧮 A策略定时汇报 (1小时/次,最近10条)</h3>
+    <div id="monitorRows" style="font-size:.75em;color:#8b949e">加载中...</div>
+  </div>
   <div class="grid g4" style="margin-bottom:14px">
     <div class="card"><h3>账户余额</h3><div id="posBalance" class="val blue">--</div><div id="posBalanceSub" class="sub">--</div></div>
     <div class="card"><h3>未实现盈亏</h3><div id="posUnrealized" class="val green">--</div><div id="posUnrealizedSub" class="sub">--</div></div>
@@ -1523,7 +1527,7 @@ async function loadNews(){
 async function loadTabData(tab){
   switch(tab){
     case 'overview':await loadOverview();break;
-    case 'positions':await loadPositions();loadAUsers();loadAUserFees();break;
+    case 'positions':await loadPositions();loadAUsers();loadAUserFees();loadMonitor();break;
     case 'neural':await loadNeural();break;
     case 'signals':await loadSignals();break;
     case 'dex':await loadDex();break;
@@ -1545,7 +1549,7 @@ async function loadTabData(tab){
 loadOverview();
 // ★ 立即加载各用户A策略 + 自动扣算力费(不依赖点击B策略tab)
 // 用window.onload确保DOM就绪,并用setTimeout重试确保数据渲染
-function _safeLoadAWindows(attempt){ try{ if(document.readyState==='complete'||document.readyState==='interactive'){ loadAUsers(); loadAUserFees(); } }catch(e){} if(attempt<5){ setTimeout(function(){_safeLoadAWindows((attempt||0)+1);},2000*(attempt||1)); } }
+function _safeLoadAWindows(attempt){ try{ if(document.readyState==='complete'||document.readyState==='interactive'){ loadAUsers(); loadAUserFees(); loadMonitor(); } }catch(e){} if(attempt<5){ setTimeout(function(){_safeLoadAWindows((attempt||0)+1);},2000*(attempt||1)); } }
 window.addEventListener('load',function(){_safeLoadAWindows(0);});
 _safeLoadAWindows(0);
 // v113.10: 降低轮询频率防API封禁 — 总览10秒 + 当前tab15秒 + 后台30秒
@@ -1844,6 +1848,7 @@ async function loadBBStrategy(){
   loadAFees();
   loadAUsers();
   loadAUserFees();
+  loadMonitor();
   const data=await api('/api/bb-strategy/overview');
   if(!data||data.error){
     document.getElementById('bbStatus').textContent='未启动';
@@ -2738,6 +2743,37 @@ async function loadAUsers(){
     } else {
       rows.innerHTML='<span style="color:#484f58">暂无A策略用户</span>';
     }
+  }catch(e){}
+}
+
+// ★ 定时汇报监控历史(1小时/次,最近10条)
+async function loadMonitor(){
+  try{
+    const d=await api('/api/a-strategy/monitor');
+    const rows=document.getElementById('monitorRows');
+    if(!d||d.error||!Array.isArray(d)||d.length===0){
+      rows.innerHTML='<span style="color:#484f58">暂无定时汇报(监控运行中每小时记录一次)</span>';
+      return;
+    }
+    // 按时间倒序(最新在最上)
+    const records=[...d].reverse();
+    let html='<div style="color:#8b949e;margin-bottom:6px">共 '+d.length+' 条记录(每小时1次,自动覆盖)</div>';
+    for(const r of records){
+      const t=new Date(r.ts);
+      const ts=t.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      const pnlColor=r.totalPnl>=0?'#3fb950':'#f85149';
+      const wr=r.totalTrades>0?Math.round(r.totalWins/r.totalTrades*100):0;
+      html+='<div style="border:1px solid #21262d;border-radius:6px;padding:6px 8px;margin-bottom:4px;background:#0d1117">';
+      html+='<div style="font-weight:600;color:#c9d1d9">⏰ '+ts+' | NN训练'+r.neuralTrainCount+'次 准确率'+r.neuralAccuracy+'%</div>';
+      html+='<div>总交易:'+r.totalTrades+'笔 胜率'+wr+'% | 总盈亏:<span style="color:'+pnlColor+';font-weight:600">$'+r.totalPnl.toFixed(2)+'</span></div>';
+      html+='<div style="color:#8b949e;font-size:.85em">';
+      html+=(r.users||[]).map(u=>{
+        const uc=u.realizedPnl>=0?'#3fb950':'#f85149';
+        return u.wallet+'('+(u.isAdmin?'👍':'')+(u.wins||0)+'胜'+(u.losses||0)+'负 <span style="color:'+uc+'">$'+u.realizedPnl.toFixed(2)+'</span>)';
+      }).join(' ');
+      html+='</div></div>';
+    }
+    rows.innerHTML=html;
   }catch(e){}
 }
 

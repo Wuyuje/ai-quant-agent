@@ -2551,6 +2551,23 @@ class Dashboard {
       }
     });
 
+    // ★ A策略定时汇报监控历史(仪表盘展示用,最多10条)
+    app.get('/api/a-strategy/monitor', (req, res) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const monitorFile = path.join(__dirname, '..', 'data', 'a-strategy-monitor.json');
+        if (fs.existsSync(monitorFile)) {
+          const records = JSON.parse(fs.readFileSync(monitorFile, 'utf8'));
+          res.json(Array.isArray(records) ? records : []);
+        } else {
+          res.json([]);
+        }
+      } catch (e) {
+        res.json({ error: e.message });
+      }
+    });
+
     // ═══ 全局策略切换 (管理员专用) ═══
     app.get('/api/strategy/active', (req, res) => {
       // 优先使用统一策略管理器
