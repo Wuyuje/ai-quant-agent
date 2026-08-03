@@ -216,23 +216,23 @@ async function main() {
     console.log('[启动] ⏸️ B策略(BB+趋势)已停止 — 切换为A策略实盘');
   } catch (e) { console.log('[启动] ⚠️ DualStrategyManager 创建失败:', e.message); }
 
-  // ═══ 9.2 A策略实盘 (替换B策略,真实币安下单) ═══
-  let aStrategySim = null;
+  // ═══ 9.2 A策略多用户实盘 (每用户独立引擎+独立API+算力费) ═══
+  let aStrategyManager = null;
   try {
-    const { AStrategySim } = require('../lib/a-strategy-sim');
-    const { SharedMarket } = require('../lib/shared-market');
-    const { AccountCapacityGuard } = require('../lib/account-capacity-guard');
-    // A策略共享行情缓存 + 实盘模式 + 账户总风控
-    aStrategySim = new AStrategySim(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET, {
-      sharedMarket: new SharedMarket(),
-      realTrading: true,   // 真实币安下单
-      accountGuard: new AccountCapacityGuard({ maxTotalLeverage: 5, maxSymbolLeverage: 2 }),
+    const { MultiAStrategyManager } = require('../lib/multi-a-manager');
+    aStrategyManager = new MultiAStrategyManager({
+      apiKey: process.env.BINANCE_API_KEY,
+      apiSecret: process.env.BINANCE_API_SECRET,
+      userDB: server.userDB,
     });
-    aStrategySim.start();
-    server.aStrategySim = aStrategySim;
-    dashboard.aStrategySim = aStrategySim;
-    console.log('[启动] 🧠 A策略实盘已启动 (AI选币+真实下单+账容守卫)');
-  } catch (e) { console.log('[启动] ⚠️ A策略实盘启动失败:', e.message); }
+    aStrategyManager.start();
+    // 兼容旧字段: aStrategySim 指向管理器(供dashboard读取)
+    server.aStrategySim = aStrategyManager;
+    server.multiAStrategyManager = aStrategyManager;
+    dashboard.aStrategySim = aStrategyManager;
+    dashboard.multiAStrategyManager = aStrategyManager;
+    console.log('[启动] 🧠 A策略多用户实盘已启动 (AI选币+真实下单+算力费扣费)');
+  } catch (e) { console.log('[启动] ⚠️ A策略多用户实盘启动失败:', e.message); }
 
   // ═══ 9.5 UnifiedStrategyManager — A/B 策略统一切换 ═══
   // 让仪表盘的 A/B 切换按钮真正能启停引擎

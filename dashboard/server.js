@@ -2475,6 +2475,13 @@ class Dashboard {
       res.json(sim.getSummary());
     });
 
+    // A策略多用户引擎状态(每用户独立)
+    app.get('/api/a-strategy/users', (req, res) => {
+      const mgr = this.multiAStrategyManager || this.aStrategySim;
+      if (!mgr || typeof mgr.getAllUsersStatus !== 'function') return res.json([]);
+      res.json(mgr.getAllUsersStatus());
+    });
+
     // B策略算力 Token状态
     app.get('/api/bb-strategy/fees', (req, res) => {
       try {
