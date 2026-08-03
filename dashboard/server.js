@@ -2515,15 +2515,26 @@ class Dashboard {
       }
       // v125 兼容模式: 返回完整状态 (与 /api/strategy/status 一致)
       const bb = this.dualStrategyManager || this.bbStrategyManager || this.engine?._bbStrategyManager;
-      const isBB = true; // B策略始终运行
+      // ★ 检测多用户A策略管理器(当前切换为A策略实盘)
+      const multiA = this.multiAStrategyManager;
+      const aRunning = !!(multiA && multiA.running && Object.keys(multiA._aEngines || {}).length > 0);
+      const isBB = !aRunning; // A策略运行中则 isBB=false
       const bbStats = bb?.getStats?.() || {};
+      const aStats = multiA?.getStats?.() || {};
       res.json({
-        strategy: 'bb',
+        strategy: aRunning ? 'balanced' : 'bb',
         isBB,
-        switching: false, // 不在切换中
-        aStrategy: { running: false, cycleCount: 0 },
+        switching: false,
+        aStrategy: {
+          running: aRunning,
+          cycleCount: aStats.cycleCount || 0,
+          engineCount: aStats.engineCount || 0,
+          totalPositions: aStats.totalPositions || 0,
+          totalTrades: aStats.totalTrades || 0,
+          totalPnl: aStats.totalPnl || 0,
+        },
         bStrategy: {
-          running: true,
+          running: !aRunning,
           cycleCount: bbStats.cycleCount || 0,
           activeUsers: bbStats.bbUsers || 0,
         },
