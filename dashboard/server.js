@@ -2482,6 +2482,75 @@ class Dashboard {
       res.json(mgr.getAllUsersStatus());
     });
 
+    // ★ A策略 平仓历史记录 (管理员/各用户) — 返回每位用户的平仓明细 + 每币聚合胜率/回报率
+    app.get('/api/a-strategy/closed-history', (req, res) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const dataDir = path.join(__dirname, '..', 'data');
+
+        // 用户列表(钱包地址+是否管理员): 从多用户管理器取,兜底扫文件
+        const mgr = this.multiAStrategyManager || this.aStrategySim;
+        let userMeta = {}; // wallet -> {isAdmin}
+        try {
+          const st = (mgr && typeof mgr.getAllUsersStatus === 'function') ? mgr.getAllUsersStatus() : [];
+          const list = Array.isArray(st) ? st : [];
+          for (const u of list) {
+            const w = ((u.wallet || u.address || '')).toLowerCase();
+            if (w) userMeta[w] = { isAdmin: !!u.isAdmin };
+          }
+        } catch(e) {}
+
+        // 读取所有用户的平仓明细
+        const files = fs.readdirSync(dataDir).filter(f => /^a-trades-0x/.test(f));
+        if (!files.length) return res.json({ users: [], coins: [], meta: userMeta });
+        const all = [];
+        for (const f of files) {
+          const wallet = f.replace('a-trades-', '').replace('.json', '').toLowerCase();
+          let records = [];
+          try { records = JSON.parse(fs.readFileSync(path.join(dataDir, f), 'utf8')) || []; } catch(e) { records = []; }
+          // 兼容字符串/数字时间戳
+          const norm = records.map(t => ({
+            wallet, symbol: (t.symbol||'').toUpperCase(), side: t.side || (t.direction||''),
+            pnlUsd: +(t.pnlUsd||t.pnl||0), pnlPct: +(t.pnlPct||t.pnlPercent||0),
+            entryPrice: t.entryPrice, exitPrice: t.exitPrice, leverage: t.leverage,
+            reason: t.reason || '', closeTime: t.closeTime || (t.closeTime?t.closeTime:Date.now()),
+          })).filter(t => t.symbol);
+          all.push({ wallet, records: norm });
+        }
+        // 合并无平仓记录的用户(仍显示在下拉,但无记录)
+        const allWallets = new Set(all.map(u => u.wallet));
+        for (const w of Object.keys(userMeta)) {
+          if (!allWallets.has(w)) all.push({ wallet: w, records: [] });
+        }
+        // 聚合每币统计: 累计回报率 + 胜率
+        const coinMap = {};
+        for (const u of all) {
+          for (const t of u.records) {
+            if (!coinMap[t.symbol]) coinMap[t.symbol] = { symbol: t.symbol, n: 0, win: 0, sumPct: 0, sumUsd: 0, perWallet: {} };
+            coinMap[t.symbol].n++;
+            coinMap[t.symbol].sumPct += t.pnlPct || 0;
+            coinMap[t.symbol].sumUsd += t.pnlUsd || 0;
+            if (t.pnlUsd > 0) coinMap[t.symbol].win++;
+            if (!coinMap[t.symbol].perWallet[t.wallet]) coinMap[t.symbol].perWallet[t.wallet] = { n: 0, win: 0, sumPct: 0 };
+            coinMap[t.symbol].perWallet[t.wallet].n++;
+            coinMap[t.symbol].perWallet[t.wallet].sumPct += (t.pnlPct || 0);
+            if (t.pnlUsd > 0) coinMap[t.symbol].perWallet[t.wallet].win++;
+          }
+        }
+        const coins = Object.values(coinMap).map(c => ({
+          symbol: c.symbol, trades: c.n, wins: c.win, losses: c.n - c.win,
+          winRate: c.n ? +((c.win / c.n) * 100).toFixed(1) : 0,
+          avgReturn: c.n ? +(c.sumPct / c.n).toFixed(2) : 0,
+          totalReturn: +c.sumPct.toFixed(2),
+          pnlUsd: +c.sumUsd.toFixed(2), perWallet: c.perWallet,
+        })).sort((a, b) => b.trades - a.trades);
+        res.json({ users: all, coins, meta: userMeta });
+      } catch (e) {
+        res.json({ error: e.message });
+      }
+    });
+
     // B策略算力 Token状态
     app.get('/api/bb-strategy/fees', (req, res) => {
       try {

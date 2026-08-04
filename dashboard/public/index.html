@@ -223,6 +223,18 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
     <h3>最近平仓记录</h3>
     <div id="posClosedList" style="max-height:300px;overflow-y:auto;font-size:.8em"><div style="color:#484f58;text-align:center;padding:20px">loading...</div></div>
   </div>
+  <!-- ★ 平仓历史记录窗口: 管理员+各用户 下拉菜单 + 胜率/每币回报率 + 最近10币 -->
+  <div class="card" style="margin-top:14px;border:1px solid #2a3a5c">
+    <h3 style="color:#d29922">📋 平仓历史记录 <span style="font-size:.72em;color:#8b949e;font-weight:normal">(按用户下拉 · 胜率 &amp; 每币回报率 · 最近10币)</span></h3>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+      <label style="font-size:.82em;color:#8b949e">选择用户:</label>
+      <select id="closedUserSelect" onchange="renderClosedHistory()" style="background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:5px 10px;font-size:.85em;min-width:240px"></select>
+      <button onclick="loadClosedHistory(true)" style="background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:5px 12px;font-size:.8em;cursor:pointer">⟳ 刷新</button>
+      <span id="closedUserSummary" style="font-size:.78em;color:#8b949e"></span>
+    </div>
+    <div id="closedCoinGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:12px"></div>
+    <div id="closedHistTableWrap" style="font-size:.8em"><div style="color:#484f58;text-align:center;padding:20px">加载中...</div></div>
+  </div>
   <!-- v113.64: 管理员K线图 + B/S 买卖点 -->
   <div class="card" style="margin-top:14px">
     <h3>📈 K线图 · 买卖点</h3>
@@ -1631,7 +1643,7 @@ async function loadNews(){
 async function loadTabData(tab){
   switch(tab){
     case 'overview':await loadOverview();break;
-    case 'positions':await loadPositions();loadAUsers();loadAUserFees();loadMonitor();loadPairs();break;
+    case 'positions':await loadPositions();loadAUsers();loadAUserFees();loadMonitor();loadPairs();loadClosedHistory();break;
     case 'neural':await loadNeural();break;
     case 'signals':await loadSignals();break;
     case 'dex':await loadDex();break;
@@ -1653,7 +1665,7 @@ async function loadTabData(tab){
 loadOverview();
 // ★ 立即加载各用户A策略 + 自动扣算力费(不依赖点击B策略tab)
 // 用window.onload确保DOM就绪,并用setTimeout重试确保数据渲染
-function _safeLoadAWindows(attempt){ try{ if(document.readyState==='complete'||document.readyState==='interactive'){ loadAUsers(); loadAUserFees(); loadMonitor(); loadPairs(); } }catch(e){} if(attempt<5){ setTimeout(function(){_safeLoadAWindows((attempt||0)+1);},2000*(attempt||1)); } }
+function _safeLoadAWindows(attempt){ try{ if(document.readyState==='complete'||document.readyState==='interactive'){ loadAUsers(); loadAUserFees(); loadMonitor(); loadPairs(); loadClosedHistory(); } }catch(e){} if(attempt<5){ setTimeout(function(){_safeLoadAWindows((attempt||0)+1);},2000*(attempt||1)); } }
 window.addEventListener('load',function(){_safeLoadAWindows(0);});
 _safeLoadAWindows(0);
 // v113.10: 降低轮询频率防API封禁 — 总览10秒 + 当前tab15秒 + 后台30秒
@@ -1955,6 +1967,7 @@ async function loadBBStrategy(){
   loadMonitor();
   loadPairs();
   loadFeeUsers();
+  loadClosedHistory();
   const data=await api('/api/bb-strategy/overview');
   if(!data||data.error){
     document.getElementById('bbStatus').textContent='未启动';
@@ -2930,6 +2943,109 @@ async function loadMonitor(){
     rows.innerHTML=html;
   }catch(e){}
 }
+
+// ★ 平仓历史记录窗口: 管理员+各用户 下拉 + 胜率/每币回报率 + 最近10币
+var _closedHistData = null;
+async function loadClosedHistory(force){
+  try{
+    if(!force && _closedHistData) { renderClosedHistory(); return; }
+    const d=await api('/api/a-strategy/closed-history');
+    if(!d||d.error){ const w=document.getElementById('closedHistTableWrap'); if(w)w.innerHTML='<span style="color:#f85149">加载失败'+(d?(': '+d.error):'(接口不可用)</span>'; return; }
+    _closedHistData=d;
+    renderClosedHistory();
+  }catch(e){}
+}
+function renderClosedHistory(){
+  const d=_closedHistData;
+  const sel=document.getElementById('closedUserSelect');
+  const grid=document.getElementById('closedCoinGrid');
+  const wrap=document.getElementById('closedHistTableWrap');
+  if(!d||!sel) return;
+  const all=d.users||[];
+  const meta=d.meta||{};
+  // ── 填充用户下拉(管理员优先) ──
+  const cur=sel.value;
+  if(!sel.options.length || sel.dataset.loaded!==all.length){
+    // 汇总每用户: 交易数/胜率/盈亏/净值
+    const userSum={};
+    all.forEach(function(u){
+      const recs=u.records||[];
+      let n=0,win=0,sumUsd=0;
+      recs.forEach(function(t){ n++; sumUsd+=(t.pnlUsd||0); if(t.pnlUsd>0)win++; });
+      userSum[u.wallet]={n,win,sumUsd};
+    });
+    // 排序: 管理员在前,再按交易数
+    const sorted=[...all].sort(function(a,b){
+      const aA=meta[a.wallet]&&meta[a.wallet].isAdmin?1:0, bA=meta[b.wallet]&&meta[b.wallet].isAdmin?1:0;
+      if(aA!==bA) return bA-aA;
+      return (userSum[b.wallet]?userSum[b.wallet].n:0)-(userSum[a.wallet]?userSum[a.wallet].n:0);
+    });
+    let opts='';
+    sorted.forEach(function(u){
+      const isA=meta[u.wallet]&&meta[u.wallet].isAdmin;
+      const sum=userSum[u.wallet]||{n:0,win:0,sumUsd:0};
+      const short=u.wallet.length>14?u.wallet.slice(0,6)+'...'+u.wallet.slice(-4):u.wallet;
+      const wr=sum.n>0?Math.round(sum.win/sum.n*100):0;
+      opts+='<option value="'+u.wallet+'">'+(isA?'👑 ':'')+short+'  ('+sum.n+'笔 胜率'+wr+'% '+(sum.sumUsd>=0?'+':'')+sum.sumUsd.toFixed(2)+')</option>';
+    });
+    sel.innerHTML=opts;
+    sel.dataset.loaded=String(all.length);
+    if(cur&&[...sel.options].some(function(o){return o.value===cur})) sel.value=cur;
+  }
+  const wallet=sel.value||(sel.options[0]&&sel.options[0].value);
+  const u=all.find(function(x){return x.wallet===wallet});
+  if(!u){ if(grid)grid.innerHTML=''; if(wrap)wrap.innerHTML='<div style="color:#484f58">该用户暂无平仓记录</div>'; return; }
+  const recs=[...u.records].sort(function(a,b){return (b.closeTime||0)-(a.closeTime||0)});
+  // ── 顶部统计 ──
+  const sum=document.getElementById('closedUserSummary');
+  if(sum){
+    let totals=0,wins=0,sumUsd=0;
+    recs.forEach(function(t){ totals++; sumUsd+=(t.pnlUsd||0); if(t.pnlUsd>0)wins++; });
+    sum.textContent='总平仓'+totals+'笔 | 胜率'+(totals?Math.round(wins/totals*100):0)+'% | 累计盈亏 '+(sumUsd>=0?'+':'')+sumUsd.toFixed(2);
+  }
+  // ── 该用户每币聚合(胜率+回报率) ──
+  const coinMap={};
+  recs.forEach(function(t){
+    const s=t.symbol;
+    if(!coinMap[s])coinMap[s]={symbol:s,n:0,win:0,sumPct:0,sumUsd:0};
+    coinMap[s].n++; coinMap[s].sumPct+=(t.pnlPct||0); coinMap[s].sumUsd+=(t.pnlUsd||0); if(t.pnlUsd>0)coinMap[s].win++;
+  });
+  const coins=Object.values(coinMap).sort(function(a,b){return b.sumPct-a.sumPct});
+  if(grid){
+    if(!coins.length){grid.innerHTML='<div style="color:#484f58">无平仓记录</div>';}
+    else grid.innerHTML=coins.map(function(c){
+      const wr=c.n>0?Math.round(c.win/c.n*100):0;
+      const avg=c.n?+(c.sumPct/c.n).toFixed(2):0;
+      const color=avg>=0?'#3fb950':'#f85149';
+      return '<div style="border:1px solid #21262d;border-radius:8px;padding:8px;background:#0d1117;text-align:center">'+
+        '<div style="font-weight:700;color:#c9d1d9;font-size:.95em">'+c.symbol.replace('USDT','')+'</div>'+
+        '<div style="font-size:.8em;color:#8b949e;margin-top:2px">'+c.n+'笔 胜率'+wr+'%</div>'+
+        '<div style="font-weight:700;font-size:.95em;color:'+color+'">'+avg+'%/笔</div>'+
+        '<div style="font-size:.75em;color:#8b949e">累计'+(c.sumPct>=0?'+':'')+c.sumPct.toFixed(2)+'%</div></div>';
+    }).join('');
+  }
+  // ── 最近10币平仓明细表 ──
+  const show=recs.slice(0,10);
+  if(wrap){
+    if(!show.length){wrap.innerHTML='<div style="color:#484f58">暂无平仓记录</div>';return;}
+    let rows=show.map(function(t,idx){
+      const color=(t.pnlUsd||0)>=0?'#3fb950':'#f85149';
+      const side=t.side==='SHORT'?'做空':'做多';
+      const sideC=t.side==='SHORT'?'#f85149':'#3fb950';
+      const tm=new Date(t.closeTime).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      return '<tr><td style="color:#c9d1d9;font-weight:600">'+(idx+1)+'</td><td><strong>'+t.symbol.replace('USDT','')+'</strong></td>'+
+        '<td style="color:'+sideC+'">'+side+'</td>'+
+        '<td>'+((t.leverage||'')+'x')+'</td>'+
+        '<td class="'+(color==='#3fb950'?'green':'red')+'">'+(t.pnlUsd>=0?'+':'')+(t.pnlUsd||0).toFixed(4)+'</td>'+
+        '<td style="font-weight:700;color:'+color+'">'+(t.pnlPct>=0?'+':'')+(t.pnlPct||0).toFixed(2)+'%</td>'+
+        '<td style="color:#8b949e;font-size:.85em">'+(t.reason||'')+'</td>'+
+        '<td style="color:#484f58;font-size:.85em">'+tm+'</td></tr>';
+    }).join('');
+    wrap.innerHTML='<div style="color:#8b949e;margin-bottom:6px;font-size:.8em">⬇ 最近'+show.length+'笔平仓(时间倒序) · 绿色=盈利 红=亏损</div>'+
+      '<table class="mtable"><thead><tr><th>#</th><th>币种</th><th>方向</th><th>杠杆</th><th>净值</th><th>回报率</th><th>平仓原因</th><th>时间</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }
+}
+
 
 // ★ 自动扣算力费状态(管理员仪表盘主视图,tab-positions)
 async function loadAUserFees(){
