@@ -1665,7 +1665,7 @@ async function loadTabData(tab){
 loadOverview();
 // ★ 立即加载各用户A策略 + 自动扣算力费(不依赖点击B策略tab)
 // 用window.onload确保DOM就绪,并用setTimeout重试确保数据渲染
-function _safeLoadAWindows(attempt){ try{ if(document.readyState==='complete'||document.readyState==='interactive'){ loadAUsers(); loadAUserFees(); loadMonitor(); loadPairs(); loadClosedHistory(); } }catch(e){} if(attempt<5){ setTimeout(function(){_safeLoadAWindows((attempt||0)+1);},2000*(attempt||1)); } }
+function _safeLoadAWindows(attempt){ try{ if(document.readyState==='complete'||document.readyState==='interactive'){ loadPositions(); loadAUsers(); loadAUserFees(); loadMonitor(); loadPairs(); loadClosedHistory(); } }catch(e){} if(attempt<5){ setTimeout(function(){_safeLoadAWindows((attempt||0)+1);},2000*(attempt||1)); } }
 window.addEventListener('load',function(){_safeLoadAWindows(0);});
 _safeLoadAWindows(0);
 // v113.10: 降低轮询频率防API封禁 — 总览10秒 + 当前tab15秒 + 后台30秒
@@ -2950,7 +2950,7 @@ async function loadClosedHistory(force){
   try{
     if(!force && _closedHistData) { renderClosedHistory(); return; }
     const d=await api('/api/a-strategy/closed-history');
-    if(!d||d.error){ const w=document.getElementById('closedHistTableWrap'); if(w)w.innerHTML='<span style="color:#f85149">加载失败'+(d?(': '+d.error):'(接口不可用)</span>'; return; }
+    if(!d||d.error){ const w=document.getElementById('closedHistTableWrap'); if(w)w.innerHTML='<span style="color:#f85149">加载失败'+(d?(': '+d.error):'(接口不可用)')+'</span>'; return; }
     _closedHistData=d;
     renderClosedHistory();
   }catch(e){}
