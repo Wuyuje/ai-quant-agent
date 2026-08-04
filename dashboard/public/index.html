@@ -105,24 +105,25 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
   </div>
 </div>
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('overview',this)">总览</div>
-  <div class="tab" onclick="switchTab('positions',this)">A策略持仓</div>
-  <div class="tab" onclick="switchTab('neural',this)">神经网络</div>
+  <div class="tab active" onclick="switchTab('positions',this)" style="color:#bc8cff;font-weight:bold">大道至简A策略</div>
   <div class="tab" onclick="switchTab('signals',this)">A策略信号</div>
-  <div class="tab" onclick="switchTab('dex',this)">DEX 报价</div>
-  <div class="tab" onclick="switchTab('twap',this)">拆单引擎</div>
-  <div class="tab" onclick="switchTab('market',this)">全市场</div>
-  <div class="tab" onclick="switchTab('notif',this)">通知中心</div>
+  <div class="tab" onclick="switchTab('users',this)" style="color:#d29922;font-weight:bold">用户管理</div>
+  <div class="tab" onclick="switchTab('fees',this)" style="color:#3fb950;font-weight:bold">算力费</div>
   <div class="tab" onclick="switchTab('training',this)">模型训练</div>
-  <div class="tab" onclick="switchTab('users',this)">用户总览</div>
-  <div class="tab" onclick="switchTab('capital',this)">资金路由</div>
-  <div class="tab" onclick="switchTab('multimarket',this)">多市场</div>
-  <div class="tab" onclick="switchTab('risk',this)">风控中心</div>
-  <div class="tab" onclick="switchTab('fees',this)">费用统计</div>
-  <div class="tab" onclick="switchTab('evolution',this)">进化中心</div>
-  <div class="tab" onclick="switchTab('agent',this)">MasterD Agent</div>
-  <div class="tab" onclick="switchTab('news',this)">新闻中心</div>
+  <div class="tab" onclick="switchTab('neural',this)">神经网络</div>
   <div class="tab" onclick="switchTab('bbstrategy',this)" style="color:#00d4ff;font-weight:bold">B策略</div>
+  <div class="tab" onclick="switchTab('overview',this)">总览</div>
+  <!-- 次要tab折叠隐藏(panel保留保护结构) -->
+  <div class="tab" onclick="switchTab('dex',this)" style="display:none">DEX 报价</div>
+  <div class="tab" onclick="switchTab('twap',this)" style="display:none">拆单引擎</div>
+  <div class="tab" onclick="switchTab('market',this)" style="display:none">全市场</div>
+  <div class="tab" onclick="switchTab('notif',this)" style="display:none">通知中心</div>
+  <div class="tab" onclick="switchTab('capital',this)" style="display:none">资金路由</div>
+  <div class="tab" onclick="switchTab('multimarket',this)" style="display:none">多市场</div>
+  <div class="tab" onclick="switchTab('risk',this)" style="display:none">风控中心</div>
+  <div class="tab" onclick="switchTab('evolution',this)" style="display:none">进化中心</div>
+  <div class="tab" onclick="switchTab('agent',this)" style="display:none">MasterD Agent</div>
+  <div class="tab" onclick="switchTab('news',this)" style="display:none">新闻中心</div>
 </div>
 
 <div id="tab-overview" class="panel active">
@@ -230,6 +231,18 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
       <div id="adminChartTabs" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap"></div>
       <div id="adminChartArea" style="display:none"></div>
     </div>
+  </div>
+  <!-- ★ 大道至简A策略 交易对变化(当前交易对+历史变化+各币实测表现) -->
+  <div class="card" style="margin-top:14px;border:1px solid #2a3a5c">
+    <h3 style="color:#bc8cff">🔁 交易对变化 (当前8只 + 实测表现,周期性回测可调)</h3>
+    <div style="font-size:.8em;color:#8b949e;margin-bottom:6px">当前交易对：<span id="pairCurrent" style="color:#c9d1d9">加载中...</span> <span id="pairUpdated" style="color:#484f58"></span></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+      <div class="card"><h3>交易对数</h3><div id="pairCount" class="val blue">--</div></div>
+      <div class="card"><h3>历史变更</h3><div id="pairHistoryCount" class="val purple">--</div></div>
+      <div class="card"><h3>有实测币</h3><div id="pairPerfCount" class="val green">--</div></div>
+      <div class="card"><h3>上次更新</h3><div id="pairLastUpdate" class="val yellow">--</div></div>
+    </div>
+    <div id="pairPerfBody" style="font-size:.78em;color:#8b949e">加载中...</div>
   </div>
 </div>
 
@@ -363,6 +376,11 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
       <div>管理员：<span class="green">0% 算力 Token + 0% 算力 Token = 100% 到手</span></div>
       <div>普通用户：<span class="yellow">10% 算力 Token + 20% 算力 Token = 70% 到手</span></div>
       <div>仅盈利时收取，亏损不扣费</div>
+    </div>
+    <div class="card" style="margin-top:14px;border:1px solid #2a3a5c">
+      <h3 style="color:#3fb950">🌐 各用户算力费扣费明细</h3>
+      <div style="font-size:.78em;color:#8b949e">普通用户盈利自动扣 30% 算力费(平台20%+生态10%)到管理员钱包</div>
+      <div id="feeUserRows" style="font-size:.8em;color:#8b949e">加载中...</div>
     </div>
   </div>
 </div>
@@ -1613,7 +1631,7 @@ async function loadNews(){
 async function loadTabData(tab){
   switch(tab){
     case 'overview':await loadOverview();break;
-    case 'positions':await loadPositions();loadAUsers();loadAUserFees();loadMonitor();break;
+    case 'positions':await loadPositions();loadAUsers();loadAUserFees();loadMonitor();loadPairs();break;
     case 'neural':await loadNeural();break;
     case 'signals':await loadSignals();break;
     case 'dex':await loadDex();break;
@@ -1635,7 +1653,7 @@ async function loadTabData(tab){
 loadOverview();
 // ★ 立即加载各用户A策略 + 自动扣算力费(不依赖点击B策略tab)
 // 用window.onload确保DOM就绪,并用setTimeout重试确保数据渲染
-function _safeLoadAWindows(attempt){ try{ if(document.readyState==='complete'||document.readyState==='interactive'){ loadAUsers(); loadAUserFees(); loadMonitor(); } }catch(e){} if(attempt<5){ setTimeout(function(){_safeLoadAWindows((attempt||0)+1);},2000*(attempt||1)); } }
+function _safeLoadAWindows(attempt){ try{ if(document.readyState==='complete'||document.readyState==='interactive'){ loadAUsers(); loadAUserFees(); loadMonitor(); loadPairs(); } }catch(e){} if(attempt<5){ setTimeout(function(){_safeLoadAWindows((attempt||0)+1);},2000*(attempt||1)); } }
 window.addEventListener('load',function(){_safeLoadAWindows(0);});
 _safeLoadAWindows(0);
 // v113.10: 降低轮询频率防API封禁 — 总览10秒 + 当前tab15秒 + 后台30秒
@@ -1935,6 +1953,8 @@ async function loadBBStrategy(){
   loadAUsers();
   loadAUserFees();
   loadMonitor();
+  loadPairs();
+  loadFeeUsers();
   const data=await api('/api/bb-strategy/overview');
   if(!data||data.error){
     document.getElementById('bbStatus').textContent='未启动';
@@ -2765,6 +2785,54 @@ async function loadASim(){
   }catch(e){}
 }
 
+
+
+// ★ 各用户算力费扣费明细(普通用户盈利30%→管理员)
+async function loadFeeUsers(){
+  try{
+    const d=await api('/api/a-strategy/fees');
+    const el=document.getElementById('feeUserRows');
+    if(!el)return;
+    if(!d||d.error||!d.users||d.users.length===0){el.innerHTML='<span style="color:#484f58">暂无用户扣费记录</span>';return;}
+    let html='<table style="width:100%;border-collapse:collapse"><tr style="color:#8b949e"><th style="text-align:left;padding:4px">用户钱包</th><th>待收笔数</th><th>平台费(20%)</th><th>生态费(10%)</th><th>待收合计</th><th>已转管理员</th></tr>';
+    for(const u of d.users){
+      html+='<tr style="border-bottom:1px solid #21262d"><td style="padding:4px;font-weight:600" title="'+u.wallet+'">'+u.wallet.slice(0,12)+'...</td><td>'+u.pendingCount+'/'+u.count+'</td><td style="color:#3fb950">$'+u.pendingPlatform.toFixed(2)+'</td><td style="color:#d29922">$'+u.pendingEco.toFixed(2)+'</td><td style="color:#d29922;font-weight:600">$'+u.pendingTotal.toFixed(2)+'</td><td style="color:#3fb950">$'+u.collected.toFixed(2)+'</td></tr>';
+    }
+    html+='</table>';
+    el.innerHTML=html;
+  }catch(e){}
+}
+
+// ★ 大道至简A策略 交易对变化 + 各币实测表现
+async function loadPairs(){
+  try{
+    const d=await api('/api/a-strategy/pairs');
+    const el=document.getElementById('pairPerfBody');
+    if(!el)return;
+    if(!d||d.error){el.innerHTML='<span style="color:#484f58">暂无数据</span>';return;}
+    const pairs=(d.pairs&&d.pairs.pairs)||[];
+    document.getElementById('pairCurrent').textContent=pairs.join(', ');
+    document.getElementById('pairCount').textContent=pairs.length;
+    const history=(d.pairs&&d.pairs.history)||[];
+    document.getElementById('pairHistoryCount').textContent=history.length;
+    const perf=d.perf||{};
+    const perfKeys=Object.keys(perf);
+    document.getElementById('pairPerfCount').textContent=perfKeys.length;
+    const upd=d.pairs&&d.pairs.updatedAt;
+    document.getElementById('pairLastUpdate').textContent=upd?new Date(upd).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'-';
+    // 各币实测表现表
+    let html='<table style="width:100%;border-collapse:collapse"><tr style="color:#8b949e"><th style="text-align:left;padding:3px">币</th><th>交易数</th><th>胜率</th><th>总盈亏</th></tr>';
+    for(const sym of pairs){
+      const p=perf[sym];
+      const cnt=p?p.count:0,wr=p?p.winRate:0,net=p?p.totalPnl:0;
+      const nc=net>=0?'#3fb950':'#f85149';
+      html+='<tr style="border-bottom:1px solid #21262d"><td style="padding:3px;font-weight:600">'+sym+'</td><td>'+cnt+'</td><td>'+wr+'%</td><td style="color:'+nc+';font-weight:600">$'+net+'</td></tr>';
+    }
+    html+='</table>';
+    el.innerHTML=html;
+  }catch(e){}
+}
+
 // ★ 自动扣算力费状态(普通用户盈利→管理员钱包)
 async function loadAFees(){
   try{
@@ -2838,7 +2906,7 @@ async function loadMonitor(){
     const d=await api('/api/a-strategy/monitor');
     const rows=document.getElementById('monitorRows');
     if(!d||d.error||!Array.isArray(d)||d.length===0){
-      rows.innerHTML='<span style="color:#484f58">暂无定时汇报(监控运行中每小时记录一次)</span>';
+      if(rows) rows.innerHTML='<span style="color:#484f58">暂无定时汇报(监控运行中每小时记录一次)</span>';
       return;
     }
     // 按时间倒序(最新在最上)

@@ -2568,6 +2568,16 @@ class Dashboard {
       }
     });
 
+    // ★ A策略交易对变化 + 各币实测表现(选币参考)
+    app.get('/api/a-strategy/pairs', (req, res) => {
+      try {
+        const { getPairs, getPerf } = require('../lib/trade-pair-manager');
+        res.json({ pairs: getPairs(), perf: getPerf() });
+      } catch (e) {
+        res.json({ error: e.message });
+      }
+    });
+
     // ═══ 全局策略切换 (管理员专用) ═══
     app.get('/api/strategy/active', (req, res) => {
       // 优先使用统一策略管理器
