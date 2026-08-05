@@ -15,6 +15,8 @@
 
 const path = require('path');
 const fs = require('fs');
+// ═══ 加载 .env(TRADER_PRIVATE_KEY等) 到 process.env ═══
+try { require('dotenv').config(); } catch(e) {}
 const DataBus = require('../data/databus');
 const Engine = require('../engine');
 const SaasServer = require('./server');
