@@ -177,6 +177,15 @@ async function main() {
   dashboard.start();
   console.log(`[启动] 📊 Dashboard 运行在端口 ${dashboardPort}`);
 
+  // ═══ 启动 A策略定时监控(每小时汇报一次, 供仪表盘实时展示) ═══
+  try {
+    const { spawn } = require('child_process');
+    const mon = spawn('node', [require('path').join(__dirname, 'monitor-a-strategy.js')], { stdio: 'inherit', detached: false });
+    mon.on('error', e => console.log('[启动] ⚠️ A策略监控启动失败:', e.message.slice(0,40)));
+    mon.on('exit', c => console.log(`[启动] ⏹️ A策略监控退出 code=${c}(主进程退出时随之退出)`));
+    console.log('[启动] 📈 A策略定时监控已启动(每小时1次汇报)');
+  } catch(e) { console.log('[启动] ⚠️ A策略监控加载异常:', e.message); }
+
   // ═══ 7. UserTrader 用户自动跟单 — 已停用, 由DualStrategyManager接管 ═══
   console.log('[启动] ⏸️ UserTrader已停用 — 由DualStrategyManager(BB+趋势)接管');
 
