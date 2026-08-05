@@ -797,7 +797,7 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
 <script>
 // 版本检查 - 如果浏览器缓存了旧版页面，自动刷新
 // version check moved to <head>
-let currentTab='overview';
+let currentTab='positions';   // 默认tab是'大道至简A策略'(positions), 这样A策略数据每15秒实时刷新
 async function api(path){try{const headers={};const ak=localStorage.getItem('ark_admin_key');const tk=localStorage.getItem('ark_token');if(ak)headers['x-admin-key']=ak;if(tk)headers['Authorization']='Bearer '+tk;const r=await fetch(path,{headers});if(!r.ok){console.log('[api] '+path+' status='+r.status);return null}const d=await r.json();console.log('[api] '+path+' OK');return d}catch(e){console.log('[api] '+path+' error: '+e.message);return null}}
 function switchTab(tab,el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -1673,6 +1673,7 @@ setInterval(function(){loadOverview()},10000);
 setInterval(function(){loadTabData(currentTab)},15000);
 setInterval(function(){
   // 后台刷新关键模块（即使用户不在该tab）
+  if(currentTab!=='positions'){ loadPositions(); loadAUsers(); loadAUserFees(); loadMonitor(); loadPairs(); loadClosedHistory(); }  // ★ A策略数据后台实时刷新
   if(currentTab!=='risk')loadRisk();
   if(currentTab!=='capital')loadCapital();
   if(currentTab!=='fees')loadFees();
