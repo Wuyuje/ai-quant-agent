@@ -21,7 +21,7 @@ function fetchJson(url) {
 }
 
 async function record() {
-  const ts = new Date().toISOString();
+  const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'});
   const neural = await fetchJson(`http://localhost:${PORT}/api/neural-net`);
   const users = await fetchJson(`http://localhost:${PORT}/api/a-strategy/users`);
   const summary = {
