@@ -112,7 +112,6 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
   <div class="tab" onclick="switchTab('training',this)">模型训练</div>
   <div class="tab" onclick="switchTab('neural',this)">神经网络</div>
   <div class="tab" onclick="switchTab('bbstrategy',this)" style="color:#00d4ff;font-weight:bold">B策略</div>
-  <div class="tab" onclick="switchTab('bbsclip',this)" style="color:#ff9f43;font-weight:bold">布林高抛低吸</div>
   <div class="tab" onclick="switchTab('overview',this)">总览</div>
   <!-- 次要tab折叠隐藏(panel保留保护结构) -->
   <div class="tab" onclick="switchTab('dex',this)" style="display:none">DEX 报价</div>
@@ -573,19 +572,6 @@ body{font-family:'SF Mono','Fira Code',monospace;background:#0a0e17;color:#e0e0e
 <div id="tab-news" class="panel">
   <div class="grid g4" style="margin-bottom:14px">
     <div class="card"><h3>恐慌贪婪指数</h3><div id="newsFng" class="val green">--</div><div class="sub" id="newsFngClass">--</div></div>
-<div id="tab-bbsclip" class="panel">
-  <!-- ★ 布林高抛低吸(1分钟级别) 独立引擎数据 -->
-  <div class="card" style="margin-bottom:14px;border:1px solid #ff9f43">
-    <h3 style="color:#ff9f43">📉 布林高抛低吸(1分钟) · 各用户持仓/盈亏完全独立</h3>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
-      <div class="card"><h3>总用户</h3><div id="bbsUsers" class="val blue">--</div></div>
-      <div class="card"><h3>总持仓</h3><div id="bbsPositions" class="val green">--</div></div>
-      <div class="card"><h3>总交易</h3><div id="bbsTrades" class="val purple">--</div></div>
-      <div class="card"><h3>总盈亏</h3><div id="bbsTotalPnl" class="val orange">--</div></div>
-    </div>
-    <div id="bbsRows" style="font-size:.8em;color:#8b949e">加载中...</div>
-  </div>
-</div>
     <div class="card"><h3>新闻总数</h3><div id="newsCount" class="val purple">--</div><div class="sub">已收集</div></div>
     <div class="card"><h3>利好信号</h3><div id="newsBull" class="val green">--</div><div class="sub">情绪正向</div></div>
     <div class="card"><h3>利空信号</h3><div id="newsBear" class="val red">--</div><div class="sub">情绪负向</div></div>
@@ -820,36 +806,6 @@ function switchTab(tab,el){
   document.getElementById('tab-'+tab).classList.add('active');
   currentTab=tab;loadTabData(tab);
 }
-async function loadBBS(){
-  try{
-    const d=await api('/api/bbs-scalp/monitor');
-    const rows=document.getElementById('bbsRows');
-    if(!d||d.error){ if(rows)rows.innerHTML='<span style="color:#f85149">布林引擎未启动或加载失败</span>'; return; }
-    const users=d.users||[];
-    document.getElementById('bbsUsers').textContent=users.length;
-    const tPos=users.reduce((s,u)=>s+(u.positionCount||0),0);
-    const tTrades=users.reduce((s,u)=>s+(u.trades||0),0);
-    const tPnl=users.reduce((s,u)=>s+(u.realizedPnl||0),0);
-    document.getElementById('bbsPositions').textContent=tPos;
-    document.getElementById('bbsTrades').textContent=tTrades;
-    const pnlEl=document.getElementById('bbsTotalPnl');
-    pnlEl.textContent=(tPnl>=0?'+':'')+tPnl.toFixed(2);
-    pnlEl.className='val '+(tPnl>=0?'green':'red');
-    if(rows){
-      if(!users.length){rows.innerHTML='<span style="color:#484f58">暂无布林引擎用户</span>';return;}
-      rows.innerHTML=users.map(function(u){
-        const isA=u.isAdmin?'👑':'普通';
-        const pnlC=u.realizedPnl>=0?'#3fb950':'#f85149';
-        const posL=u.positions||{};
-        let posTxt=Object.keys(posL).map(function(sym){const p=posL[sym];return sym.slice(0,6)+' '+(p.side?'多':'空');}).join(', ')||'无';
-        return '<div style="border:1px solid #21262d;border-radius:6px;padding:8px;margin-bottom:6px;background:#0d1117">'+
-          '<div style="font-weight:600;color:'+(isA==='👑'?'#bc8cff':'#c9d1d9')+'">'+isA+' '+(u.wallet||'').slice(0,12)+'</div>'+
-          '<div>资金$'+(u.balance||0).toFixed(2)+' | 持仓'+posTxt+' | 交易'+(u.trades||0)+' | 实盈<span style="color:'+pnlC+'">$'+(u.realizedPnl||0).toFixed(2)+'</span></div></div>';
-      }).join('');
-    }
-  }catch(e){}
-}
-
 async function loadPositions(){
   const[status,balance,market,aSim]=await Promise.all([
     api('/api/status'),api('/api/balance'),api('/api/market-overview'),
@@ -1703,7 +1659,6 @@ async function loadTabData(tab){
     case 'evolution':await loadEvolution();break;
     case 'agent':await loadAgent();break;
     case 'news':await loadNews();break;
-    case 'bbsclip':await loadBBS();break;
     case 'bbstrategy':await loadBBStrategy();break;
   }
 }
