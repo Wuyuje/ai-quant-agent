@@ -2621,6 +2621,13 @@ class Dashboard {
     });
 
     // ★ A策略定时汇报监控历史(仪表盘展示用,最多10条)
+    // ★ 布林高抛低吸(1分钟) 独立引擎数据(管理员仪表盘窗口)
+    app.get('/api/bbs-scalp/monitor', (req, res) => {
+      const mgr = this.bbScalpMgr || global.__bbScalpMgr;
+      if (!mgr || typeof mgr.getAllUsersStatus !== 'function') return res.json({ users: [], error: '布林引擎未启动' });
+      try { res.json({ users: mgr.getAllUsersStatus() }); } catch(e) { res.json({ users: [], error: e.message }); }
+    });
+
     app.get('/api/a-strategy/monitor', (req, res) => {
       try {
         const fs = require('fs');

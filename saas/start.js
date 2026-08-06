@@ -248,6 +248,21 @@ async function main() {
     console.log('[启动] 🧠 A策略多用户实盘已启动 (AI选币+真实下单+算力费扣费)');
   } catch (e) { console.log('[启动] ⚠️ A策略多用户实盘启动失败:', e.message); }
 
+  // ═══ 独立一分钟级布林高抛低吸引擎(与大道至简A策略完全独立并行, 互不干扰) ═══
+  try {
+    const { MultiBBScalpManager } = require('../lib/multi-bb-scalp-manager');
+    const bbScalpMgr = new MultiBBScalpManager({
+      apiKey: process.env.BINANCE_API_KEY,
+      apiSecret: process.env.BINANCE_API_SECRET,
+      userDB: server.userDB,
+    });
+    bbScalpMgr.start();
+    global.__bbScalpMgr = bbScalpMgr;
+    server.bbScalpMgr = bbScalpMgr;
+    dashboard.bbScalpMgr = bbScalpMgr;
+    console.log('[启动] 📉 布林高抛低吸(1分钟)独立引擎已启动 (与大道至简并行, 普通用户自动扣算力费)');
+  } catch (e) { console.log('[启动] ⚠️ 布林高抛低吸引擎启动失败:', e.message); }
+
   // ═══ 9.5 UnifiedStrategyManager — A/B 策略统一切换 ═══
   // 让仪表盘的 A/B 切换按钮真正能启停引擎
   try {
