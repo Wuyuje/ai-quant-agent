@@ -31,16 +31,16 @@ function rsiRaw(closes, period=14) {
 class TrendStrategy {
   constructor(opts = {}) {
     this.shortMA=5, this.midMA=10, this.bandMA=20, this.band30=30, this.longMA=60;
-    this.stopLossPct = opts.stopLossPct || 2.5;    // 硬止损
+    this.stopLossPct = opts.stopLossPct || 6.0;    // 硬止损放宽(拿稳趋势,不早止损)
     this.candleSpikePct = 3.0;                      // 插针过滤
     this.volRatioMin = 1.2;                         // 成交量确认: 放量≥均量×1.2
     this.rsiHigh = 75;                              // RSI超买区(顶背离)
     this.rsiLow = 25;                               // RSI超卖区
     this.reversalBreak = 0.0;                       // MA60反向立即算反转(紧止损,不放大亏损)
-    this.tpTargetMult = opts.tpTargetMult || 5.0;   // 借鉴当时: 目标放大(吃整波, 不等过早锁利)
+    this.tpTargetMult = opts.tpTargetMult || 8.0;   // 目标放大(吃整波趋势)
     this.maxAtrPct = opts.maxAtrPct || 5.0;         // 波动率过滤放宽(但要避免巨震): ATR%>3%的剧烈波动币不做(避FIL/SUI这类大亏)
-    this.trailMult = opts.trailMult || 4.0;         // 借鉴当时: 宽移动止损(吃整波趋势)
-    this.maxHoldBars = opts.maxHoldBars || 30;      // 最大持有K线数(减少套牢时间)
+    this.trailMult = opts.trailMult || 6.0;         // 更宽松移动止盈(拿住整个趋势)
+    this.maxHoldBars = opts.maxHoldBars || 90;      // 持有时间放宽(拿住趋势)
   }
 
   _maState(closes) {
@@ -158,7 +158,7 @@ class TrendStrategy {
     // ② ATR绝对止损: 浮亏超过 ATR×N(按价格算) 立即平(防大亏)
     const atr=arr?this._atr(arr):0;
     if(atr>0){
-      const allowATR = 2.5;  // 允许回撤≤2.5×ATR; 超过即止损
+      const allowATR = 6.0;  // 允许回撤≤6×ATR(放宽,拿住趋势)
       const move = pos.side==='LONG'?(entry-price):(price-entry);
       if(move > atr*allowATR)return {action:'CLOSE',reason:`ATR止损(反向${(move/atr).toFixed(1)}ATR,防大亏)`};
     }
@@ -208,9 +208,10 @@ class TrendStrategy {
     return this.takeProfit(pos, price, arr);
   }
 
-  positionSize(balance, notionalRatio=0.10*8) {
-    // 借鉴当时: 趋势单用8x高杠杆放大收益
-    return { notional: Math.max(20,balance*notionalRatio), margin: Math.max(20,balance*notionalRatio)/8, leverage:8 };
+  // ═══ 仓位: 做多5x, 做空3x(用户指定) ═══
+  positionSize(balance, side='LONG', notionalRatio=0.15) {
+    const lev = side==='LONG' ? 5 : 3;   // 做多5x/做空3x
+    return { notional: Math.max(20, balance*notionalRatio*lev), margin: Math.max(20, balance*notionalRatio*lev)/lev, leverage: lev };
   }
 }
 
