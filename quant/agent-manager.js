@@ -279,9 +279,9 @@ class QuantAgentManager {
           this._log(`${wallet.slice(0,10)} 智能体启动(${isAdmin?'管理员':'普通'})`);
         }
       }
-      // 灰度: 管理员可开仓(灰度验证), 普通用户保持停(待验证后放开)
+      // 全部用户(普通+管理员/白名单)开放开仓
       const agents = Object.values(this._agents);
-      for (const a of agents) a.pauseOpen = this.pauseOpen ? true : !a.isAdmin;
+      for (const a of agents) a.pauseOpen = !!this.pauseOpen;
       await Promise.all(agents.map(a => a.scan(this.COIN_POOL).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
     } catch(e) { this._log(`❌ 循环异常: ${e.message}`); }
