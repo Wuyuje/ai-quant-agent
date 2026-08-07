@@ -55,6 +55,27 @@ class QuantServer {
   }
 
   _routes() {
+
+    // 普通用户算力费(自动支付)状态
+    this.app.get('/api/quant/fees', async (req, res) => {
+      try {
+        const fs = require('fs');
+        const pathf = require('path');
+        const users = JSON.parse(fs.readFileSync(pathf.join(__dirname,'..','data','saas-users.json'),'utf8'));
+        const ADMIN = ['0xfa3b90c574469909d20848273c06752a22fde74a','0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e','0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5','0xc6dbb4cd3b6a12068c7388248da2bd32df7ef9b7'];
+        let pending=0, collected=0, unpaid=0;
+        const usersFee = Object.entries(users).filter(([k,v])=>v&&v.binanceApiKey).map(([k,v])=>{
+          const isAdmin = ADMIN.some(a=>a.toLowerCase()===k.toLowerCase());
+          const bal = v.gatesFeeBalance||0;
+          const col = v.gatesFeeCollected||0;
+          if(!isAdmin){ if(bal<0)unpaid+=(-bal); collected+=col; }
+          pending += (bal<0? -bal:0);
+          return { wallet:k, isAdmin, feeBalance:+bal.toFixed(2), collected:+col.toFixed(2), unpaid:(bal<0?-bal:0).toFixed(2), owing: bal<0, hasKey:true };
+        });
+        res.json({ users: usersFee, summary:{ pendingFee:+pending.toFixed(2), collected:+collected.toFixed(2), unpaidUsers:unpaid>0?Object.keys(users).filter(k=>users[k].gatesFeeBalance<0&&users[k].binanceApiKey).length:0 } });
+      } catch(e){ res.json({ error:e.message, users:[] }); }
+    });
+
     // 市场状态看盘
     this.app.get('/api/quant/market', async (req, res) => {
       // 返回缓存(后台30s刷新), 避免每次请求串行拉K线导致卡顿

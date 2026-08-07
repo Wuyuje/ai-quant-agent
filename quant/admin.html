@@ -46,6 +46,7 @@ button.ghost{background:#21262d}
   <div class="tab act" data-t="market" onclick="switchT('market')">📊 市场状态</div>
   <div class="tab" data-t="chart" onclick="switchT('chart')">📈 K线看盘</div>
   <div class="tab" data-t="agents" onclick="switchT('agents')">🤖 智能体用户</div>
+  <div class="tab" data-t="fees" onclick="switchT('fees')">💰 普通用户算力费</div>
   <div class="tab" data-t="backtest" onclick="switchT('backtest')">🧪 回测</div>
  </div>
 
@@ -81,6 +82,14 @@ button.ghost{background:#21262d}
    <div id="poolBox">加载中...</div>
    <div style="margin-top:8px" id="brainBox"></div>
  </div>
+ <div id="panel-fees" class="panel">
+  <div class="card"><h3>💰 普通用户算力费自动支付（管理员/白名单免）</h3>
+   <div id="feeSummary" style="font-size:13px;margin-bottom:10px"></div>
+   <table><thead><tr><th>用户</th><th>类型</th><th>算力费余额</th><th>已缴算力费</th><th>应付/欠费</th><th>状态</th></tr></thead>
+   <tbody id="feeRows"><tr><td colspan="6" class="muted">加载中...</td></tr></tbody></table>
+   <div style="margin-top:8px;font-size:.8em;color:var(--muted)">※ 普通用户盈利时自动按30%(平台20%+生态10%)扣除算力费, 扣款自动计入管理员钱包。负余额=欠费需补缴。</div>
+  </div>
+ </div>
  <div id="panel-backtest" class="panel">
   <div class="grid g2">
    <div class="card"><h3>回测（市场分类+双策略）</h3>
@@ -99,8 +108,8 @@ button.ghost{background:#21262d}
 const $=s=>document.querySelector(s);
 // 带超时的fetch(8秒), 失败返回null, 避免无限加载
 async function api(u){try{const c=new AbortController();const t=setTimeout(()=>c.abort(),8000);const r=await fetch(u,{signal:c.signal});clearTimeout(t);if(!r.ok)return null;return await r.json();}catch(e){return null;}}
-function switchT(t){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('act',x.dataset.t===t));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('act',x.id==='panel-'+t));if(t==='market')loadMkt();if(t==='chart')loadChart();if(t==='agents')loadAgents();if(t==='backtest')loadBt();}
-async function loadMkt(){const d=await api('/api/quant/market');const rows=$('#mktRows');if(!d||!d.coins){if(rows)rows.innerHTML='<tr><td colspan="7" class="r">⚠️ 数据加载失败或超时,请重试</td></tr>';updateLive();return;}let h='';for(const c of (d.coins||[])){const st=c.state==='ranging'?'<span class="tag t-rang">震荡</span>':c.state==='trending'?'<span class="tag t-trend">趋势</span>':'<span class="tag t-shock">剧烈</span>';const sst=c.recommended==='grid'?'<span class="bl">网格低买高卖</span>':c.recommended==='trend'?'<span class="g">趋势跟踪</span>':'<span class="r">观望</span>';const dir=c.trendDir==='UP'?'<span class="g">↑上</span>':c.trendDir==='DOWN'?'<span class="r">↓下</span>':'<span class="muted">平</span>';h+='<tr><td><b>'+c.symbol.replace('USDT','')+'</b></td><td>$'+c.close.toFixed(4)+'</td><td>'+st+'</td><td>'+dir+'</td><td>'+c.adx+'</td><td>'+c.volatility+'</td><td>'+sst+'</td></tr>';}
+function switchT(t){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('act',x.dataset.t===t));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('act',x.id==='panel-'+t));if(t==='market')loadMkt();if(t==='chart')loadChart();if(t==='agents')loadAgents();if(t==='fees')loadFees();if(t==='backtest')loadBt();}
+async function loadMkt(){const d=await api('/api/quant/market');const rows=$('#mktRows');if(!d||!d.coins){if(rows)rows.innerHTML='<tr><td colspan="7" class="r">⚠️ 数据加载失败或超时,请重试</td></tr>';updateLive();return;}let h='';for(const c of (d.coins||[])){const st=c.state==='ranging'?'<span class="tag t-rang">震荡</span>':c.state==='trending'?'<span class="tag t-trend">趋势</span>':'<span class="tag t-shock">剧烈</span>';const sst=c.recommended==='grid'?'<span class="bl">布林带震荡</span>':c.recommended==='trend'?'<span class="g">顺势趋势</span>':'<span class="r">观望</span>';const dir=c.trendDir==='UP'?'<span class="g">↑上</span>':c.trendDir==='DOWN'?'<span class="r">↓下</span>':'<span class="muted">平</span>';h+='<tr><td><b>'+c.symbol.replace('USDT','')+'</b></td><td>$'+c.close.toFixed(4)+'</td><td>'+st+'</td><td>'+dir+'</td><td>'+c.adx+'</td><td>'+c.volatility+'</td><td>'+sst+'</td></tr>';}
 rows.innerHTML=h||'<tr><td colspan="7">无数据</td></tr>';updateLive();}
 async function loadChart(){const sym=$('#chartSym').value;const kl=await api('/api/quant/klines/'+sym);const a=await api('/api/quant/analyze/'+sym);const cv=$('#chart');const ctx=cv.getContext('2d');ctx.clearRect(0,0,cv.width,cv.height);const closes=kl.map(k=>k[4]);const mx=Math.max(...closes),mn=Math.min(...closes);const W=cv.width,H=cv.height;ctx.strokeStyle='#3fb950';ctx.beginPath();closes.forEach((c,i)=>{const x=i/(closes.length-1)*W,y=H-(c-mn)/(mx-mn)*(H-20)-10;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();
 const info=$('#chartInfo');const stt=a.state==='ranging'?'震荡':a.state==='trending'?'趋势':'剧烈';info.innerHTML='<b>'+sym+'</b> '+stt+' · 趋势'+a.trendDir+' · ADX '+(a.adx||0).toFixed(1)+' · 建议: '+(a.recommended)+'';
@@ -116,8 +125,17 @@ rows.innerHTML=h||'<tr><td colspan="7">智能体管理器未运行（仅看盘�
 async function loadBt(){const sym=$('#btSym').value,d=$('#btDays').value;const r=await api('/api/quant/backtest/'+sym+'/'+d);const info=$('#btInfo');info.innerHTML=r.error?'<span class="r">'+r.error+'</span>':'<b>'+sym+'</b> '+d+'天: 交易'+r.nT+'笔 胜率'+r.rate+'% · 净回报<b class="'+(r.ret>=0?'g':'r')+'">'+(r.ret>=0?'+':'')+r.ret.toFixed(1)+'%</b> · 期末$'+r.endBal.toFixed(0);
 const c=$('#btChart').getContext('2d');c.clearRect(0,0,c.width,c.height);c.fillStyle='#8b949e';c.font='12px sans-serif';c.fillText('回报率 '+r.ret.toFixed(1)+'%  交易'+r.nT,10,20);
 $('#btTrades').innerHTML='<div class="muted">(累积: 胜'+r.nW+'-'+r.nL+'负)</div>';}
+async function loadFees(){const d=await api('/api/quant/fees');const rows=$('#feeRows');const sum=$('#feeSummary');
+  if(!d||!d.users){if(rows)rows.innerHTML='<tr><td colspan="6" class="r">⚠️ 加载失败</td></tr>';return;}
+  const s=d.summary||{};if(sum)sum.innerHTML='待收欠费 <b class="r">$'+s.pendingFee+'</b> · 已收算力费 <b class="g">$'+s.collected+'</b> · 欠费用户 <b>'+s.unpaidUsers+'</b>';
+  let h='';for(const u of d.users){if(u.isAdmin)continue;
+    const st=u.owing?'<span class="tag t-shock">欠费</span>':u.feeBalance<5?'<span class="tag" style="background:#888d22">余额低</span>':'<span class="tag t-rang">正常</span>';
+    h+='<tr><td>'+u.wallet.slice(0,14)+'...</td><td>普通</td><td class="'+(u.feeBalance<0?'r':'g')+'">$'+u.feeBalance.toFixed(2)+'</td><td>$'+u.collected.toFixed(2)+'</td><td class="'+(u.unpaid>0?'r':'muted')+'">$'+u.unpaid+'</td><td>'+st+'</td></tr>';
+  }
+  rows.innerHTML=h||'<tr><td colspan="6">暂无普通用户</td></tr>';
+}
 function updateLive(){$('#liveTime').textContent='更新 '+new Date().toLocaleTimeString('zh-CN',{hour12:false});}
-function refreshAll(){const t=document.querySelector('.tab.act').dataset.t;if(t==='market')loadMkt();if(t==='chart')loadChart();if(t==='agents')loadAgents();if(t==='backtest')loadBt();}
+function refreshAll(){const t=document.querySelector('.tab.act').dataset.t;if(t==='market')loadMkt();if(t==='chart')loadChart();if(t==='agents')loadAgents();if(t==='fees')loadFees();if(t==='backtest')loadBt();}
 loadMkt();setInterval(loadMkt,30000);
 </script>
 </body></html>
