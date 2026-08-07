@@ -18,10 +18,11 @@ const PLATFORM_FEE_RATE = 0.20;
 const ECO_FUND_RATE = 0.10;
 
 class QuantAgent {
-  constructor({ wallet, apiKey, apiSecret, isAdmin, userDB }) {
+  constructor({ wallet, apiKey, apiSecret, isAdmin, userDB, pauseOpen }) {
     this.wallet = wallet;
     this.isAdmin = isAdmin;
     this.userDB = userDB;
+    if (typeof pauseOpen === 'boolean') this.pauseOpen = pauseOpen;
     this.api = new BinanceAPI(apiKey, apiSecret);
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
@@ -193,12 +194,13 @@ class QuantAgentManager {
             apiKey = decrypt(u.binanceApiKey); apiSecret = decrypt(u.binanceSecret);
             if (!apiKey || apiKey.length !== 64) continue;
           }
-          this._agents[wallet] = new QuantAgent({ wallet, apiKey, apiSecret, isAdmin, userDB: this.userDB });
+          this._agents[wallet] = new QuantAgent({ wallet, apiKey, apiSecret, isAdmin, userDB: this.userDB, pauseOpen: this.pauseOpen });
           this._log(`${wallet.slice(0,10)} 智能体启动(${isAdmin?'管理员':'普通'})`);
         }
       }
-      // 扫描(并行)
+      // 强制同步停开仓状态到所有agent(安全)
       const agents = Object.values(this._agents);
+      for (const a of agents) a.pauseOpen = this.pauseOpen;
       await Promise.all(agents.map(a => a.scan(this.COIN_POOL).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
     } catch(e) { this._log(`❌ 循环异常: ${e.message}`); }

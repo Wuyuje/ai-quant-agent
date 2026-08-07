@@ -94,6 +94,14 @@ class QuantServer {
   }
 
   start(port = 10060) {
+    // 绑定多用户智能体管理器(只展示状态, 默认停开仓, 不实盘)
+    try {
+      const mgr = new QuantAgentManager({ apiKey: APIKEY, apiSecret: APISECRET });
+      mgr.pauseOpen = true;            // 安全: 不实盘开仓
+      mgr.start();
+      global.__quantAgents = mgr;
+      console.log('[QuantServer] 🤖 多用户智能体管理器已挂载(展示状态, 停开仓)');
+    } catch(e){ console.log('[QuantServer] ⚠️ 智能体管理器挂载失败:', e.message); }
     // 启动市场轮询
     this._pollMarket(); this._runTimer = setInterval(() => this._pollMarket(), 30000);
     this.app.listen(port, () => console.log(`[QuantServer] 🌐 新量化智能体看盘: http://localhost:${port}`));
