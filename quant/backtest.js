@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════════════
 const { FeatureEngineer, toArray } = require('./featurer');
 const { MarketClassifier } = require('./market-classifier');
-const { TrendFollowingStrategy } = require('./trend-strategy');
+const { TrendStrategy } = require('./trend-strategy');
 const { RangeGridStrategy } = require('./grid-strategy');
 
 const TFEE = 0.0005;      // 单边手续费
@@ -15,7 +15,7 @@ class QuantBacktest {
   constructor() {
     this.fe = new FeatureEngineer();
     this.cls = new MarketClassifier();
-    this.trend = new TrendFollowingStrategy();
+    this.trend = new TrendStrategy();
     this.grid = new RangeGridStrategy();
   }
 
