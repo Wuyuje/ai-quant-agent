@@ -85,9 +85,14 @@ class QuantServer {
       const r = this.bt.run(kl);
       res.json({ symbol: req.params.symbol, days, ...r });
     });
-    // 用户智能体状态(从agent-manager读)
+    // 用户智能体状态 + 震荡池/趋势池 + 大脑状态
     this.app.get('/api/quant/agents', async (req, res) => {
-      res.json({ agents: global.__quantAgents ? global.__quantAgents.getAllStatus() : [], note: '智能体管理器绑定后实时' });
+      const mgr = global.__quantAgents;
+      res.json({
+        agents: mgr ? mgr.getAllStatus() : [],
+        pools: mgr ? { bollinger: mgr.BOLLINGER_POOL, trend: mgr.TREND_POOL } : {},
+        brain: mgr ? Object.values(mgr._agents).map(a => ({ wallet: a.wallet.slice(0,10), picks: a.brain ? a.brain.picks : {}, nnTrain: a.brain ? a.brain.nn.trainCount : 0 })) : [],
+      });
     });
     // 指标
     this.app.get('/api/quant/health', (req, res) => res.json({ ok: true, engineCount: global.__quantAgents ? Object.values(global.__quantAgents._agents||{}).length : 0 }));

@@ -9,7 +9,7 @@ class BollingerStrategy {
   constructor(opts = {}) {
     this.period = 20;                 // 布林周期
     this.stdDev = 2;                  // 标准差倍数
-    this.histLookback = 100;          // 带宽100根历史分位
+    this.histLookback = 60;           // 带宽60根历史分位(性能优化)
     this.openBandPct = 0.90;          // 开仓准入: 带宽分位>90%禁开
     this.releaseBandPct = 0.85;       // 解禁: <85%
     this.shrinkBars = 3;              // 连续3根收窄

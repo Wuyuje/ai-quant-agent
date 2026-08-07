@@ -89,6 +89,9 @@ class QuantAgent {
       const decision = this.brain.decide(symbol, kl);
       const strat = decision.chosen;
       if (strat === 'none') continue;   // shock观望
+      // 分池约束: 布林带引擎只调用震荡池, 趋势引擎只调用趋势池
+      if (strat === 'bollinger' && this.BOLLINGER_POOL && !this.BOLLINGER_POOL.includes(symbol)) continue;
+      if (strat === 'trend' && this.TREND_POOL && !this.TREND_POOL.includes(symbol)) continue;
 
       const pm = await this.api.getExchangeInfo().catch(()=>null);
       const price = +toArray(kl)[kl.length-1][3];
@@ -230,10 +233,14 @@ class QuantAgentManager {
     this.running = false;
     this.pauseOpen = false;
     this.ADMIN_WALLETS = ['0xfa3b90c574469909d20848273c06752a22fde74a','0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e','0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5','0xc6dbb4cd3b6a12068c7388248da2bd32df7ef9b7'];
-    // 精选交易池(覆盖震荡币+趋势币, 由市场分类器自动选对应策略)
-    // 震荡币(网格): BCH/OP/WIF/SEI/FIL/TIA/BTC/ETH  | 趋势币(趋势): DOT/STX/ALGO/ARB/INJ/APT/TURBO
-    this.COIN_POOL = ['BCHUSDT','OPUSDT','WIFUSDT','SEIUSDT','FILUSDT','TIAUSDT','BTCUSDT','ETHUSDT',
-                      'DOTUSDT','STXUSDT','ALGOUSDT','ARBUSDT','INJUSDT','APTUSDT','TURBOUSDT'];
+    // ═══ 交易池(分开配置) ═══
+    // 震荡行情交易池(专门给 布林带震荡策略引擎 调用) — 布林回测精选优质币
+    // WIF/FIL/ETH/APT/TURBO/STX 等(触轨低买高卖胜率高)
+    this.BOLLINGER_POOL = ['WIFUSDT','FILUSDT','ETHUSDT','APTUSDT','TURBOUSDT','STXUSDT','BCHUSDT','TIAUSDT','1000PEPEUSDT','INJUSDT'];
+    // 趋势行情交易池(给趋势策略引擎调用)
+    this.TREND_POOL = ['DOTUSDT','STXUSDT','ALGOUSDT','ARBUSDT','INJUSDT','APTUSDT','TURBOUSDT','BTCUSDT','SOLUSDT'];
+    // 合并扫描池
+    this.COIN_POOL = [...new Set([...this.BOLLINGER_POOL, ...this.TREND_POOL])];
   }
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[Quant] ${ts} ${m}`); }
   _isAdmin(w) { return this.ADMIN_WALLETS.some(a => a.toLowerCase() === (w||'').toLowerCase()); }
