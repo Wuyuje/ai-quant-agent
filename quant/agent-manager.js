@@ -313,11 +313,14 @@ class QuantAgentManager {
         if (!this._agents[wallet]) {
           const isAdmin = this._isAdmin(wallet);
           let apiKey, apiSecret;
-          if (isAdmin) { apiKey = this.adminApiKey; apiSecret = this.adminApiSecret; }
-          else {
-            if (!u.binanceApiKey || !u.binanceSecret) continue;
+          // 优先级: 用户有自己的key(即使是管理员/白名单) → 用独立key(查各自真实账户)
+          // 只有无独立key的管理员(如fa3b90c5)才用平台公用key
+          if (u.binanceApiKey && u.binanceSecret) {
             apiKey = decrypt(u.binanceApiKey); apiSecret = decrypt(u.binanceSecret);
-            if (!apiKey || apiKey.length !== 64) continue;
+            if (!apiKey || apiKey.length !== 64) { if (!isAdmin) continue; apiKey=this.adminApiKey; apiSecret=this.adminApiSecret; }
+          } else {
+            if (!isAdmin) continue;
+            apiKey = this.adminApiKey; apiSecret = this.adminApiSecret;
           }
           this._agents[wallet] = new QuantAgent({ wallet, apiKey, apiSecret, isAdmin, userDB: this.userDB, pauseOpen: this.pauseOpen });
           this._log(`${wallet.slice(0,10)} 智能体启动(${isAdmin?'管理员':'普通'})`);
