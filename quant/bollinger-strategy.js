@@ -25,7 +25,8 @@ class BollingerStrategy {
 
   // 计算布林带 {mid, upper, lower, width, widthPercentile, shrinking}
   calcBands(arr) {
-    const closes = arr.map(k => +k[3]);
+    const arrA = toArray(arr);   // 对象K线→数组[o,h,l,c,v]
+    const closes = arrA.map(k => +k[3]);
     if (closes.length < this.period) return null;
     const seg = closes.slice(-this.period);
     const mid = seg.reduce((a,b)=>a+b,0)/this.period;
