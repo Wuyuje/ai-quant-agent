@@ -22,6 +22,8 @@ class QuantServer {
     this.app = express();
     this.app.use(express.json());
     this.app.use(express.static(__dirname));
+    this.app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+    this.app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
     this.cls = new MarketClassifier();
     this.fe = new FeatureEngineer();
     this.trend = new TrendFollowingStrategy();
