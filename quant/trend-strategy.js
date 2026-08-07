@@ -96,16 +96,19 @@ class TrendStrategy {
     const { pos: posRatio } = posInfo;
     const turnAbs = this.turnAbs;
 
+    const entry = pos.entryPrice || price || 0;
+    // 持仓实际盈亏%(真实赚钱才算止盈, 防止'MA7在高位但仓位没赚就平')
+    const pnlPct = pos.side === 'LONG' ? (price - entry)/entry*100 : (entry - price)/entry*100;
+
     if (pos.side === 'LONG') {
-      // 平多条件: MA7到高位区(>0.72, 涨到顶) + MA7拐头向下(趋势反转)
-      // 中途震荡(未到高位区)不平 → 拿到最高点
-      if (posRatio > 0.72 && turn.dir === -1 && turn.d1 < -turnAbs) {
-        return { action:'CLOSE', reason:`到顶止盈(MA7位${(posRatio*100).toFixed(0)}%顶区+拐头下,吃满上涨)` };
+      // 平多: MA7到高位区 + 拐头向下 + 必须实际盈利(真的涨了才吃满, 不吃亏损单)
+      if (posRatio > 0.72 && turn.dir === -1 && turn.d1 < -turnAbs && pnlPct > 0) {
+        return { action:'CLOSE', reason:`到顶止盈(MA7位${(posRatio*100).toFixed(0)}%顶区+拐头下+实盈${pnlPct.toFixed(1)}%,吃满上涨)` };
       }
     } else if (pos.side === 'SHORT') {
-      // 平空条件: MA7到低位区(<0.28, 跌到顶) + MA7拐头向上(趋势反转)
-      if (posRatio < 0.28 && turn.dir === 1 && turn.d1 > turnAbs) {
-        return { action:'CLOSE', reason:`到底止盈(MA7位${(posRatio*100).toFixed(0)}%底区+拐头上,吃满下跌)` };
+      // 平空: MA7到低位区 + 拐头向上 + 必须实际盈利
+      if (posRatio < 0.28 && turn.dir === 1 && turn.d1 > turnAbs && pnlPct > 0) {
+        return { action:'CLOSE', reason:`到底止盈(MA7位${(posRatio*100).toFixed(0)}%底区+拐头上+实盈${pnlPct.toFixed(1)}%,吃满下跌)` };
       }
     }
     return { action:'HOLD' };
