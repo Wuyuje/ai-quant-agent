@@ -239,7 +239,8 @@ class QuantAgentManager {
     this.BOLLINGER_POOL = ['WIFUSDT','FILUSDT','ETHUSDT','APTUSDT','TURBOUSDT','STXUSDT','BCHUSDT','TIAUSDT','1000PEPEUSDT','INJUSDT'];
     // 趋势行情交易池(给趋势策略引擎调用) — 30天趋势回测精选
     // 正期望: LINK/FIL(TIA/ADA等趋势弱负期望不纳入)
-    this.TREND_POOL = ['XRPUSDT','ARBUSDT','BTCUSDT','AVAXUSDT','DOTUSDT','APTUSDT','LINKUSDT'];
+    // 趋势行情交易池(给趋势引擎调用) — v6摆动结构90天回测精选(胜率≥50%+正回报)
+    this.TREND_POOL = ['ADAUSDT','SOLUSDT','TIAUSDT','BCHUSDT','KASUSDT','ETHUSDT','OPUSDT'];
     // 合并扫描池
     this.COIN_POOL = [...new Set([...this.BOLLINGER_POOL, ...this.TREND_POOL])];
   }
