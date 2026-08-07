@@ -69,6 +69,7 @@ class QuantAgent {
       const acc = await this.api._request('GET', '/fapi/v2/positionRisk').catch(() => null);
       if (!Array.isArray(acc)) return;
       const real = acc.filter(p => p.symbol && p.positionAmt && Math.abs(+p.positionAmt) > 0);
+      this._unrealizedPnl = real.reduce((s, p) => s + (+p.unRealizedProfit || 0), 0);
       for (const p of real) {
         const sym = p.symbol;
         const amt = +p.positionAmt;
@@ -256,6 +257,8 @@ class QuantAgent {
     const wins = this.closedHistory.filter(c => c.pnl > 0).length;
     return {
       wallet: this.wallet, isAdmin: this.isAdmin, balance: this.balance,
+      totalEquity: +((this.balance||0) + (this._unrealizedPnl||0)).toFixed(2),  // 总资金 = 可用余额 + 未实现盈亏
+      unrealizedPnl: +((this._unrealizedPnl||0)).toFixed(2),
       positionCount: Object.keys(this.positions).length,
       positions: Object.entries(this.positions).map(([s,p]) => ({ symbol: s, side: p.side, strategy: p.strategy, entryPrice: p.entryPrice, currentPrice: p.currentPrice, leverage: p.leverage })),
       trades: this.closedHistory.length, wins, losses: this.closedHistory.length - wins,
