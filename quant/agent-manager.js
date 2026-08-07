@@ -144,8 +144,8 @@ class QuantAgent {
       if (strat === 'trend') {
         sig = this.trend.entrySignal(kl, decision.market.trendDir);
         if (sig.signal === 'NONE') continue;
-        const bs = this.trend.positionSize(this.balance, this.fe.atrPct(kl), 5);
-        const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: 5, precisionMap: pm, price, balance: this.balance });
+        const bs = this.trend.positionSize(this.balance, sig.signal, 0.15);
+        const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: bs.leverage, precisionMap: pm, price, balance: this.balance });
         if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, openTime: Date.now() }; this._stratLock[symbol]='trend'; }
       } else if (strat === 'bollinger') {
         // 布林带策略(规格): 5分钟K线决策
@@ -177,11 +177,13 @@ class QuantAgent {
         let closeReason = null, pnlToCount = null;
 
         if (pos.strategy === 'trend') {
-          const ts = this.trend.trailingStop(pos, price);
+          // 大道至简MA7趋势: 用5min K线管理(位置+拐头判定)
+          const tkl = await this.api.getKlines(symbol, '5m', 300).catch(() => null);
+          const tcloses = tkl ? toArray(tkl).map(k => +k[3]) : (toArray(kl).map(k=>+k[3]));
+          const ts = this.trend.takeProfit(pos, price, tcloses);
           if (ts.action === 'CLOSE') { closeReason = ts.reason; }
           else {
-            const closes = toArray(kl).map(k => +k[3]);
-            const sl = this.trend.stopLoss(pos, price, closes);
+            const sl = this.trend.stopLoss(pos, price, tcloses);
             if (sl.action === 'CLOSE') closeReason = sl.reason;
           }
         } else if (pos.strategy === 'grid') {
