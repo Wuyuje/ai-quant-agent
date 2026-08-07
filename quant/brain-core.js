@@ -51,8 +51,8 @@ class BrainCore {
     if (ruleStrat === 'trend') {
       // 规则说趋势 → 但若NN强烈不确认且 bollinger历史更好 → 可转布林
       chosen = (nn.confidence < 0.45 && ucbPick === 'bollinger') ? 'bollinger' : 'trend';
-    } else if (ruleStrat === 'grid') {
-      // 规则说震荡 → 布林带策略
+    } else if (ruleStrat === 'bollinger') {
+      // 规则说震荡 → 布林带震荡引擎
       chosen = 'bollinger';
     } else {
       chosen = 'none';  // shock → 不动

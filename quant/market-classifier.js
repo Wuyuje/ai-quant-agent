@@ -108,9 +108,10 @@ class MarketClassifier {
 
   // 该状态下应启用的策略
   recommendedStrategy(judgeResult) {
+    // 统一命名: 震荡→bollinger(布林带引擎, 之前叫grid已废弃)
     switch (judgeResult.state) {
-      case 'trending': return 'trend';       // 趋势→趋势跟踪
-      case 'ranging': return 'grid';          // 震荡→网格
+      case 'trending': return 'trend';       // 趋势→趋势引擎(v7大道至简)
+      case 'ranging': return 'bollinger';    // 震荡→布林带震荡引擎
       case 'shock': return 'none';           // 剧烈波动→观望(风险高)
       default: return 'none';
     }
