@@ -112,6 +112,7 @@ rows.innerHTML=h||'<tr><td colspan="7">智能体管理器未运行（仅看盘�
   if(poolEl){poolEl.innerHTML='<b>🟢 震荡行情交易池(布林带引擎):</b> '+(d.pools&&d.pools.bollinger?d.pools.bollinger.map(x=>x.replace('USDT','')).join(' '):'--')+'<br><b>🔵 趋势池(趋势引擎):</b> '+(d.pools&&d.pools.trend?d.pools.trend.map(x=>x.replace('USDT','')).join(' '):'--');}
   const brainEl=document.getElementById('brainBox');
   if(brainEl&&d.brain){const bd=(d.brain||[]).map(b=>b.wallet+'(NN训练'+b.nnTrain+')').join(' ');brainEl.innerHTML='<b>🧠 大脑中枢(自学习+NN):</b> '+bd;}
+}
 async function loadBt(){const sym=$('#btSym').value,d=$('#btDays').value;const r=await api('/api/quant/backtest/'+sym+'/'+d);const info=$('#btInfo');info.innerHTML=r.error?'<span class="r">'+r.error+'</span>':'<b>'+sym+'</b> '+d+'天: 交易'+r.nT+'笔 胜率'+r.rate+'% · 净回报<b class="'+(r.ret>=0?'g':'r')+'">'+(r.ret>=0?'+':'')+r.ret.toFixed(1)+'%</b> · 期末$'+r.endBal.toFixed(0);
 const c=$('#btChart').getContext('2d');c.clearRect(0,0,c.width,c.height);c.fillStyle='#8b949e';c.font='12px sans-serif';c.fillText('回报率 '+r.ret.toFixed(1)+'%  交易'+r.nT,10,20);
 $('#btTrades').innerHTML='<div class="muted">(累积: 胜'+r.nW+'-'+r.nL+'负)</div>';}
