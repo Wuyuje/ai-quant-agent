@@ -13,6 +13,8 @@ const { TrendFollowingStrategy } = require('./trend-strategy');
 const { RangeGridStrategy } = require('./grid-strategy');
 const { TradeExecutionCore } = require('./execution-core');
 const { HedgeStrategy } = require('./hedge-strategy');
+const { BollingerStrategy } = require('./bollinger-strategy');
+const { BrainCore } = require('./brain-core');
 
 // 算力费(与旧A策略一致): 盈利按平台0.20+生态0.10=30%扣给管理员
 const PLATFORM_FEE_RATE = 0.20;
@@ -28,8 +30,10 @@ class QuantAgent {
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
     this.trend = new TrendFollowingStrategy();
-    this.grid = new RangeGridStrategy();
+    this.grid = new RangeGridStrategy();      // (保留供参考)
+    this.boll = new BollingerStrategy();      // 新震荡·布林带策略
     this.hedge = new HedgeStrategy();
+    this.brain = new BrainCore();             // 大脑中枢(切换+自学习+NN)
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
 
     this.balance = 0;
@@ -81,27 +85,32 @@ class QuantAgent {
       if (!kl || kl.length < 80) continue;
       // 资金费率
       let fr = 0; try { const f = await this.api.getFundingRate(symbol); fr = Array.isArray(f)&&f[0] ? +f[0].fundingRate : 0; } catch(e){}
-      // 市场分类
-      const j = this.classifier.judgeMarketState(kl, fr);
-      const strat = this.classifier.recommendedStrategy(j);
+      // ═══ 大脑中枢: 自学习+神经网络 切换 趋势/布林带策略 ═══
+      const decision = this.brain.decide(symbol, kl);
+      const strat = decision.chosen;
       if (strat === 'none') continue;   // shock观望
 
-      // 信号
       const pm = await this.api.getExchangeInfo().catch(()=>null);
       const price = +toArray(kl)[kl.length-1][3];
       let sig;
       if (strat === 'trend') {
-        sig = this.trend.entrySignal(kl, j.trendDir);
+        sig = this.trend.entrySignal(kl, decision.market.trendDir);
         if (sig.signal === 'NONE') continue;
         const bs = this.trend.positionSize(this.balance, this.fe.atrPct(kl), 5);
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: 5, precisionMap: pm, price, balance: this.balance });
         if (r.success) this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, openTime: Date.now() };
-      } else if (strat === 'grid') {
-        sig = this.grid.generateSignal(kl, j.trendDir);
-        if (sig.signal === 'NONE') continue;
-        const bs = this.grid.calculatePositionSize(this.balance, this.fe.atrPct(kl), 3);
-        const r = await this.executor.executeOrder(sig, { symbol, side: sig.side, notional: bs.notional, leverage: 3, precisionMap: pm, price, balance: this.balance });
-        if (r.success) this.positions[symbol] = { side: sig.side, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'grid', _peak: price, _gridRange: this.grid.computeRange(kl), openTime: Date.now() };
+      } else if (strat === 'bollinger') {
+        // 布林带策略(规格): 5分钟K线决策
+        const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
+        if (!bkl || bkl.length < 40) continue;
+        const openGate = this.boll.canOpen(bkl);
+        if (!openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
+        const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
+        if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
+          const bs = { notional: Math.max(20, this.balance*0.15*3), margin: Math.max(20,this.balance*0.15*3)/3, leverage: 3 };
+          const r = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bs.notional, leverage: 3, precisionMap: pm, price, balance: this.balance });
+          if (r.success) this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, openTime: Date.now() };
+        }
       }
     }
     this._manageOnly();
@@ -130,6 +139,17 @@ class QuantAgent {
         } else if (pos.strategy === 'grid') {
           const ge = this.grid.gridExit(pos, price, pos._gridRange || {});
           if (ge.action === 'CLOSE') closeReason = ge.reason;
+        } else if (pos.strategy === 'bollinger') {
+          // 布林带策略止盈/风控(规格): 5min K线
+          const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
+          if (bkl && bkl.length >= 30) {
+            const tp = this.boll.checkTakeProfit(pos, bkl);
+            if (tp.action === 'CLOSE') closeReason = tp.reason;
+            else {
+              const hs = this.boll.checkHardStop(pos, bkl, this.balance);
+              if (hs.stop) closeReason = hs.reason;
+            }
+          }
         } else if (pos.strategy === 'hedge') {
           // 套利仓: 回归中轨(价格回到MA附近)就平
           const arr = toArray(kl); const closes = arr.map(k=>+k[3]);
