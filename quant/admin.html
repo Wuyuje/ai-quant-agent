@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARK 量化智能体 · 看盘管理</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--border:#21262d;--text:#c9d1d9;--muted:#8b949e;--green:#3fb950;--red:#f85149;--orange:#f0883e;--blue:#58a6ff;--purple:#bc8cff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.hdr{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.hdr h1{font-size:20px;color:#fff}
+.hdr .badge{padding:4px 10px;border-radius:20px;font-size:12px;background:#1f6feb33;color:#58a6ff;border:1px solid #1f6feb55}
+.hdr .live{color:var(--green);font-size:13px}
+.wrap{padding:20px 24px;max-width:1400px;margin:0 auto}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+h3{font-size:14px;margin-bottom:12px;color:#fff}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);font-weight:500}
+td{padding:6px 8px;border-bottom:1px solid #1c2128}
+.g{color:var(--green)}.r{color:var(--red)}.bl{color:var(--blue)}.pu{color:var(--purple)}.or{color:var(--orange)}
+.tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px}
+.t-rang{background:#58a6ff22;color:#58a6ff}.t-trend{background:#3fb95022;color:#3fb950}.t-shock{background:#f8514922;color:#f85149}
+canvas{width:100%;height:220px;background:#0d1117;border:1px solid var(--border);border-radius:8px}
+input,select{background:#0d1117;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px}
+button{background:#1f6feb;color:#fff;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:13px;margin-right:6px}
+button.ghost{background:#21262d}
+.tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:8px 18px;border-radius:8px;cursor:pointer;border:1px solid var(--border);font-size:13px;background:var(--card)}
+.tab.act{background:#1f6feb;border-color:#1f6feb;color:#fff}
+.panel{display:none}.panel.act{display:block}
+@media(max-width:900px){.g4,.g2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>🪙 ARK 量化智能体</h1>
+  <span class="badge">市场分类 · 趋势/网格双策略</span>
+  <span class="live" id="liveTime">--</span>
+  <button class="ghost" onclick="refreshAll()">⟳ 刷新</button>
+</div>
+<div class="wrap">
+ <div class="tabs">
+  <div class="tab act" data-t="market" onclick="switchT('market')">📊 市场状态</div>
+  <div class="tab" data-t="chart" onclick="switchT('chart')">📈 K线看盘</div>
+  <div class="tab" data-t="agents" onclick="switchT('agents')">🤖 智能体用户</div>
+  <div class="tab" data-t="backtest" onclick="switchT('backtest')">🧪 回测</div>
+ </div>
+
+ <div id="panel-market" class="panel act">
+  <div class="card"><h3>市场状态分类（每币: 震荡/趋势/剧烈 + 建议策略）</h3>
+   <table><thead><tr><th>币种</th><th>价格</th><th>状态</th><th>趋势方向</th><th>ADX</th><th>波动率%</th><th>建议策略</th></tr></thead>
+   <tbody id="mktRows"><tr><td colspan="7" class="muted">加载中...</td></tr></tbody></table>
+  </div>
+ </div>
+
+ <div id="panel-chart" class="panel">
+  <div class="grid g2">
+   <div class="card"><h3>K线看盘</h3>
+    <select id="chartSym" onchange="loadChart()"><option>ETHUSDT</option><option>BCHUSDT</option><option>ARBUSDT</option><option>TURBOUSDT</option><option>INJUSDT</option><option>1000PEPEUSDT</option><option>LINKUSDT</option><option>SEIUSDT</option><option>WIFUSDT</option><option>SOLUSDT</option><option>BTCUSDT</option></select>
+    <div id="chartInfo" style="font-size:12px;color:var(--muted);margin:8px 0"></div>
+    <canvas id="chart"></canvas>
+   </div>
+   <div class="card">
+    <h3>智能体判定 + 策略信号</h3>
+    <div id="analyzeBox" class="muted">选择币种加载...</div>
+   </div>
+  </div>
+ </div>
+
+ <div id="panel-agents" class="panel">
+  <div class="card"><h3>多用户智能体（各用户独立 · 算力费扣除 · 互不干扰）</h3>
+   <table><thead><tr><th>用户</th><th>类型</th><th>资金</th><th>持仓</th><th>交易</th><th>胜率</th><th>已实现盈亏</th></tr></thead>
+   <tbody id="agentRows"><tr><td colspan="7" class="muted">加载中...</td></tr></tbody></table>
+  </div>
+ </div>
+
+ <div id="panel-backtest" class="panel">
+  <div class="grid g2">
+   <div class="card"><h3>回测（市场分类+双策略）</h3>
+    <select id="btSym" onchange="loadBt()"><option>ETHUSDT</option><option>BCHUSDT</option><option>ARBUSDT</option><option>TURBOUSDT</option><option>SOLUSDT</option><option>1000PEPEUSDT</option><option>LINKUSDT</option></select>
+    <label style="font-size:12px;color:var(--muted);margin-left:8px">天数
+     <input id="btDays" type="number" value="30" style="width:60px" onchange="loadBt()"></label>
+    <div id="btInfo" style="font-size:13px;margin-top:10px"></div>
+    <canvas id="btChart"></canvas>
+   </div>
+   <div class="card"><h3>回测明细（近N笔）</h3><div id="btTrades" style="font-size:12px"></div></div>
+  </div>
+ </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);const api=async u=>(await fetch(u)).json();
+function switchT(t){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('act',x.dataset.t===t));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('act',x.id==='panel-'+t));if(t==='market')loadMkt();if(t==='chart')loadChart();if(t==='agents')loadAgents();if(t==='backtest')loadBt();}
+async function loadMkt(){const d=await api('/api/quant/market');const rows=$('#mktRows');let h='';for(const c of (d.coins||[])){const st=c.state==='ranging'?'<span class="tag t-rang">震荡</span>':c.state==='trending'?'<span class="tag t-trend">趋势</span>':'<span class="tag t-shock">剧烈</span>';const sst=c.recommended==='grid'?'<span class="bl">网格低买高卖</span>':c.recommended==='trend'?'<span class="g">趋势跟踪</span>':'<span class="r">观望</span>';const dir=c.trendDir==='UP'?'<span class="g">↑上</span>':c.trendDir==='DOWN'?'<span class="r">↓下</span>':'<span class="muted">平</span>';h+='<tr><td><b>'+c.symbol.replace('USDT','')+'</b></td><td>$'+c.close.toFixed(4)+'</td><td>'+st+'</td><td>'+dir+'</td><td>'+c.adx+'</td><td>'+c.volatility+'</td><td>'+sst+'</td></tr>';}
+rows.innerHTML=h||'<tr><td colspan="7">无数据</td></tr>';updateLive();}
+async function loadChart(){const sym=$('#chartSym').value;const kl=await api('/api/quant/klines/'+sym);const a=await api('/api/quant/analyze/'+sym);const cv=$('#chart');const ctx=cv.getContext('2d');ctx.clearRect(0,0,cv.width,cv.height);const closes=kl.map(k=>k[4]);const mx=Math.max(...closes),mn=Math.min(...closes);const W=cv.width,H=cv.height;ctx.strokeStyle='#3fb950';ctx.beginPath();closes.forEach((c,i)=>{const x=i/(closes.length-1)*W,y=H-(c-mn)/(mx-mn)*(H-20)-10;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();
+const info=$('#chartInfo');const stt=a.state==='ranging'?'震荡':a.state==='trending'?'趋势':'剧烈';info.innerHTML='<b>'+sym+'</b> '+stt+' · 趋势'+a.trendDir+' · ADX '+(a.adx||0).toFixed(1)+' · 建议: '+(a.recommended)+'';
+const ab=$('#analyzeBox');ab.innerHTML='<b>'+sym+'</b> 状态='+stt+'<br>趋势方向='+a.trendDir+'<br>ADX='+(a.adx||0).toFixed(1)+'<br>建议策略='+(a.recommended||'-')+'<br>信号: '+(a.signal?JSON.stringify(a.signal):'-');}
+async function loadAgents(){const d=await api('/api/quant/agents');const rows=$('#agentRows');let h='';for(const u of (d.agents||[])){const wr=u.trades>0?(u.wins/u.trades*100):0;const pc=u.realizedPnl>=0?'g':'r';h+='<tr><td>'+u.wallet.slice(0,12)+'...</td><td>'+(u.isAdmin?'<span class="tag t-trend">白名单</span>':'<span class="tag t-rang">普通</span>')+'</td><td>$'+(u.balance||0).toFixed(1)+'</td><td>'+u.positionCount+'</td><td>'+u.trades+'</td><td>'+wr.toFixed(0)+'%</td><td class="'+pc+'">$'+(u.realizedPnl||0).toFixed(2)+'</td></tr>';}
+rows.innerHTML=h||'<tr><td colspan="7">智能体管理器未运行（仅看盘模式）</td></tr>';}
+async function loadBt(){const sym=$('#btSym').value,d=$('#btDays').value;const r=await api('/api/quant/backtest/'+sym+'/'+d);const info=$('#btInfo');info.innerHTML=r.error?'<span class="r">'+r.error+'</span>':'<b>'+sym+'</b> '+d+'天: 交易'+r.nT+'笔 胜率'+r.rate+'% · 净回报<b class="'+(r.ret>=0?'g':'r')+'">'+(r.ret>=0?'+':'')+r.ret.toFixed(1)+'%</b> · 期末$'+r.endBal.toFixed(0);
+const c=$('#btChart').getContext('2d');c.clearRect(0,0,c.width,c.height);c.fillStyle='#8b949e';c.font='12px sans-serif';c.fillText('回报率 '+r.ret.toFixed(1)+'%  交易'+r.nT,10,20);
+$('#btTrades').innerHTML='<div class="muted">(累积: 胜'+r.nW+'-'+r.nL+'负)</div>';}
+function updateLive(){$('#liveTime').textContent='更新 '+new Date().toLocaleTimeString('zh-CN',{hour12:false});}
+function refreshAll(){const t=document.querySelector('.tab.act').dataset.t;if(t==='market')loadMkt();if(t==='chart')loadChart();if(t==='agents')loadAgents();if(t==='backtest')loadBt();}
+loadMkt();setInterval(loadMkt,30000);
+</script>
+</body></html>

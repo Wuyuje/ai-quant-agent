@@ -5,19 +5,19 @@
 //   + check_trend_direction 判断趋势方向(涨/跌)
 // 对应图片: 二、市场状态分类模块（核心智能体）
 // ═══════════════════════════════════════════════════════════
-const { FeatureEngineer } = require('./featurer');
+const { FeatureEngineer, toArray } = require('./featurer');
 const { Indicators } = require('../lib/common');
 
 // ADX (兼容 Binance K线数组格式 [open,high,low,close,volume,...])
-function calcADX(rawKlines, period = 14) {
+function calcADX(raw, period = 14) {
+  const rawKlines = toArray(raw);
   if (!Array.isArray(rawKlines) || rawKlines.length < period * 2) return 0;
-  // 数组 klines: [o,h,l,c,v]
   let plusDM = 0, minusDM = 0, tr = 0;
   const start = rawKlines.length - period;
   for (let i = start; i < rawKlines.length; i++) {
-    const up = +rawKlines[i][2] - +rawKlines[i-1][2];      // high diff
-    const down = +rawKlines[i-1][3] - +rawKlines[i][3];     // low diff
-    const h = +rawKlines[i][2], l = +rawKlines[i][3], pc = +rawKlines[i-1][4];
+    const up = +rawKlines[i][1] - +rawKlines[i-1][1];      // high diff
+    const down = +rawKlines[i-1][2] - +rawKlines[i][2];     // low diff
+    const h = +rawKlines[i][1], l = +rawKlines[i][2], pc = +rawKlines[i-1][3];
     tr += Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
     if (up > down && up > 0) plusDM += up;
     else if (down > up && down > 0) minusDM += down;

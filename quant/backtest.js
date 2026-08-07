@@ -3,7 +3,7 @@
 // 用历史K线 检验 市场分类→双策略 的整体表现
 // 对应图片: 五、回测与优化建议
 // ═══════════════════════════════════════════════════════════
-const { FeatureEngineer } = require('./featurer');
+const { FeatureEngineer, toArray } = require('./featurer');
 const { MarketClassifier } = require('./market-classifier');
 const { TrendFollowingStrategy } = require('./trend-strategy');
 const { RangeGridStrategy } = require('./grid-strategy');
@@ -27,7 +27,7 @@ class QuantBacktest {
 
     for (let i = 120; i < klines.length; i++) {
       const win = klines.slice(0, i + 1);
-      const price = +win[win.length-1][4];
+      const price = +toArray(win)[win.length-1][3];
 
       // ===== 持仓管理优先 =====
       if (pos) {
@@ -76,7 +76,7 @@ class QuantBacktest {
 
     // 未平仓结算
     if (pos) {
-      const price = +klines[klines.length-1][4];
+      const price = +toArray(klines)[klines.length-1][3];
       const rawPct = pos.side === 'LONG' ? (price - pos.entry)/pos.entry*100 : (pos.entry - price)/pos.entry*100;
       const pnl = rawPct * LEV - TFEE * 200;
       bal += pnl; nT++; pnl > 0 ? nW++ : nL++;

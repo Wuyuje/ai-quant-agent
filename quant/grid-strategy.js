@@ -3,7 +3,7 @@
 // 震荡行情中低买高卖: 网格下沿买入 / 上沿卖出
 // 对应图片: 3.1 震荡网格策略
 // ═══════════════════════════════════════════════════════════
-const { FeatureEngineer } = require('./featurer');
+const { FeatureEngineer, toArray } = require('./featurer');
 
 class RangeGridStrategy {
   constructor(opts = {}) {
@@ -15,11 +15,12 @@ class RangeGridStrategy {
   }
 
   // 计算震荡箱体(用近N根最高/最低)
-  computeRange(klines) {
+  computeRange(raw) {
+    const klines = toArray(raw);
     const look = Math.min(this.rangeLookback, klines.length);
     const seg = klines.slice(-look);
-    const high = Math.max(...seg.map(k => +k[2]));
-    const low = Math.min(...seg.map(k => +k[3]));
+    const high = Math.max(...seg.map(k => +k[1]));
+    const low = Math.min(...seg.map(k => +k[2]));
     return { high, low, mid: (high + low) / 2, range: high - low };
   }
 

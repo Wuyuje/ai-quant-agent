@@ -7,7 +7,7 @@
 const path = require('path');
 const { BinanceAPI } = require('../lib/common');
 const { decrypt } = require('../core/crypto-utils');
-const { FeatureEngineer } = require('./featurer');
+const { FeatureEngineer, toArray } = require('./featurer');
 const { MarketClassifier } = require('./market-classifier');
 const { TrendFollowingStrategy } = require('./trend-strategy');
 const { RangeGridStrategy } = require('./grid-strategy');
@@ -62,7 +62,7 @@ class QuantAgent {
 
       // 信号
       const pm = await this.api.getExchangeInfo().catch(()=>null);
-      const price = +kl[kl.length-1][4];
+      const price = +toArray(kl)[kl.length-1][3];
       let sig;
       if (strat === 'trend') {
         sig = this.trend.entrySignal(kl, j.trendDir);
@@ -88,7 +88,7 @@ class QuantAgent {
       try {
         const kl = await this.api.getKlines(symbol, '15m', 60).catch(() => null);
         if (!kl || kl.length < 20) continue;
-        const price = +kl[kl.length-1][4];
+        const price = +toArray(kl)[kl.length-1][3];
         pos.currentPrice = price;
         const pm = await this.api.getExchangeInfo().catch(()=>null);
         let closeReason = null, pnlToCount = null;

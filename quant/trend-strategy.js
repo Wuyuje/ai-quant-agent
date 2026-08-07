@@ -4,6 +4,7 @@
 // 对应图片: 3.2 趋势跟踪策略
 // ═══════════════════════════════════════════════════════════
 const { Indicators } = require('../lib/common');
+const { toArray } = require('./featurer');
 
 class TrendFollowingStrategy {
   constructor(opts = {}) {
@@ -19,7 +20,7 @@ class TrendFollowingStrategy {
   // 入场信号: 趋势明确 + 顺趋势回踩进场
   entrySignal(klines, trendDir) {
     if (!klines || klines.length < 60) return { signal: 'NONE', reason: 'K线不足' };
-    const closes = klines.map(k => +k[4]);
+    const closes = toArray(klines).map(k => +k[3]);
     const emaS = Indicators.ema(closes, this.emaShort);
     const emaL = Indicators.ema(closes, this.emaLong);
     const adx = Indicators.adx(klines, 14) || 0;
