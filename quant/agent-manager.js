@@ -237,8 +237,9 @@ class QuantAgentManager {
     // 震荡行情交易池(专门给 布林带震荡策略引擎 调用) — 布林回测精选优质币
     // WIF/FIL/ETH/APT/TURBO/STX 等(触轨低买高卖胜率高)
     this.BOLLINGER_POOL = ['WIFUSDT','FILUSDT','ETHUSDT','APTUSDT','TURBOUSDT','STXUSDT','BCHUSDT','TIAUSDT','1000PEPEUSDT','INJUSDT'];
-    // 趋势行情交易池(给趋势策略引擎调用)
-    this.TREND_POOL = ['DOTUSDT','STXUSDT','ALGOUSDT','ARBUSDT','INJUSDT','APTUSDT','TURBOUSDT','BTCUSDT','SOLUSDT'];
+    // 趋势行情交易池(给趋势策略引擎调用) — 30天趋势回测精选
+    // 正期望: LINK/FIL(TIA/ADA等趋势弱负期望不纳入)
+    this.TREND_POOL = ['LINKUSDT','FILUSDT','TURBOUSDT','DOTUSDT','KASUSDT','BTCUSDT','ETHUSDT'];
     // 合并扫描池
     this.COIN_POOL = [...new Set([...this.BOLLINGER_POOL, ...this.TREND_POOL])];
   }
