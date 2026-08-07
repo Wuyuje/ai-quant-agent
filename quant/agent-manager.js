@@ -291,7 +291,8 @@ class QuantAgentManager {
     // 趋势行情交易池(给趋势策略引擎调用) — 30天趋势回测精选
     // 正期望: LINK/FIL(TIA/ADA等趋势弱负期望不纳入)
     // 趋势行情交易池(给趋势引擎调用) — v6摆动结构90天回测精选(胜率≥50%+正回报)
-    this.TREND_POOL = ['ADAUSDT','SOLUSDT','TIAUSDT','BCHUSDT','KASUSDT','ETHUSDT','OPUSDT'];
+    // 趋势池(v7大道至简MA7·30天回测正期望精选): AVAX+5%/KAS+2.9%/TIA+1.5%/ADA+0.5%/BTC+0.4%
+    this.TREND_POOL = ['AVAXUSDT','KASUSDT','TIAUSDT','ADAUSDT','BTCUSDT'];
     // 合并扫描池
     this.COIN_POOL = [...new Set([...this.BOLLINGER_POOL, ...this.TREND_POOL])];
   }
