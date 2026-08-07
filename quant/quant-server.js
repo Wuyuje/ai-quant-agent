@@ -38,6 +38,7 @@ class QuantServer {
   // 后台轮询市场分类(缓存, 供看盘)
   async _pollMarket() {
     try {
+      this._marketTs = Date.now();
       for (const sym of COINS) {
         const kl = await this.api.getKlines(sym, '15m', 120).catch(() => null);
         if (!kl || kl.length < 80) continue;
@@ -56,8 +57,8 @@ class QuantServer {
   _routes() {
     // 市场状态看盘
     this.app.get('/api/quant/market', async (req, res) => {
-      await this._pollMarket();
-      res.json({ time: Date.now(), coins: Object.values(this._marketCache) });
+      // 返回缓存(后台30s刷新), 避免每次请求串行拉K线导致卡顿
+      res.json({ time: Date.now(), cached: this._marketTs || 0, coins: Object.values(this._marketCache) });
     });
     // K线数据
     this.app.get('/api/quant/klines/:symbol', async (req, res) => {
