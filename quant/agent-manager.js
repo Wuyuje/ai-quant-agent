@@ -236,7 +236,8 @@ class QuantAgentManager {
     // ═══ 交易池(分开配置) ═══
     // 震荡行情交易池(专门给 布林带震荡策略引擎 调用) — 布林回测精选优质币
     // WIF/FIL/ETH/APT/TURBO/STX 等(触轨低买高卖胜率高)
-    this.BOLLINGER_POOL = ['WIFUSDT','FILUSDT','ETHUSDT','APTUSDT','TURBOUSDT','STXUSDT','BCHUSDT','TIAUSDT','1000PEPEUSDT','INJUSDT'];
+    // 震荡行情交易池(布林带引擎) — 修复NaN bug后最优回测精选(交易≥3+胜率100%)
+    this.BOLLINGER_POOL = ['APTUSDT','FILUSDT','STXUSDT','TIAUSDT','1000PEPEUSDT','INJUSDT','LINKUSDT','SUIUSDT','ARBUSDT'];
     // 趋势行情交易池(给趋势策略引擎调用) — 30天趋势回测精选
     // 正期望: LINK/FIL(TIA/ADA等趋势弱负期望不纳入)
     // 趋势行情交易池(给趋势引擎调用) — v6摆动结构90天回测精选(胜率≥50%+正回报)
@@ -274,9 +275,9 @@ class QuantAgentManager {
           this._log(`${wallet.slice(0,10)} 智能体启动(${isAdmin?'管理员':'普通'})`);
         }
       }
-      // 强制同步停开仓状态到所有agent(安全)
+      // 灰度: 管理员可开仓(灰度验证), 普通用户保持停(待验证后放开)
       const agents = Object.values(this._agents);
-      for (const a of agents) a.pauseOpen = this.pauseOpen;
+      for (const a of agents) a.pauseOpen = this.pauseOpen ? true : !a.isAdmin;
       await Promise.all(agents.map(a => a.scan(this.COIN_POOL).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
     } catch(e) { this._log(`❌ 循环异常: ${e.message}`); }
