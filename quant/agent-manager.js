@@ -37,6 +37,7 @@ class QuantAgent {
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
 
     this.balance = 0;
+    this.totalWalletBalance = 0;   // 币安合约账户总余额(合约总资金)
     this.positions = {};       // symbol → {side, qty, entryPrice, leverage, _peak, strategy}
     this.closedHistory = [];
     this._stratLock = {};      // symbol → 锁定的策略(trend/bollinger), 防双引擎互博
@@ -114,6 +115,8 @@ class QuantAgent {
     } catch(e){ this._marketRisk = 'OK'; }
     // ① 刷新余额
     try { const bal = await this.api.getBalance(); if (typeof bal === 'number') this.balance = bal; } catch(e){}
+    // 合约账户总余额(总资金) 从 /fapi/v2/account 读取
+    try { const acc = await this.api._request('GET', '/fapi/v2/account').catch(() => null); if (acc && acc.totalWalletBalance != null) this.totalWalletBalance = +acc.totalWalletBalance; } catch(e){}
 
     // ② 逐币分析: 分类市场 → 选策略 → 信号
     for (const symbol of pool) {
@@ -257,7 +260,7 @@ class QuantAgent {
     const wins = this.closedHistory.filter(c => c.pnl > 0).length;
     return {
       wallet: this.wallet, isAdmin: this.isAdmin, balance: this.balance,
-      totalEquity: +((this.balance||0) + (this._unrealizedPnl||0)).toFixed(2),  // 总资金 = 可用余额 + 未实现盈亏
+      totalEquity: +(this.totalWalletBalance || ((this.balance||0)+(this._unrealizedPnl||0))).toFixed(2),  // 总资金 = 币安合约账户总余额
       unrealizedPnl: +((this._unrealizedPnl||0)).toFixed(2),
       positionCount: Object.keys(this.positions).length,
       positions: Object.entries(this.positions).map(([s,p]) => ({ symbol: s, side: p.side, strategy: p.strategy, entryPrice: p.entryPrice, currentPrice: p.currentPrice, leverage: p.leverage })),
