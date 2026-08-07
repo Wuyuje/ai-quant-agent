@@ -62,8 +62,46 @@ class QuantAgent {
     } catch(e){ return 'OK'; }
   }
 
+
+  // ═══ 从币安同步真实持仓(引擎内存与币安一致) ═══
+  async _syncPositions() {
+    try {
+      const acc = await this.api._request('GET', '/fapi/v2/positionRisk').catch(() => null);
+      if (!Array.isArray(acc)) return;
+      const real = acc.filter(p => p.symbol && p.positionAmt && Math.abs(+p.positionAmt) > 0);
+      for (const p of real) {
+        const sym = p.symbol;
+        const amt = +p.positionAmt;
+        const side = amt > 0 ? 'LONG' : 'SHORT';
+        // 币安有仓但引擎没记录 → 载入(接管)
+        if (!this.positions[sym]) {
+          const lev = parseInt(p.leverage) || 5;
+          this.positions[sym] = {
+            symbol: sym, side, qty: Math.abs(amt), entryPrice: +p.entryPrice,
+            currentPrice: +p.markPrice, margin: Math.abs(+p.entryPrice)*(+p.markPrice)/lev,
+            leverage: lev, _peak: +p.entryPrice, openTime: Date.now(),
+            strategy: this._stratLock[sym] || 'trend'  // 默认按锁或trend接管
+          };
+          this._stratLock[sym] = this._stratLock[sym] || 'trend';
+        } else {
+          // 已有记录, 更新价格/数量
+          this.positions[sym].currentPrice = +p.markPrice;
+          const realQty = Math.abs(amt);
+          if (Math.abs(realQty - (this.positions[sym].qty||0)) > (this.positions[sym].qty||0)*0.01) this.positions[sym].qty = realQty;
+        }
+      }
+      // 币安已平的仓(本地还有) → 移除
+      const realSyms = new Set(real.map(p=>p.symbol));
+      for (const sym of Object.keys(this.positions)) {
+        if (!realSyms.has(sym)) { delete this.positions[sym]; delete this._stratLock[sym]; }
+      }
+    } catch(e){}
+  }
+
+
   // 主扫描: 每个标的
   async scan(pool) {
+    await this._syncPositions();  // 先同步币安真实持仓
     if (this.pauseOpen) { this._manageOnly(); return; }
     // 大盘过滤: 缓存BTC状态(每轮查一次)
     try {
