@@ -9,7 +9,7 @@ const fs = require('fs');
 const { BinanceAPI } = require('../lib/common');
 const { MarketClassifier } = require('./market-classifier');
 const { FeatureEngineer, toArray } = require('./featurer');
-const { TrendFollowingStrategy } = require('./trend-strategy');
+const { TrendStrategy } = require('./trend-strategy');
 const { RangeGridStrategy } = require('./grid-strategy');
 const { QuantBacktest } = require('./backtest');
 const { QuantAgentManager } = require('./agent-manager');
@@ -26,7 +26,7 @@ class QuantServer {
     this.app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
     this.cls = new MarketClassifier();
     this.fe = new FeatureEngineer();
-    this.trend = new TrendFollowingStrategy();
+    this.trend = new TrendStrategy();
     this.grid = new RangeGridStrategy();
     this.bt = new QuantBacktest();
     this.api = new BinanceAPI(APIKEY, APISECRET);
