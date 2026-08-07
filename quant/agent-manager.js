@@ -42,9 +42,32 @@ class QuantAgent {
 
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
 
+  // 大盘过滤器: BTC走弱(RISK)时不开新仓, 只管理已有持仓
+  _btcRegime(btcKlines) {
+    try {
+      const arr = toArray(btcKlines); const closes = arr.map(k => +k[3]);
+      if (!closes.length) return 'OK';
+      const last = closes[closes.length-1];
+      const seg = closes.slice(-30); const ma30v = seg.reduce((a,b)=>a+b,0)/seg.length;
+      const last6 = closes[Math.max(0,closes.length-6)];
+      const mom = (last-last6)/(last6||1)*100;
+      const pos300 = (last-ma30v)/(ma30v||1)*100;
+      if (pos300 < -0.5 && mom < -0.1) return 'RISK';
+      return 'OK';
+    } catch(e){ return 'OK'; }
+  }
+
   // 主扫描: 每个标的
   async scan(pool) {
     if (this.pauseOpen) { this._manageOnly(); return; }
+    // 大盘过滤: 缓存BTC状态(每轮查一次)
+    try {
+      if (!this._btcCache || Date.now() - this._btcCache.t > 60000) {
+        const bkl = await this.api.getKlines('BTCUSDT', '4h', 60).catch(() => null);
+        this._btcCache = { t: Date.now(), state: bkl ? this._btcRegime(bkl) : 'OK' };
+      }
+      this._marketRisk = this._btcCache.state;
+    } catch(e){ this._marketRisk = 'OK'; }
     // ① 刷新余额
     try { const bal = await this.api.getBalance(); if (typeof bal === 'number') this.balance = bal; } catch(e){}
 
