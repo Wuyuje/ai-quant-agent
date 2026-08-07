@@ -31,15 +31,15 @@ function rsiRaw(closes, period=14) {
 class TrendStrategy {
   constructor(opts = {}) {
     this.shortMA=5, this.midMA=10, this.bandMA=20, this.band30=30, this.longMA=60;
-    this.stopLossPct = opts.stopLossPct || 1.8;    // 硬止损(收紧)
+    this.stopLossPct = opts.stopLossPct || 2.5;    // 硬止损
     this.candleSpikePct = 3.0;                      // 插针过滤
     this.volRatioMin = 1.2;                         // 成交量确认: 放量≥均量×1.2
     this.rsiHigh = 75;                              // RSI超买区(顶背离)
     this.rsiLow = 25;                               // RSI超卖区
     this.reversalBreak = 0.0;                       // MA60反向立即算反转(紧止损,不放大亏损)
-    this.tpTargetMult = opts.tpTargetMult || 2.0;   // 目标(分批止盈)前移, 更快锁利
-    this.maxAtrPct = opts.maxAtrPct || 3.0;         // 波动率过滤: ATR%>3%的剧烈波动币不做(避FIL/SUI这类大亏)
-    this.trailMult = opts.trailMult || 1.2;         // 尾仓位移动止损ATR倍(收紧控制亏损)
+    this.tpTargetMult = opts.tpTargetMult || 5.0;   // 借鉴当时: 目标放大(吃整波, 不等过早锁利)
+    this.maxAtrPct = opts.maxAtrPct || 5.0;         // 波动率过滤放宽(但要避免巨震): ATR%>3%的剧烈波动币不做(避FIL/SUI这类大亏)
+    this.trailMult = opts.trailMult || 4.0;         // 借鉴当时: 宽移动止损(吃整波趋势)
     this.maxHoldBars = opts.maxHoldBars || 30;      // 最大持有K线数(减少套牢时间)
   }
 
@@ -80,6 +80,14 @@ class TrendStrategy {
     return avg>0 ? last/avg >= this.volRatioMin : true;
   }
 
+  // 借鉴当时策略: EMA7/25/99 多头排列确认 + 突破前高(顺势做多) / 跌破前低(做空)
+  _emaState(closes) {
+    function ema(v,p){if(v.length<p)return null;const k=2/(p+1);let e=v[0];for(let i=1;i<v.length;i++)e=v[i]*k+e*(1-k);return e;}
+    const e7=ema(closes,7),e25=ema(closes,25),e99=ema(closes,99);
+    if(e7==null||e25==null||e99==null)return null;
+    return { e7,e25,e99, bull: e7>e25 && e25>e99, bear: e7<e25 && e25<e99 };
+  }
+
   // ═══ 入场(少而准): 大级别趋势 → 成交量确认 → RSI不极端 → 突破/回踩 ═══
   entrySignal(klines, marketDir) {
     const arr=toArray(klines);
@@ -91,6 +99,8 @@ class TrendStrategy {
     if(pc>0 && Math.abs(price-pc)/pc*100>this.candleSpikePct)return {signal:'NONE',reason:'插针过滤'};
     const s=this._maState(closes);
     if(!s)return {signal:'NONE',reason:'均线不足'};
+    const es=this._emaState(closes);   // 借鉴当时EMA排列
+    const effDir = es ? (es.bull?'UP':(es.bear?'DOWN':marketDir)) : marketDir;
     const rsi=rsiRaw(closes,14);
     const volOk=this._volumeOk(arr);
     if(!volOk)return {signal:'NONE',reason:'无量确认'};
@@ -99,8 +109,8 @@ class TrendStrategy {
     const atrPct=this._atr(arr)/priceC*100;
     if(atrPct>this.maxAtrPct)return {signal:'NONE',reason:`波动率过滤(ATR${atrPct.toFixed(1)}%>${this.maxAtrPct}%,剧烈波动不做)`};
 
-    // 做多: 上涨趋势(非空头) + 金叉/突破 + RSI未超买(避免追高)
-    if(marketDir!=='DOWN' && !s.bearAligned){
+    // 做多: 上涨趋势(非空头) + 金叉/突破前高 + RSI未超买(避免追高)
+    if(effDir!=='DOWN' && !s.bearAligned){
       const prevC=closes.slice(0,-1), pma5=smaRaw(prevC,5), pma20=smaRaw(prevC,20);
       const golden = pma5!=null&&pma20!=null&&pma5<=pma20&&s.ma5>s.ma20;
       if(golden && rsi<this.rsiHigh) return {signal:'LONG',reason:`金叉且放量RSI${rsi.toFixed(0)}做多`,price};
@@ -109,14 +119,28 @@ class TrendStrategy {
       if(prevMa20!=null && prevC[prevC.length-1]<=prevMa20 && price>s.ma20 && s.ma20>s.ma60 && rsi<this.rsiHigh)
         return {signal:'LONG',reason:`突破MA20顺趋势做多(RSI${rsi.toFixed(0)})`,price};
     }
-    // 做空: 下跌趋势(非多头) + 死叉/跌破 + RSI未超卖(避免杀跌)
-    if(marketDir!=='UP' && !s.bullAligned){
+    // 做空: 下跌趋势(非多头) + 死叉/跌破前低 + RSI未超卖(避免杀跌)
+    if(effDir!=='UP' && !s.bullAligned){
       const prevC=closes.slice(0,-1), pma5=smaRaw(prevC,5), pma20=smaRaw(prevC,20);
       const dead = pma5!=null&&pma20!=null&&pma5>=pma20&&s.ma5<s.ma20;
       if(dead && rsi>this.rsiLow) return {signal:'SHORT',reason:`死叉且放量RSI${rsi.toFixed(0)}做空`,price};
       const prevMa20=smaRaw(prevC,20);
       if(prevMa20!=null && prevC[prevC.length-1]>=prevMa20 && price<s.ma20 && s.ma20<s.ma60 && rsi>this.rsiLow)
         return {signal:'SHORT',reason:`跌破MA20顺趋势做空(RSI${rsi.toFixed(0)})`,price};
+      // 借鉴: 跌破前低(breakdown) + 空头排列 → 做空(捕捉下跌启动)
+      const prevLow=Math.min(...closes.slice(-20,-1));
+      const prevHigh=Math.max(...closes.slice(-20,-1));
+      if(price<prevLow && effDir==='DOWN' && rsi>this.rsiLow)return {signal:'SHORT',reason:`跌破前低破位做空(RSI${rsi.toFixed(0)})`,price};
+      if(price>prevHigh && effDir==='UP' && rsi<this.rsiHigh)return {signal:'LONG',reason:`突破前高破位做多(RSI${rsi.toFixed(0)})`,price};
+      // 流畅单边过滤(借鉴): 价格在近60根内创新高次数多=真单边; 位置必须在区间高位才做多(不抄底)
+      const c60=closes.slice(-60); const rangeHigh=Math.max(...c60), rangeLow=Math.min(...c60);
+      const atTop = (price-rangeLow)/(rangeHigh-rangeLow||1) > 0.6;  // 价格处区间高位(强势)
+      const atBottom = (price-rangeLow)/(rangeHigh-rangeLow||1) < 0.4; // 低位(弱势)
+      // 强势做多: 价格持续在区间上半部 + 新高
+      if(effDir==='UP' && atTop && price>=s.ma20 && rsi<this.rsiHigh)
+        return {signal:'LONG',reason:`强势趋势高位持强做多(RSI${rsi.toFixed(0)})`,price};
+      if(effDir==='DOWN' && atBottom && price<=s.ma20 && rsi>this.rsiLow)
+        return {signal:'SHORT',reason:`弱势趋势低位破位做空(RSI${rsi.toFixed(0)})`,price};
       const pma30=smaRaw(prevC,30);
       if(pma30!=null && prevC[prevC.length-1]>=pma30 && price<=s.ma30 && s.ma30<s.ma60 && s.ma5<s.ma20 && rsi>this.rsiLow)
         return {signal:'SHORT',reason:`反弹MA30滞涨做空(RSI${rsi.toFixed(0)})`,price};
@@ -184,8 +208,9 @@ class TrendStrategy {
     return this.takeProfit(pos, price, arr);
   }
 
-  positionSize(balance, notionalRatio=0.15*3) {
-    return { notional: Math.max(20,balance*notionalRatio), margin: Math.max(20,balance*notionalRatio)/3, leverage:3 };
+  positionSize(balance, notionalRatio=0.10*8) {
+    // 借鉴当时: 趋势单用8x高杠杆放大收益
+    return { notional: Math.max(20,balance*notionalRatio), margin: Math.max(20,balance*notionalRatio)/8, leverage:8 };
   }
 }
 
