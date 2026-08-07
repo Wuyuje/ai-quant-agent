@@ -51,10 +51,17 @@ class MarketClassifier {
   checkTrendDirection(klines) {
     const closes = toArray(klines).map(k => +k[3]);
     const ma5 = localMA(closes, 5), ma30 = localMA(closes, 30), ma60 = localMA(closes, 60);
-    if (ma5 == null || ma30 == null || ma60 == null) return { dir: 'FLAT', strength: 0 };
-    // 规格: ma5 > ma30 > ma60 → uptrend; 否则 downtrend
-    const dir = (ma5 > ma30 && ma30 > ma60) ? 'UP'
-      : (ma5 < ma30 && ma30 < ma60) ? 'DOWN' : 'FLAT';
+    if (ma5 == null || ma30 == null) return { dir: 'FLAT', strength: 0 };
+    // 方向判定(灵敏): 当前价 vs MA30 位置 + 近20根动量
+    const price = closes[closes.length-1];
+    const ma30v = ma30 || price;
+    const pos = (price - ma30v) / (ma30v || 1);
+    // 近期动量(近5根 vs 更前5根)
+    const mom = (closes[closes.length-1] - closes[closes.length-6]) / (closes[closes.length-6] || 1);
+    let dir;
+    if (pos > 0.003 && mom > 0) dir = 'UP';        // 价格在MA30上方且动量向上
+    else if (pos < -0.003 && mom < 0) dir = 'DOWN'; // 价格在MA30下方且动量向下
+    else dir = 'FLAT';
     const adx = calcADX(klines, 14) || 0;
     return { dir, strength: adx };
   }

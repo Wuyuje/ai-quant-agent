@@ -74,7 +74,7 @@ class QuantAgent {
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: 5, precisionMap: pm, price, balance: this.balance });
         if (r.success) this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, openTime: Date.now() };
       } else if (strat === 'grid') {
-        sig = this.grid.generateSignal(kl);
+        sig = this.grid.generateSignal(kl, j.trendDir);
         if (sig.signal === 'NONE') continue;
         const bs = this.grid.calculatePositionSize(this.balance, this.fe.atrPct(kl), 3);
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.side, notional: bs.notional, leverage: 3, precisionMap: pm, price, balance: this.balance });

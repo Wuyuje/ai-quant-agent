@@ -25,17 +25,29 @@ class RangeGridStrategy {
   }
 
   // 生成信号: 触下沿买 / 触上沿卖
-  generateSignal(klines) {
+  // 网格双向对称: 顺市场方向单边交易 (下跌→只做空网格高卖低平; 上涨→只做多网格低买高卖; 横盘→双向)
+  // 支撑阻力用ATR动态(规格 ATR_MULTI_GRID=0.8)
+  generateSignal(klines, marketDir = 'FLAT') {
     const feat = this.fe.buildFeatures(klines, 0);
     const price = feat.close;
-    // 规格: ATR修正支撑阻力 → 支撑=中轨-ATR*0.8, 阻力=中轨+ATR*0.8
-    const med = feat.emaLong;          // 中轨(或MA)
-    const atr = feat.atrPct * price;    // ATR绝对值
+    const med = feat.emaLong;
+    const atr = feat.atrPct * price;
     const support = med - atr * 0.8;
     const resistance = med + atr * 0.8;
     if (support >= resistance) return { signal: 'NONE', reason: 'ATR区间异常' };
-    if (price <= support) return { signal: 'BUY', reason: `网格低买(触支撑${support.toFixed(4)})`, price, side: 'LONG' };
-    if (price >= resistance) return { signal: 'SELL', reason: `网格高卖(触阻力${resistance.toFixed(4)})`, price, side: 'SHORT' };
+    // 下跌趋势: 只空头网格(高卖等低平)
+    if (marketDir === 'DOWN') {
+      if (price >= resistance) return { signal: 'SELL', reason: `下跌空网高卖(触阻力${resistance.toFixed(4)})`, price, side: 'SHORT' };
+      return { signal: 'NONE', reason: '下跌空网等待反弹高卖' };
+    }
+    // 上涨趋势: 只多头网格(低买等高卖)
+    if (marketDir === 'UP') {
+      if (price <= support) return { signal: 'BUY', reason: `上涨多网低买(触支撑${support.toFixed(4)})`, price, side: 'LONG' };
+      return { signal: 'NONE', reason: '上涨多网等待回踩低买' };
+    }
+    // 横盘: 双向均值回归
+    if (price <= support) return { signal: 'BUY', reason: `横盘双向低买(触支撑)`, price, side: 'LONG' };
+    if (price >= resistance) return { signal: 'SELL', reason: `横盘双向高卖(触阻力)`, price, side: 'SHORT' };
     return { signal: 'NONE', reason: `支撑${support.toFixed(4)}<价<阻力${resistance.toFixed(4)}` };
   }
 
@@ -47,8 +59,8 @@ class RangeGridStrategy {
     const pnlPct = pos.side === 'LONG'
       ? (price - entry) / entry * 100
       : (entry - price) / entry * 100;
-    this.tpPct = this.tpPct || 0.8;   // 止盈 0.8% (小网格高频)
-    this.slPct = this.slPct || 1.0;   // 止损 1.0%
+    this.tpPct = this.tpPct || 1.0;   // 止盈 1.0%
+    this.slPct = this.slPct || 0.8;   // 止损 0.8% (快止损)
     if (pnlPct >= this.tpPct) return { action: 'CLOSE', reason: `网格止盈(+${pnlPct.toFixed(1)}%)` };
     if (pnlPct <= -this.slPct) return { action: 'CLOSE', reason: `网格止损(${pnlPct.toFixed(1)}%)` };
     return { action: 'HOLD' };
