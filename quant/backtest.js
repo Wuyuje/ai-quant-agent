@@ -33,11 +33,11 @@ class QuantBacktest {
       if (pos) {
         let closeReason = null;
         if (pos.strategy === 'trend') {
-          const ts = this.trend.trailingStop(pos, price);
-          if (ts.action === 'CLOSE') closeReason = ts.reason;
+          const closes = toArray(win).map(k => +k[3]);
+          const tp = this.trend.takeProfit(pos, price, closes);
+          if (tp.action === 'CLOSE') closeReason = tp.reason;
           else {
-            const atr = this.fe.calcATR(win);
-            const sl = this.trend.stopLoss(pos, price, atr);
+            const sl = this.trend.stopLoss(pos, price, closes);
             if (sl.action === 'CLOSE') closeReason = sl.reason;
           }
         } else if (pos.strategy === 'grid') {

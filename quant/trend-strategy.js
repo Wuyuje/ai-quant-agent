@@ -108,6 +108,11 @@ class TrendStrategy {
     return {action:'HOLD'};
   }
 
+  // 兼容别名: trailingStop(pos, price, closes) → takeProfit (用摆动结构)
+  trailingStop(pos, price, closes) {
+    return this.takeProfit(pos, price, closes || [{3: pos.entryPrice || price}]);
+  }
+
   positionSize(balance, side='LONG', nRatio=0.15) {
     const lev=side==='LONG'?5:3;
     return { notional:Math.max(20,balance*nRatio*lev), margin:Math.max(20,balance*nRatio*lev)/lev, leverage:lev };
