@@ -29,25 +29,32 @@ function calcADX(raw, period = 14) {
 
 // 状态阈值 (可调优)
 const CONFIG = {
-  shockVolatility: 0.025,   // 30根波动率>2.5% → 剧烈波动
+  shockVolatility: 0.35,    // 规格: 突发波动动作触发阈值0.35
   trendStrength: 18,        // ADX≥18 → 有趋势
   emaGapPct: 0.002,         // EMA快慢线差幅>0.2% 视为方向
   rangingBandPct: 0.05,     // 震荡带: 价格在近N根通道内波动<5%
 };
+
+// 本地数组版 MA(SMA)
+function localMA(values, period) {
+  if (!values || values.length < period) return null;
+  const slice = values.slice(-period);
+  return slice.reduce((a,b)=>a+b,0)/period;
+}
 
 class MarketClassifier {
   constructor() {
     this.fe = new FeatureEngineer();
   }
 
-  // 判断趋势方向(用 EMA 快慢线 + ADX)
+  // 判断趋势方向(用 多周期MA5/30/60 收敛判定 — 规格原文: ma5>ma30>ma60=上趋势)
   checkTrendDirection(klines) {
-    const closes = klines.map(k => +k[4]);
-    const emaS = Indicators.ema(closes, 7);
-    const emaL = Indicators.ema(closes, 25);
-    if (!emaS || !emaL) return { dir: 'FLAT', strength: 0 };
-    const diff = (emaS - emaL) / Math.abs(emaL || 1);
-    const dir = diff > CONFIG.emaGapPct ? 'UP' : diff < -CONFIG.emaGapPct ? 'DOWN' : 'FLAT';
+    const closes = toArray(klines).map(k => +k[3]);
+    const ma5 = localMA(closes, 5), ma30 = localMA(closes, 30), ma60 = localMA(closes, 60);
+    if (ma5 == null || ma30 == null || ma60 == null) return { dir: 'FLAT', strength: 0 };
+    // 规格: ma5 > ma30 > ma60 → uptrend; 否则 downtrend
+    const dir = (ma5 > ma30 && ma30 > ma60) ? 'UP'
+      : (ma5 < ma30 && ma30 < ma60) ? 'DOWN' : 'FLAT';
     const adx = calcADX(klines, 14) || 0;
     return { dir, strength: adx };
   }
@@ -56,23 +63,27 @@ class MarketClassifier {
   judgeMarketState(klines, fundingRate) {
     const feats = this.fe.buildFeatures(klines, fundingRate);
     const vol = feats.volatility;
+    const closes = toArray(klines).map(k => +k[3]);
     const adx = calcADX(klines, 14) || 0;
-    const emaS = feats.emaShort, emaL = feats.emaLong;
-    const emaGap = Math.abs(emaS - emaL) / Math.abs(emaL || 1);
     const fundingAbnormal = feats.fundingAbnormal;
+    // 多周期收敛判定: 规格 ma5与ma60 间距 spread
+    const ma5 = localMA(closes, 5), ma30 = localMA(closes, 30), ma60 = localMA(closes, 60);
+    let maConverge = 1;
+    if (ma5 != null && ma30 != null && ma60 != null) maConverge = Math.abs(ma5 - ma60) / (ma60 || 1);
+    const emaGap = 0;  // (兼容)
 
     let state;
-    // ① 剧烈波动: 波动率极高 或 资金费率异常
+    // ① 突发shock: 波动率>0.35 或 资金费率异常>3
     if (vol > CONFIG.shockVolatility || fundingAbnormal) {
       state = 'shock';
     }
-    // ② 趋势: ADX强 且 EMA方向明确
-    else if (adx >= CONFIG.trendStrength && emaGap > CONFIG.emaGapPct) {
-      state = 'trending';
-    }
-    // ③ 震荡: 波动低 且 无明确趋势
-    else {
+    // ② 震荡range: 多周期MA收敛(spread<0.02) 且 无强趋势
+    else if (maConverge < 0.02) {
       state = 'ranging';
+    }
+    // ③ 趋势trend: MA发散 + ADX强度
+    else {
+      state = 'trending';
     }
 
     const trend = this.checkTrendDirection(klines);
@@ -81,7 +92,7 @@ class MarketClassifier {
       trendDir: trend.dir,  // UP/DOWN/FLAT
       trendStrength: adx,
       volatility: vol,
-      emaGap,
+      maConverge,
       fundingRate: feats.fundingRate,
       fundingAbnormal,
       raw: feats,

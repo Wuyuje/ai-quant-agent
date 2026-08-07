@@ -3,8 +3,8 @@
 // 交易控制中枢: 下单 + 全局风控(单日最大亏损/单笔止损) + 日志
 // 对应图片: 四、执行与风控模块
 // ═══════════════════════════════════════════════════════════
-const MAX_DAILY_LOSS_RATIO = 0.20;   // 单日最大亏损比例(账户本金的20%)
-const STOP_LOSS_PER_TRADE = 0.03;    // 单笔止损比例(开仓的3%)
+const MAX_DAILY_LOSS_RATIO = 0.02;   // 规格: 每日最大亏损比例2% (触发熔断暂停)
+const STOP_LOSS_PER_TRADE = 0.003;   // 规格: 单笔止损比例0.3%
 
 class TradeExecutionCore {
   constructor(opts = {}) {

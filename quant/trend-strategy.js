@@ -6,12 +6,40 @@
 const { Indicators } = require('../lib/common');
 const { toArray } = require('./featurer');
 
+// 本地数组版EMA (数字数组)
+function localEMA(values, period) {
+  if (!values || values.length < period) return null;
+  const k = 2 / (period + 1);
+  let e = values[0];
+  for (let i = 1; i < values.length; i++) e = values[i] * k + e * (1 - k);
+  return e;
+}
+
+// 本地数组版ADX (兼容 BinanceAPI 对象K线 → toArray)
+function localADX(raw, period) {
+  const k = toArray(raw);  // [o,h,l,c,v]
+  if (!Array.isArray(k) || k.length < period * 2) return 0;
+  let plusDM = 0, minusDM = 0, tr = 0;
+  const start = k.length - period;
+  for (let i = start; i < k.length; i++) {
+    const up = +k[i][1] - +k[i-1][1];
+    const down = +k[i-1][2] - +k[i][2];
+    const h = +k[i][1], l = +k[i][2], pc = +k[i-1][3];
+    tr += Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+    if (up > down && up > 0) plusDM += up;
+    else if (down > up && down > 0) minusDM += down;
+  }
+  if (tr === 0) return 0;
+  const plusDI = plusDM / tr * 100, minusDI = minusDM / tr * 100;
+  return Math.abs(plusDI - minusDI) / Math.max(plusDI + minusDI, 0.001) * 100;
+}
+
 class TrendFollowingStrategy {
   constructor(opts = {}) {
     // 参数
     this.emaShort = opts.emaShort || 7;
     this.emaLong = opts.emaLong || 25;
-    this.adxMin = opts.adxMin || 18;          // 趋势强度门槛
+    this.adxMin = opts.adxMin || 8;          // 趋势强度门槛
     this.trailingPct = opts.trailingPct || 2.0; // 移动止损距离%(从最高价回落)
     this.stopLossPct = opts.stopLossPct || 3.0; // 初始止损%
     this.atrStopMulti = opts.atrStopMulti || 1.5; // ATR止损倍数
@@ -21,35 +49,35 @@ class TrendFollowingStrategy {
   entrySignal(klines, trendDir) {
     if (!klines || klines.length < 60) return { signal: 'NONE', reason: 'K线不足' };
     const closes = toArray(klines).map(k => +k[3]);
-    const emaS = Indicators.ema(closes, this.emaShort);
-    const emaL = Indicators.ema(closes, this.emaLong);
-    const adx = Indicators.adx(klines, 14) || 0;
+    const emaS = localEMA(closes, this.emaShort);
+    const emaL = localEMA(closes, this.emaLong);
+    const adx = localADX(klines, 14) || 0;
     const last = closes[closes.length-1];
 
     // 必须顺趋势: 趋势UP做多, DOWN做空
     if (adx < this.adxMin) return { signal: 'NONE', reason: `ADX不足(${adx.toFixed(0)}<${this.adxMin})` };
 
-    if (trendDir === 'UP') {
-      // 多头: 价格在EMA_long上方 + 回踩EMA_short后重新转上(顺势低吸)
-      const longSignal = last > emaL && emaS > emaL;
-      if (longSignal) return { signal: 'LONG', reason: '趋势UP顺势做多', price: last };
-    } else if (trendDir === 'DOWN') {
-      // 空头: 价格在EMA_long下方 + 反弹EMA_short后重新转下(顺势高抛)
-      const shortSignal = last < emaL && emaS < emaL;
-      if (shortSignal) return { signal: 'SHORT', reason: '趋势DOWN顺势做空', price: last };
+    if (trendDir === 'UP' && emaS > emaL) {
+      return { signal: 'LONG', reason: '趋势UP顺势做多', price: last };
+    } else if (trendDir === 'DOWN' && emaS < emaL) {
+      return { signal: 'SHORT', reason: '趋势DOWN顺势做空', price: last };
     }
-    return { signal: 'NONE', reason: `趋势${trendDir}但未回踩到入场位` };
+    return { signal: 'NONE', reason: `趋势${trendDir}未到入场位` };
   }
 
-  // 移动止损: 记录持仓期间最高价, 从最高回落 ≥ trailing% 平仓(锁利润)
-  trailingStop(pos, price) {
+  // 移动止损 + 逆势反手 (规格: trail_stop + 逆势反手)
+  // 从持仓最高/最低点回落 ≥ trailing% → 平仓; 若趋势已明显反转 → 反手
+  trailingStop(pos, price, trendDir) {
     if (!pos._peak) pos._peak = pos.entryPrice;
     if (pos.side === 'LONG' && price > pos._peak) pos._peak = price;
     if (pos.side === 'SHORT' && price < pos._peak) pos._peak = price;
     const trav = pos.side === 'LONG'
-      ? (pos._peak - price) / pos._peak * 100       // 多头: 从最高回落
-      : (price - pos._peak) / pos._peak * 100;       // 空头: 从最低回升
+      ? (pos._peak - price) / pos._peak * 100
+      : (price - pos._peak) / pos._peak * 100;
     if (trav >= this.trailingPct) {
+      // 逆势反手: 若当前趋势方向与持仓相反 → 平仓并反手
+      const reversed = (pos.side === 'LONG' && trendDir === 'DOWN') || (pos.side === 'SHORT' && trendDir === 'UP');
+      if (reversed) return { action: 'REVERSE', reason: `移动止损+逆势反手(从${pos.side==='LONG'?'高':'低'}点回落${trav.toFixed(1)}%,趋势反转)` };
       return { action: 'CLOSE', reason: `移动止损(从${pos.side==='LONG'?'高':'低'}点${pos._peak.toFixed(4)}回落${trav.toFixed(1)}%≥${this.trailingPct}%)` };
     }
     return { action: 'HOLD', peak: pos._peak };

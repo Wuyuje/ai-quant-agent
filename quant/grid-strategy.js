@@ -28,35 +28,29 @@ class RangeGridStrategy {
   generateSignal(klines) {
     const feat = this.fe.buildFeatures(klines, 0);
     const price = feat.close;
-    const rng = this.computeRange(klines);
-    if (rng.range <= 0) return { signal: 'NONE', reason: '箱体范围0' };
-
-    // 网格栅格: 在箱体内分 gridCount 档
-    const step = rng.range / this.gridCount;
-    // 当前价在箱体中的档位
-    const pos = (price - rng.low) / rng.range;   // 0=底 1=顶
-
-    if (pos <= 1 / (this.gridCount + 1)) {
-      // 触底 → 网格买入(低买)
-      return { signal: 'BUY', reason: `网格低买(位${(pos*100).toFixed(0)}%箱体底)`, price, side: 'LONG' };
-    }
-    if (pos >= this.gridCount / (this.gridCount + 1)) {
-      // 触顶 → 网格卖出(高卖)
-      return { signal: 'SELL', reason: `网格高卖(位${(pos*100).toFixed(0)}%箱体顶)`, price, side: 'SHORT' };
-    }
-    return { signal: 'NONE', reason: `箱体内位${(pos*100).toFixed(0)}%等待触边`, pos };
+    // 规格: ATR修正支撑阻力 → 支撑=中轨-ATR*0.8, 阻力=中轨+ATR*0.8
+    const med = feat.emaLong;          // 中轨(或MA)
+    const atr = feat.atrPct * price;    // ATR绝对值
+    const support = med - atr * 0.8;
+    const resistance = med + atr * 0.8;
+    if (support >= resistance) return { signal: 'NONE', reason: 'ATR区间异常' };
+    if (price <= support) return { signal: 'BUY', reason: `网格低买(触支撑${support.toFixed(4)})`, price, side: 'LONG' };
+    if (price >= resistance) return { signal: 'SELL', reason: `网格高卖(触阻力${resistance.toFixed(4)})`, price, side: 'SHORT' };
+    return { signal: 'NONE', reason: `支撑${support.toFixed(4)}<价<阻力${resistance.toFixed(4)}` };
   }
 
-  // 网格离场: 买后涨到上沿卖 / 卖后跌到下沿买
+  // 网格离场: 固定止盈/止损 (常规网格形态, 交易能正常完成)
+  // 做多: 涨≥止盈%平(高卖), 跌≥止损%平(认错)
+  // 做空: 跌≥止盈%平(低买回), 涨≥止损%平
   gridExit(pos, price, rng) {
-    if (!pos._gridRange) return { action: 'HOLD' };
-    const { high, low } = pos._gridRange;
-    if (pos.side === 'LONG' && price >= high * (1 - 0.001)) {
-      return { action: 'CLOSE', reason: '网格止盈(触上沿卖)' };
-    }
-    if (pos.side === 'SHORT' && price <= low * (1 + 0.001)) {
-      return { action: 'CLOSE', reason: '网格止盈(触下沿买回)' };
-    }
+    const entry = pos.entryPrice || pos.entry || price;
+    const pnlPct = pos.side === 'LONG'
+      ? (price - entry) / entry * 100
+      : (entry - price) / entry * 100;
+    this.tpPct = this.tpPct || 0.8;   // 止盈 0.8% (小网格高频)
+    this.slPct = this.slPct || 1.0;   // 止损 1.0%
+    if (pnlPct >= this.tpPct) return { action: 'CLOSE', reason: `网格止盈(+${pnlPct.toFixed(1)}%)` };
+    if (pnlPct <= -this.slPct) return { action: 'CLOSE', reason: `网格止损(${pnlPct.toFixed(1)}%)` };
     return { action: 'HOLD' };
   }
 

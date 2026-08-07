@@ -12,6 +12,7 @@ const { MarketClassifier } = require('./market-classifier');
 const { TrendFollowingStrategy } = require('./trend-strategy');
 const { RangeGridStrategy } = require('./grid-strategy');
 const { TradeExecutionCore } = require('./execution-core');
+const { HedgeStrategy } = require('./hedge-strategy');
 
 // 算力费(与旧A策略一致): 盈利按平台0.20+生态0.10=30%扣给管理员
 const PLATFORM_FEE_RATE = 0.20;
@@ -28,6 +29,7 @@ class QuantAgent {
     this.classifier = new MarketClassifier();
     this.trend = new TrendFollowingStrategy();
     this.grid = new RangeGridStrategy();
+    this.hedge = new HedgeStrategy();
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
 
     this.balance = 0;
@@ -105,6 +107,12 @@ class QuantAgent {
         } else if (pos.strategy === 'grid') {
           const ge = this.grid.gridExit(pos, price, pos._gridRange || {});
           if (ge.action === 'CLOSE') closeReason = ge.reason;
+        } else if (pos.strategy === 'hedge') {
+          // 套利仓: 回归中轨(价格回到MA附近)就平
+          const arr = toArray(kl); const closes = arr.map(k=>+k[3]);
+          const ma = closes.length>=20 ? closes.slice(-20).reduce((a,b)=>a+b,0)/20 : price;
+          const regained = (pos.side==='LONG' && price>=ma) || (pos.side==='SHORT' && price<=ma);
+          if (regained) closeReason = '高频套利:价格回归中轨平仓';
         }
 
         if (closeReason) {
@@ -165,8 +173,10 @@ class QuantAgentManager {
     this.running = false;
     this.pauseOpen = false;
     this.ADMIN_WALLETS = ['0xfa3b90c574469909d20848273c06752a22fde74a','0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e','0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5','0xc6dbb4cd3b6a12068c7388248da2bd32df7ef9b7'];
-    // 新智能体交易池(精选)
-    this.COIN_POOL = ['ETHUSDT','BCHUSDT','ARBUSDT','TURBOUSDT','INJUSDT','1000PEPEUSDT','LINKUSDT','SEIUSDT','WIFUSDT','SOLUSDT'];
+    // 精选交易池(覆盖震荡币+趋势币, 由市场分类器自动选对应策略)
+    // 震荡币(网格): BCH/OP/WIF/SEI/FIL/TIA/BTC/ETH  | 趋势币(趋势): DOT/STX/ALGO/ARB/INJ/APT/TURBO
+    this.COIN_POOL = ['BCHUSDT','OPUSDT','WIFUSDT','SEIUSDT','FILUSDT','TIAUSDT','BTCUSDT','ETHUSDT',
+                      'DOTUSDT','STXUSDT','ALGOUSDT','ARBUSDT','INJUSDT','APTUSDT','TURBOUSDT'];
   }
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[Quant] ${ts} ${m}`); }
   _isAdmin(w) { return this.ADMIN_WALLETS.some(a => a.toLowerCase() === (w||'').toLowerCase()); }
