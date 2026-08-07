@@ -39,6 +39,7 @@ class QuantAgent {
     this.balance = 0;
     this.positions = {};       // symbol → {side, qty, entryPrice, leverage, _peak, strategy}
     this.closedHistory = [];
+    this._stratLock = {};      // symbol → 锁定的策略(trend/bollinger), 防双引擎互博
     this.pauseOpen = false;
     this._runCount = 0;
     this._logTag = wallet.slice(0,10);
@@ -87,8 +88,10 @@ class QuantAgent {
       let fr = 0; try { const f = await this.api.getFundingRate(symbol); fr = Array.isArray(f)&&f[0] ? +f[0].fundingRate : 0; } catch(e){}
       // ═══ 大脑中枢: 自学习+神经网络 切换 趋势/布林带策略 ═══
       const decision = this.brain.decide(symbol, kl);
-      const strat = decision.chosen;
+      let strat = decision.chosen;
       if (strat === 'none') continue;   // shock观望
+      // ═══ 每币单一策略锁: 该币已锁定某策略则强制一致(防震荡/趋势互博) ═══
+      if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;  // 已被另一策略锁定的币不换策略开
       // 分池约束: 布林带引擎只调用震荡池, 趋势引擎只调用趋势池
       if (strat === 'bollinger' && this.BOLLINGER_POOL && !this.BOLLINGER_POOL.includes(symbol)) continue;
       if (strat === 'trend' && this.TREND_POOL && !this.TREND_POOL.includes(symbol)) continue;
@@ -101,7 +104,7 @@ class QuantAgent {
         if (sig.signal === 'NONE') continue;
         const bs = this.trend.positionSize(this.balance, this.fe.atrPct(kl), 5);
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: 5, precisionMap: pm, price, balance: this.balance });
-        if (r.success) this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, openTime: Date.now() };
+        if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, openTime: Date.now() }; this._stratLock[symbol]='trend'; }
       } else if (strat === 'bollinger') {
         // 布林带策略(规格): 5分钟K线决策
         const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
@@ -112,7 +115,7 @@ class QuantAgent {
         if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
           const bs = { notional: Math.max(20, this.balance*0.15*3), margin: Math.max(20,this.balance*0.15*3)/3, leverage: 3 };
           const r = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bs.notional, leverage: 3, precisionMap: pm, price, balance: this.balance });
-          if (r.success) this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, openTime: Date.now() };
+          if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; }
         }
       }
     }
@@ -168,6 +171,7 @@ class QuantAgent {
             this._settleServiceFee(symbol, pnlToCount);
             this.closedHistory.unshift({ symbol: symbol.replace('USDT',''), side: pos.side, pnl: pnlToCount, reason: closeReason, ts: Date.now(), strat: pos.strategy });
             delete this.positions[symbol];
+            delete this._stratLock[symbol];  // 平仓后释放策略锁
           }
         }
       } catch(e){ this._log(`⚠️ ${symbol} 管理异常: ${e.message.slice(0,40)}`); }
