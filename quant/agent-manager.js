@@ -132,11 +132,14 @@ class QuantAgent {
       const decision = this.brain.decide(symbol, kl);
       let strat = decision.chosen;
       if (strat === 'none') continue;   // shock观望
-      // ═══ 每币单一策略锁: 该币已锁定某策略则强制一致(防震荡/趋势互博) ═══
-      if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;  // 已被另一策略锁定的币不换策略开
-      // 分池约束: 布林带引擎只调用震荡池, 趋势引擎只调用趋势池
-      if (strat === 'bollinger' && this.BOLLINGER_POOL && !this.BOLLINGER_POOL.includes(symbol)) continue;
-      if (strat === 'trend' && this.TREND_POOL && !this.TREND_POOL.includes(symbol)) continue;
+      // ═══ 分池决定策略(优先级高于大脑decide): 币在趋势池→trend, 在震荡池→bollinger ═══
+      const inTrendP = this.TREND_POOL && this.TREND_POOL.includes(symbol);
+      const inBollP = this.BOLLINGER_POOL && this.BOLLINGER_POOL.includes(symbol);
+      if (inTrendP && !inBollP) strat = 'trend';
+      else if (inBollP && !inTrendP) strat = 'bollinger';
+      else if (!inTrendP && !inBollP) continue;
+      // 每币单一策略锁: 已锁定则强制一致
+      if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
 
       const pm = await this.api.getExchangeInfo().catch(()=>null);
       const price = +toArray(kl)[kl.length-1][3];
