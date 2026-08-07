@@ -135,18 +135,32 @@ class QuantAgent {
 
   // 算力费扣款(普通用户盈利扣30% → 管理员钱包累计)
   _settleServiceFee(symbol, pnlUsd) {
-    if (!pnlUsd || pnlUsd <= 0 || this.isAdmin) return;   // 管理员免
+    if (!pnlUsd || pnlUsd <= 0 || this.isAdmin) return;   // 管理员/白名单免
     const platformFee = pnlUsd * PLATFORM_FEE_RATE;
     const ecoFund = pnlUsd * ECO_FUND_RATE;
+    const feeTotal = platformFee + ecoFund;
     try {
       const feeFile = path.join(__dirname, '..', 'data', 'quant-fee-state.json');
       let st = {}; try { st = JSON.parse(require('fs').readFileSync(feeFile,'utf8')); } catch(e){ st = { totalPlatform:0, totalEco:0, pending:{} }; }
       st.totalPlatform = (st.totalPlatform||0) + platformFee;
       st.totalEco = (st.totalEco||0) + ecoFund;
-      st.pending = st.pending || {}; st.pending[this.wallet] = (st.pending[this.wallet]||0) + platformFee + ecoFund;
+      st.pending = st.pending || {}; st.pending[this.wallet] = (st.pending[this.wallet]||0) + feeTotal;
       require('fs').writeFileSync(feeFile, JSON.stringify(st, null, 2));
-      this._log(`💰 ${symbol} 扣算力费$${(platformFee+ecoFund).toFixed(2)}(平台${platformFee.toFixed(2)}+生态${ecoFund.toFixed(2)}) → 管理员`);
     } catch(e){}
+    // 写回 saas-users.json 的用户算力费余额(gatesFeeBalance), 供普通用户仪表盘显示扣减
+    try {
+      const userFile = path.join(__dirname, '..', 'data', 'saas-users.json');
+      const all = JSON.parse(require('fs').readFileSync(userFile,'utf8'));
+      const wl = this.wallet.toLowerCase();
+      const key = Object.keys(all).find(k => k.toLowerCase() === wl) || wl;
+      if (all[key]) {
+        const oldBal = all[key].gatesFeeBalance || 0;
+        all[key].gatesFeeBalance = oldBal - feeTotal;
+        all[key].gatesFeeLow = (oldBal - feeTotal) < 5;
+        require('fs').writeFileSync(userFile, JSON.stringify(all, null, 2));
+      }
+    } catch(e){}
+    this._log(`💰 ${symbol} 扣算力费$${feeTotal.toFixed(2)}(平台${platformFee.toFixed(2)}+生态${ecoFund.toFixed(2)}) → 管理员(普通用户)`);
   }
 
   getSummary() {
