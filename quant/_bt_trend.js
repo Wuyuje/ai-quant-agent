@@ -1,7 +1,7 @@
 // 趋势引擎专项回测 — 选优质趋势币(进趋势行情池)
 const https=require('https');
 const { MarketClassifier } = require('./market-classifier');
-const { TrendFollowingStrategy } = require('./trend-strategy');
+const { TrendStrategy } = require('./trend-strategy');
 const { FeatureEngineer, toArray } = require('./featurer');
 const APIKEY=process.env.BINANCE_API_KEY,APISECRET=process.env.BINANCE_API_SECRET;
 const COINS=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT','BCHUSDT','DOTUSDT','NEARUSDT','TIAUSDT','SUIUSDT','APTUSDT','OPUSDT','ARBUSDT','SEIUSDT','INJUSDT','WIFUSDT','TURBOUSDT','1000PEPEUSDT','LTCUSDT','FILUSDT','STXUSDT','ALGOUSDT','PENDLEUSDT','SUIUSDT','KASUSDT','AAVEUSDT'];
@@ -18,25 +18,20 @@ async function getK(sym, interval, count){
 }
 // 趋势策略回测: 方向用市场分类器(checkTrendDirection多周期MA), 入场+移动止损+逆势反手
 function runTrend(kl){
-  const cls=new MarketClassifier(), trend=new TrendFollowingStrategy(), fe=new FeatureEngineer();
+  const trend=new TrendStrategy();
   const c=toArray(kl).map(k=>+k[3]);
   let pos=null,nT=0,nW=0,bal=0;
   for(let i=150;i<c.length;i++){
     const win=toArray(kl.slice(0,i+1)), price=c[i];
     if(pos){
-      const j=cls.checkTrendDirection(win);
-      const ts=trend.trailingStop(pos,price,j.dir);  // 逆势反手
+      const ts=trend.trailingStop(pos,price);
       let cr=null;
-      if(ts.action==='CLOSE'||ts.action==='REVERSE')cr=ts.reason;
-      else{const atr=fe.calcATR(win);const sl=trend.stopLoss(pos,price,atr);if(sl.action==='CLOSE')cr=sl.reason;}
+      if(ts.action==='CLOSE')cr=ts.reason;
+      else{const sl=trend.stopLoss(pos,price,toArray(win).map(k=>+k[3]));if(sl.action==='CLOSE')cr=sl.reason;}
       if(cr){const raw=pos.side==='LONG'?(price-pos.entry)/pos.entry*100:(pos.entry-price)/pos.entry*100;let tp=raw*LEV*POS_RATIO-TFEE*200*POS_RATIO;if(tp>0)tp*=SVMULT;bal+=tp;nT++;if(tp>0)nW++;pos=null;}
-      // 逆势反手被trend函数返回REVERSE → 直接反向开仓
-      if(pos && (ts.action==='REVERSE')){
-        pos={side:pos.side==='LONG'?'SHORT':'LONG',entry:price,_peak:price};
-      }
     } else {
-      const j=cls.checkTrendDirection(win);
-      const sig=trend.entrySignal(win,j.dir);
+      const dir=trend.marketDirection(toArray(win).map(k=>+k[3]));
+      const sig=trend.entrySignal(win,dir);
       if(sig.signal==='LONG'||sig.signal==='SHORT')pos={side:sig.signal,entry:price,_peak:price};
     }
   }

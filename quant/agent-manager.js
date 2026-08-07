@@ -9,7 +9,7 @@ const { BinanceAPI } = require('../lib/common');
 const { decrypt } = require('../core/crypto-utils');
 const { FeatureEngineer, toArray } = require('./featurer');
 const { MarketClassifier } = require('./market-classifier');
-const { TrendFollowingStrategy } = require('./trend-strategy');
+const { TrendStrategy } = require('./trend-strategy');  // MA趋势引擎(规格版)
 const { RangeGridStrategy } = require('./grid-strategy');
 const { TradeExecutionCore } = require('./execution-core');
 const { HedgeStrategy } = require('./hedge-strategy');
@@ -29,7 +29,7 @@ class QuantAgent {
     this.api = new BinanceAPI(apiKey, apiSecret);
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
-    this.trend = new TrendFollowingStrategy();
+    this.trend = new TrendStrategy();  // MA多空排列趋势引擎
     this.grid = new RangeGridStrategy();      // (保留供参考)
     this.boll = new BollingerStrategy();      // 新震荡·布林带策略
     this.hedge = new HedgeStrategy();
@@ -135,8 +135,8 @@ class QuantAgent {
           const ts = this.trend.trailingStop(pos, price);
           if (ts.action === 'CLOSE') { closeReason = ts.reason; }
           else {
-            const atr = this.fe.calcATR(kl);
-            const sl = this.trend.stopLoss(pos, price, atr);
+            const closes = toArray(kl).map(k => +k[3]);
+            const sl = this.trend.stopLoss(pos, price, closes);
             if (sl.action === 'CLOSE') closeReason = sl.reason;
           }
         } else if (pos.strategy === 'grid') {
@@ -239,7 +239,7 @@ class QuantAgentManager {
     this.BOLLINGER_POOL = ['WIFUSDT','FILUSDT','ETHUSDT','APTUSDT','TURBOUSDT','STXUSDT','BCHUSDT','TIAUSDT','1000PEPEUSDT','INJUSDT'];
     // 趋势行情交易池(给趋势策略引擎调用) — 30天趋势回测精选
     // 正期望: LINK/FIL(TIA/ADA等趋势弱负期望不纳入)
-    this.TREND_POOL = ['LINKUSDT','FILUSDT','TURBOUSDT','DOTUSDT','KASUSDT','BTCUSDT','ETHUSDT'];
+    this.TREND_POOL = ['XRPUSDT','ARBUSDT','BTCUSDT','AVAXUSDT','DOTUSDT','APTUSDT','LINKUSDT'];
     // 合并扫描池
     this.COIN_POOL = [...new Set([...this.BOLLINGER_POOL, ...this.TREND_POOL])];
   }
