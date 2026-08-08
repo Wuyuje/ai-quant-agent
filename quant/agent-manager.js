@@ -122,7 +122,6 @@ class QuantAgent {
     for (const symbol of pool) {
       // 已有仓位 → 交给平仓管理(趋势移动止损/网格离场)
       if (this.positions[symbol]) continue;
-      if (Object.keys(this.positions).length >= 5) break;
 
       const kl = await this.api.getKlines(symbol, '15m', 120).catch(() => null);
       if (!kl || kl.length < 80) continue;
@@ -138,6 +137,12 @@ class QuantAgent {
       if (inTrendP && !inBollP) strat = 'trend';
       else if (inBollP && !inTrendP) strat = 'bollinger';
       else if (!inTrendP && !inBollP) continue;
+      // ═══ 各引擎独立仓位配额: 趋势≤3 / 震荡≤5 (互不干涉) ═══
+      const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend').length;
+      const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger').length;
+      const TREND_MAX = 3, BOLL_MAX = 5;
+      if (strat === 'trend' && trendCount >= TREND_MAX) continue;      // 趋势仓满3→不开
+      if (strat === 'bollinger' && bollCount >= BOLL_MAX) continue;    // 震荡仓满5→不开
       // 每币单一策略锁: 已锁定则强制一致
       if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
 
