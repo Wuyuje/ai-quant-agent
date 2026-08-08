@@ -97,18 +97,26 @@ class TrendStrategy {
     const turnAbs = this.turnAbs;
 
     const entry = pos.entryPrice || price || 0;
-    // 持仓实际盈亏%(真实赚钱才算止盈, 防止'MA7在高位但仓位没赚就平')
     const pnlPct = pos.side === 'LONG' ? (price - entry)/entry*100 : (entry - price)/entry*100;
 
+    // 追踪持仓期间MA7极值: 做多记录曾到的最低位(_maLow), 做空记录曾到的最高位(_maHigh)
+    // 用于确认'MA7确实从底位起来(做多)/从高位下来(做空)' → 完整趋势到底/顶才平
     if (pos.side === 'LONG') {
-      // 平多: MA7到高位区 + 拐头向下 + 必须实际盈利(真的涨了才吃满, 不吃亏损单)
-      if (posRatio > 0.72 && turn.dir === -1 && turn.d1 < -turnAbs && pnlPct > 0) {
-        return { action:'CLOSE', reason:`到顶止盈(MA7位${(posRatio*100).toFixed(0)}%顶区+拐头下+实盈${pnlPct.toFixed(1)}%,吃满上涨)` };
+      pos._maLow = (pos._maLow==null || posRatio<pos._maLow) ? posRatio : pos._maLow;
+    } else {
+      pos._maHigh = (pos._maHigh==null || posRatio>pos._maHigh) ? posRatio : pos._maHigh;
+    }
+
+    if (pos.side === 'LONG') {
+      // 平多: 必须从底位起(_maLow<0.35, MA7曾到底) + 现到位>0.72(到顶) + 拐头下 + 实际盈利
+      // 这确保MA7完整走过'底位→高位'才到顶止盈, 中途震荡不平, 吃到最高点
+      if (pos._maLow != null && pos._maLow < 0.35 && posRatio > 0.72 && turn.dir === -1 && turn.d1 < -turnAbs && pnlPct > 0) {
+        return { action:'CLOSE', reason:`到顶止盈(从底${(pos._maLow*100).toFixed(0)}%升到顶${(posRatio*100).toFixed(0)}%+拐头下+实盈${pnlPct.toFixed(1)}%,吃满上涨)` };
       }
     } else if (pos.side === 'SHORT') {
-      // 平空: MA7到低位区 + 拐头向上 + 必须实际盈利
-      if (posRatio < 0.28 && turn.dir === 1 && turn.d1 > turnAbs && pnlPct > 0) {
-        return { action:'CLOSE', reason:`到底止盈(MA7位${(posRatio*100).toFixed(0)}%底区+拐头上+实盈${pnlPct.toFixed(1)}%,吃满下跌)` };
+      // 平空: 必须从高位起(_maHigh>0.65, MA7曾到位) + 现到底<0.28 + 拐头上 + 实际盈利
+      if (pos._maHigh != null && pos._maHigh > 0.65 && posRatio < 0.28 && turn.dir === 1 && turn.d1 > turnAbs && pnlPct > 0) {
+        return { action:'CLOSE', reason:`到底止盈(从顶${(pos._maHigh*100).toFixed(0)}%跌到底${(posRatio*100).toFixed(0)}%+拐头上+实盈${pnlPct.toFixed(1)}%,吃满下跌)` };
       }
     }
     return { action:'HOLD' };
