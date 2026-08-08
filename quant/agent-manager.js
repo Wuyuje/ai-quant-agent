@@ -5,6 +5,7 @@
 // 保存原系统: 用户注册/APIkey/算力费充值+自动扣/多人互不干扰
 // ═══════════════════════════════════════════════════════════
 const path = require('path');
+const fs = require('fs');
 const { BinanceAPI } = require('../lib/common');
 const { decrypt } = require('../core/crypto-utils');
 const { FeatureEngineer, toArray } = require('./featurer');
@@ -47,6 +48,9 @@ class QuantAgent {
   }
 
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
+  // 状态持久化: closedHistory/balance 保存到文件, 重启不丢失(交易/胜率/已实现盈亏)
+  _saveState() { try { fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance }, null, 1)); } catch(e){} }
+  _loadState() { try { if (fs.existsSync(this._stateFile)) { const st = JSON.parse(fs.readFileSync(this._stateFile,'utf8')); if (Array.isArray(st.closedHistory)) this.closedHistory = st.closedHistory; if (typeof st.balance==='number') this.balance = st.balance; } } catch(e){} }
 
   // 大盘过滤器: BTC走弱(RISK)时不开新仓, 只管理已有持仓
   _btcRegime(btcKlines) {
@@ -222,6 +226,7 @@ class QuantAgent {
           if (r.success) {
             this._settleServiceFee(symbol, pnlToCount);
             this.closedHistory.unshift({ symbol: symbol.replace('USDT',''), side: pos.side, pnl: pnlToCount, reason: closeReason, ts: Date.now(), strat: pos.strategy });
+            this._saveState();  // 平仓后持久化统计
             delete this.positions[symbol];
             delete this._stratLock[symbol];  // 平仓后释放策略锁
           }
