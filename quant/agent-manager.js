@@ -86,9 +86,9 @@ class QuantAgent {
             symbol: sym, side, qty: Math.abs(amt), entryPrice: +p.entryPrice,
             currentPrice: +p.markPrice, margin: Math.abs(+p.entryPrice)*(+p.markPrice)/lev,
             leverage: lev, _peak: +p.entryPrice, openTime: Date.now(),
-            strategy: this._stratLock[sym] || 'trend'  // 默认按锁或trend接管
+            strategy: this._stratLock[sym] || 'trend',   // 接管仓用trend逻辑管理(现有仓多为趋势开)
+            _managed: true                                // 标记为接管仓, 开仓配额判断时排除
           };
-          this._stratLock[sym] = this._stratLock[sym] || 'trend';
         } else {
           // 已有记录, 更新价格/数量
           this.positions[sym].currentPrice = +p.markPrice;
@@ -142,8 +142,8 @@ class QuantAgent {
       else if (inBollP && !inTrendP) strat = 'bollinger';
       else if (!inTrendP && !inBollP) continue;
       // ═══ 各引擎独立仓位配额: 趋势≤3 / 震荡≤5 (互不干涉) ═══
-      const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend').length;
-      const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger').length;
+      const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend' && !p._managed).length;
+      const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger' && !p._managed).length;
       const TREND_MAX = 3, BOLL_MAX = 5;
       if (strat === 'trend' && trendCount >= TREND_MAX) continue;      // 趋势仓满3→不开
       if (strat === 'bollinger' && bollCount >= BOLL_MAX) continue;    // 震荡仓满5→不开
