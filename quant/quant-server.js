@@ -11,7 +11,6 @@ const { MarketClassifier } = require('./market-classifier');
 const { FeatureEngineer, toArray } = require('./featurer');
 const { TrendStrategy } = require('./trend-strategy');
 const { BollingerStrategy } = require('./bollinger-strategy');
-const { RangeGridStrategy } = require('./grid-strategy');
 const { QuantBacktest } = require('./backtest');
 const { QuantAgentManager } = require('./agent-manager');
 
@@ -28,7 +27,6 @@ class QuantServer {
     this.cls = new MarketClassifier();
     this.fe = new FeatureEngineer();
     this.trend = new TrendStrategy();
-    this.grid = new RangeGridStrategy();
     this.boll = new BollingerStrategy();
     this.bt = new QuantBacktest();
     this.api = new BinanceAPI(APIKEY, APISECRET);
@@ -97,7 +95,8 @@ class QuantServer {
       const strat = this.cls.recommendedStrategy(j);
       const sig = strat === 'trend' ? this.trend.entrySignal(kl, j.trendDir)
         : strat === 'bollinger' ? this.boll.entrySignal(kl, j.trendDir, false) : { signal: 'NONE' };
-      const rng = this.grid.computeRange(kl);
+      const bnd = this.boll.calcBands(kl);
+      const rng = bnd ? { high: bnd.upper, low: bnd.lower, mid: bnd.mid, range: (bnd.upper-bnd.lower) } : { high:0, low:0, mid:0, range:0 };
       res.json({ symbol: sym, state: j.state, trendDir: j.trendDir, adx: j.trendStrength,
         volatility: j.volatility, recommended: strat, signal: sig, range: rng, close: +toArray(kl)[kl.length-1][3] });
     });

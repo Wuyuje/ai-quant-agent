@@ -11,9 +11,7 @@ const { decrypt } = require('../core/crypto-utils');
 const { FeatureEngineer, toArray } = require('./featurer');
 const { MarketClassifier } = require('./market-classifier');
 const { TrendStrategy } = require('./trend-strategy');  // MA趋势引擎(规格版)
-const { RangeGridStrategy } = require('./grid-strategy');
 const { TradeExecutionCore } = require('./execution-core');
-const { HedgeStrategy } = require('./hedge-strategy');
 const { BollingerStrategy } = require('./bollinger-strategy');
 const { BrainCore } = require('./brain-core');
 
@@ -31,9 +29,7 @@ class QuantAgent {
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
     this.trend = new TrendStrategy();  // MA多空排列趋势引擎
-    this.grid = new RangeGridStrategy();      // (保留供参考)
     this.boll = new BollingerStrategy();      // 新震荡·布林带策略
-    this.hedge = new HedgeStrategy();
     this.brain = new BrainCore();             // 大脑中枢(切换+自学习+NN)
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
 
@@ -199,10 +195,8 @@ class QuantAgent {
             const sl = this.trend.stopLoss(pos, price, tcloses);
             if (sl.action === 'CLOSE') closeReason = sl.reason;
           }
-        } else if (pos.strategy === 'grid') {
-          const ge = this.grid.gridExit(pos, price, pos._gridRange || {});
-          if (ge.action === 'CLOSE') closeReason = ge.reason;
-        } else if (pos.strategy === 'bollinger') {
+        }
+        if (pos.strategy === 'bollinger') {
           // 布林带策略止盈/风控(规格): 5min K线
           const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
           if (bkl && bkl.length >= 30) {
@@ -213,12 +207,6 @@ class QuantAgent {
               if (hs.stop) closeReason = hs.reason;
             }
           }
-        } else if (pos.strategy === 'hedge') {
-          // 套利仓: 回归中轨(价格回到MA附近)就平
-          const arr = toArray(kl); const closes = arr.map(k=>+k[3]);
-          const ma = closes.length>=20 ? closes.slice(-20).reduce((a,b)=>a+b,0)/20 : price;
-          const regained = (pos.side==='LONG' && price>=ma) || (pos.side==='SHORT' && price<=ma);
-          if (regained) closeReason = '高频套利:价格回归中轨平仓';
         }
 
         if (closeReason) {
