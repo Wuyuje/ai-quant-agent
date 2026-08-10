@@ -84,7 +84,8 @@ class QuantServer {
     // K线数据
     this.app.get('/api/quant/klines/:symbol', async (req, res) => {
       const kl = await this.api.getKlines(req.params.symbol, '15m', 120).catch(() => []);
-      res.json(Array.isArray(kl) ? kl.map(k => [+k[0], +k[1], +k[2], +k[3], +k[4], +k[5]]) : []);
+      // BinanceAPI.getKlines返回对象数组[{time,open,high,low,close,volume}] → 转[time,open,high,low,close,volume]
+      res.json(Array.isArray(kl) ? kl.map(k => [+k.time, +k.open, +k.high, +k.low, +k.close, +k.volume]) : []);
     });
     // 单币分类详情+策略信号
     this.app.get('/api/quant/analyze/:symbol', async (req, res) => {
