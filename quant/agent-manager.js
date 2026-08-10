@@ -152,6 +152,7 @@ class QuantAgent {
       let sig;
       if (strat === 'trend') {
         if (this.pauseTrend) continue;   // 趋势引擎暂停开仓(只停新开,持仓管理不受影响)
+        if (this.trendTop && !this.trendTop.includes(symbol)) continue;  // 只开池内排名靠前的币
         // ═══ BTC大盘方向过滤: 逆大盘不开(跟随大盘) ═══
         const btcState = this._marketRisk || 'OK';
         sig = this.trend.entrySignal(kl, decision.market.trendDir);
@@ -163,6 +164,7 @@ class QuantAgent {
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: bs.leverage, precisionMap: pm, price, balance: this.balance });
         if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, openTime: Date.now() }; this._stratLock[symbol]='trend'; }
       } else if (strat === 'bollinger') {
+        if (this.bollTop && !this.bollTop.includes(symbol)) continue;  // 只开池内排名靠前的币
         // 布林带策略(规格): 5分钟K线决策
         const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
@@ -384,27 +386,29 @@ class QuantAgentManager {
         if (!kl || kl.length < 200) continue;
         const tr = this._assessTrend(kl);
         const bo = this._assessBoll(kl);
-        if (tr && tr.n>0) trendPool.push({sym, ret:tr.ret, rate:tr.rate, n:tr.n});
-        if (bo && bo.n>0) bollPool.push({sym, ret:bo.ret, rate:bo.rate, n:bo.n});
+        if (tr && tr.n>0) trendPool.push({sym, ret:tr.ret, trRet:tr.ret});
+        if (bo && bo.n>0) bollPool.push({sym, ret:bo.ret, boRet:bo.ret});
       }
       this._log(`🧠 动态选币筛选: 趋势候选${trendPool.length} 震荡候选${bollPool.length}`);
-      // ═══ 两池完全独立: 各按回报排序取前5, 且剔除重叠币(好币只归一个池, 杜绝两策略混乱) ═══
+      // ═══ 独立各取前10, 重叠币归趋势分高者(避免一池占满另一池空) ═══
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
-      // 先取趋势池候选(前10), 再取震荡池候选(前10)
-      const trendCands = trendPool.slice(0,10).map(x=>x.sym);
-      const bollCands  = bollPool.slice(0,10).map(x=>x.sym);
-      // 剔除重叠: 好币只归一个池. 策略: 若某币同时适合两池, 优先归"趋势分更高"的池
-      // 先选趋势池前5(不重复), 再从剩下选震荡池前5
-      const newTrend=[], newBoll=[];
-      for (const sym of trendCands) { if (newTrend.length<5 && !newBoll.includes(sym)) newTrend.push(sym); }
-      const trendSet=new Set(newTrend);
-      for (const sym of bollCands) { if (newBoll.length<5 && !trendSet.has(sym)) newBoll.push(sym); }
-      if (newTrend.length>=2 && newBoll.length>=3) {
+      const trendC = trendPool.slice(0,10);
+      const bollC = bollPool.slice(0,10);
+      // 趋势池=趋势分前10; 震荡池=布林分候选(前20)中不属于趋势池的前10(保证数量充足)
+      const newTrend = trendC.map(x=>x.sym);
+      const tSet = new Set(newTrend);
+      const bollAll = bollPool.slice(0,20).filter(x=>!tSet.has(x.sym)).map(x=>x.sym);
+      const newBoll = bollAll.slice(0,10);
+      if (newTrend.length>=3 && newBoll.length>=3) {
         this.TREND_POOL = newTrend;
         this.BOLLINGER_POOL = newBoll;
         this.COIN_POOL = [...new Set([...newTrend,...newBoll])];
-        this._log(`🧠 动态选币刷新 → 趋势池: ${newTrend.join(',')} | 震荡池: ${newBoll.join(',')}`);
+        // 排名靠前子集(开仓限): 各前5只(按回测性能), 池内排名靠后才开仓
+        this.trendTop = newTrend.slice(0,5);
+        this.bollTop = newBoll.slice(0,5);
+        this._log(`🧠 动态选币 → 趋势池${newTrend.length}只: ${newTrend.join(',')} | 震荡池${newBoll.length}只: ${newBoll.join(',')}`);
+        this._log(`🟢 开仓限排名靠前 → 趋势Top: ${this.trendTop.join(',')} | 震荡Top: ${this.bollTop.join(',')}`);
       }
     } catch(e){ this._log(`⚠️ 动态选币失败: ${e.message.slice(0,30)}`); }
   }
