@@ -141,8 +141,8 @@ class QuantAgent {
       // ═══ 各引擎独立仓位配额: 趋势≤3 / 震荡≤5 (互不干涉) ═══
       const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend' && !p._managed).length;
       const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger' && !p._managed).length;
-      const TREND_MAX = 3, BOLL_MAX = 5;
-      if (strat === 'trend' && trendCount >= TREND_MAX) continue;      // 趋势仓满3→不开
+      const TREND_MAX = 5, BOLL_MAX = 5;
+      if (strat === 'trend' && trendCount >= TREND_MAX) continue;      // 趋势仓满5→不开
       if (strat === 'bollinger' && bollCount >= BOLL_MAX) continue;    // 震荡仓满5→不开
       // 每币单一策略锁: 已锁定则强制一致
       if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
@@ -388,11 +388,18 @@ class QuantAgentManager {
         if (bo && bo.n>0) bollPool.push({sym, ret:bo.ret, rate:bo.rate, n:bo.n});
       }
       this._log(`🧠 动态选币筛选: 趋势候选${trendPool.length} 震荡候选${bollPool.length}`);
-      // 按回报排序, 选趋势前4 / 震荡前6 (结合胜率>50%优先)
-      trendPool.sort((a,b)=> (b.rate>=50?b.ret:-1) - (a.rate>=50?a.ret:-1) );
-      bollPool.sort((a,b)=> (b.rate>=60?b.ret:-1) - (a.rate>=60?a.ret:-1) );
-      const newTrend = trendPool.slice(0,4).map(x=>x.sym);
-      const newBoll = bollPool.slice(0,6).map(x=>x.sym);
+      // ═══ 两池完全独立: 各按回报排序取前5, 且剔除重叠币(好币只归一个池, 杜绝两策略混乱) ═══
+      trendPool.sort((a,b)=> b.ret - a.ret);
+      bollPool.sort((a,b)=> b.ret - a.ret);
+      // 先取趋势池候选(前10), 再取震荡池候选(前10)
+      const trendCands = trendPool.slice(0,10).map(x=>x.sym);
+      const bollCands  = bollPool.slice(0,10).map(x=>x.sym);
+      // 剔除重叠: 好币只归一个池. 策略: 若某币同时适合两池, 优先归"趋势分更高"的池
+      // 先选趋势池前5(不重复), 再从剩下选震荡池前5
+      const newTrend=[], newBoll=[];
+      for (const sym of trendCands) { if (newTrend.length<5 && !newBoll.includes(sym)) newTrend.push(sym); }
+      const trendSet=new Set(newTrend);
+      for (const sym of bollCands) { if (newBoll.length<5 && !trendSet.has(sym)) newBoll.push(sym); }
       if (newTrend.length>=2 && newBoll.length>=3) {
         this.TREND_POOL = newTrend;
         this.BOLLINGER_POOL = newBoll;
