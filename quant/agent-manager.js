@@ -154,6 +154,7 @@ class QuantAgent {
       const price = +toArray(kl)[kl.length-1][3];
       let sig;
       if (strat === 'trend') {
+        if (this.pauseTrend) continue;   // 趋势引擎暂停开仓(只停新开,持仓管理不受影响)
         sig = this.trend.entrySignal(kl, decision.market.trendDir);
         if (sig.signal === 'NONE') continue;
         const bs = this.trend.positionSize(this.balance, sig.signal, 0.15);
@@ -295,6 +296,7 @@ class QuantAgentManager {
     this._agents = {};       // wallet → QuantAgent
     this.running = false;
     this.pauseOpen = false;
+    this.pauseTrend = false;
     this.ADMIN_WALLETS = ['0xfa3b90c574469909d20848273c06752a22fde74a','0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e','0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5','0xc6dbb4cd3b6a12068c7388248da2bd32df7ef9b7'];
     // ═══ 交易池(分开配置) ═══
     // 震荡行情交易池(专门给 布林带震荡策略引擎 调用) — 布林回测精选优质币
@@ -344,7 +346,7 @@ class QuantAgentManager {
       }
       // 全部用户(普通+管理员/白名单)开放开仓
       const agents = Object.values(this._agents);
-      for (const a of agents) a.pauseOpen = !!this.pauseOpen;
+      for (const a of agents) { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; }
       await Promise.all(agents.map(a => a.scan(this.COIN_POOL).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
     } catch(e) { this._log(`❌ 循环异常: ${e.message}`); }
@@ -353,6 +355,7 @@ class QuantAgentManager {
   }
 
   setPauseOpen(v) { this.pauseOpen = !!v; for (const a of Object.values(this._agents)) a.pauseOpen = this.pauseOpen; }
+  setPauseTrend(v) { for (const a of Object.values(this._agents)) a.pauseTrend = !!v; }
   getAllStatus() { return Object.values(this._agents).map(a => a.getSummary()); }
 }
 

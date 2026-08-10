@@ -20,9 +20,9 @@ function sma7(closes) {
 class TrendStrategy {
   constructor(opts = {}) {
     this.lookback = opts.lookback || 288;    // 位置区间: 近288根5min≈1天(判断低位/高位)
-    this.lowCut = opts.lowCut || 0.30;        // 做多: MA7低位区(<30%区间)=跌无可跌
-    this.highCut = opts.highCut || 0.70;      // 做空: MA7高位区(>70%区间)=涨不上去了
-    this.turnAbs = opts.turnAbs || 0.0003;    // 拐头幅度阈值(MA7变化率,防微抖)
+    this.lowCut = opts.lowCut || 0.45;        // 做多: MA7低位区(<45%)
+    this.highCut = opts.highCut || 0.55;      // 做空: MA7高位区(>55%)
+    this.turnAbs = opts.turnAbs || 0.00010;   // 拐头幅度阈值(降低,不遗漏趋势启动,同时防微抖)
     this.stopLossPct = opts.stopLossPct || 4.0; // 硬止损兜底(防极端)
   }
 
@@ -74,11 +74,11 @@ class TrendStrategy {
     const turnAbs = this.turnAbs;
 
     // 做多·低买: MA7在低位区(<lowCut, 跌无可跌) + 最新拐头向上(突然反转)
-    if (pos < this.lowCut && turn.dir === 1 && turn.d1 > turnAbs && turn.d2 <= 0) {
+    if (pos < this.lowCut && turn.dir === 1 && turn.d1 > turnAbs && turn.d2 < turnAbs) {
       return { signal:'LONG', reason:`低买(MA7位${(pos*100).toFixed(0)}%底区,拐头向上)`, price };
     }
     // 做空·高卖: MA7在高位区(>highCut, 涨不上去了) + 最新拐头向下(突然反转)
-    if (pos > this.highCut && turn.dir === -1 && turn.d1 < -turnAbs && turn.d2 >= 0) {
+    if (pos > this.highCut && turn.dir === -1 && turn.d1 < -turnAbs && turn.d2 > -turnAbs) {
       return { signal:'SHORT', reason:`高卖(MA7位${(pos*100).toFixed(0)}%顶区,拐头向下)`, price };
     }
     return { signal:'NONE', reason:`位${(pos*100).toFixed(0)}% 拐=${turn.dir>=0?'上':'下'}(${pos<this.lowCut?'近底':(pos>this.highCut?'近顶':'中')})` };
