@@ -24,6 +24,7 @@ class TrendStrategy {
     this.highCut = opts.highCut || 0.55;      // 做空: MA7高位区(>55%)
     this.turnAbs = opts.turnAbs || 0.00010;   // 拐头幅度阈值(降低,不遗漏趋势启动,同时防微抖)
     this.stopLossPct = opts.stopLossPct || 4.0; // 硬止损兜底(防极端)
+this.trailPct = opts.trailPct || 3.0;         // 移动止损: 从最高/最低回撤3%才平(拿满趋势不中途震)
   }
 
   // ═══ 核心: MA7位置 + 拐头判定 ═══
@@ -55,8 +56,19 @@ class TrendStrategy {
     return { dir: d1>0?1:(d1<0?-1:0), d1, d2 };
   }
 
-  // 市场方向(简单): 用MA20(近似趋势) vs 当前价? 实际用位置+方向
-  marketDirection(closes) { return 'FLAT'; }  // 位置判断由entrySignal完成
+  // ═══ 跟随大盘方向判定: 用多周期均线排列(MA5/MA20/MA60)判断该币当前趋势方向 ═══
+  // 多头排列(MA5>MA20>MA60)=UP上涨; 空头排列(MA5<MA20<MA60)=DOWN下跌; 缠绕=FLAT横盘(不交易)
+  marketDirection(closes) {
+    if (!closes || closes.length < 60) return 'FLAT';
+    const ma5=this._sma(closes,5), ma20=this._sma(closes,20), ma60=this._sma(closes,60);
+    if (ma5==null||ma20==null||ma60==null) return 'FLAT';
+    const bull = ma5>ma20 && ma20>ma60;   // 多头排列=上涨
+    const bear = ma5<ma20 && ma20<ma60;   // 空头排列=下跌
+    if (bull) return 'UP';
+    if (bear) return 'DOWN';
+    return 'FLAT';  // 缠绕=横盘, 不交易
+  }
+  _sma(v,p){ if(v.length<p)return null; return v.slice(-p).reduce((a,b)=>a+b,0)/p; }
 
   // ═══ 入场: 低买(MA7低位拐上) / 高卖(MA7高位拐下) ═══
   entrySignal(klines, marketDir) {
@@ -72,13 +84,19 @@ class TrendStrategy {
     const turn = this._turn(ma);
     const { pos, curMA } = posInfo;
     const turnAbs = this.turnAbs;
+    // ═══ 跟随大盘方向过滤: 只顺势开仓, 不逆势 ═══
+    const dir = this.marketDirection(closes);   // 该币多空排列方向
+    // 做多需在UP/FLAT(至少非DOWN下跌趋势); 若明确DOWN趋势→禁做多(不抄底)
+    if (dir === 'DOWN' && pos < this.lowCut) return { signal:'NONE', reason:`下跌趋势禁抄底做多(方向${dir})` };
+    // 做空需在DOWN/FLAT; 若明确UP趋势→禁做空
+    if (dir === 'UP' && pos > this.highCut) return { signal:'NONE', reason:`上涨趋势禁追空(方向${dir})` };
 
-    // 做多·低买: MA7在低位区(<lowCut, 跌无可跌) + 最新拐头向上(突然反转)
-    if (pos < this.lowCut && turn.dir === 1 && turn.d1 > turnAbs && turn.d2 < turnAbs) {
+    // 做多·低买: 低位区 + 拐头向上 + 不逆势(非DOWN趋势)
+    if (pos < this.lowCut && turn.dir === 1 && turn.d1 > turnAbs && turn.d2 < turnAbs && dir !== 'DOWN') {
       return { signal:'LONG', reason:`低买(MA7位${(pos*100).toFixed(0)}%底区,拐头向上)`, price };
     }
     // 做空·高卖: MA7在高位区(>highCut, 涨不上去了) + 最新拐头向下(突然反转)
-    if (pos > this.highCut && turn.dir === -1 && turn.d1 < -turnAbs && turn.d2 > -turnAbs) {
+    if (pos > this.highCut && turn.dir === -1 && turn.d1 < -turnAbs && turn.d2 > -turnAbs && dir !== 'UP') {
       return { signal:'SHORT', reason:`高卖(MA7位${(pos*100).toFixed(0)}%顶区,拐头向下)`, price };
     }
     return { signal:'NONE', reason:`位${(pos*100).toFixed(0)}% 拐=${turn.dir>=0?'上':'下'}(${pos<this.lowCut?'近底':(pos>this.highCut?'近顶':'中')})` };
@@ -100,7 +118,6 @@ class TrendStrategy {
     const pnlPct = pos.side === 'LONG' ? (price - entry)/entry*100 : (entry - price)/entry*100;
 
     // 追踪持仓期间MA7极值: 做多记录曾到的最低位(_maLow), 做空记录曾到的最高位(_maHigh)
-    // 用于确认'MA7确实从底位起来(做多)/从高位下来(做空)' → 完整趋势到底/顶才平
     if (pos.side === 'LONG') {
       pos._maLow = (pos._maLow==null || posRatio<pos._maLow) ? posRatio : pos._maLow;
     } else {
@@ -108,13 +125,12 @@ class TrendStrategy {
     }
 
     if (pos.side === 'LONG') {
-      // 平多: 必须从底位起(_maLow<0.35, MA7曾到底) + 现到位>0.72(到顶) + 拐头下 + 实际盈利
-      // 这确保MA7完整走过'底位→高位'才到顶止盈, 中途震荡不平, 吃到最高点
+      // 平多: 从底位起(_maLow<0.35) + 到顶位(>0.72) + 拐头下 + 实际盈利
       if (pos._maLow != null && pos._maLow < 0.35 && posRatio > 0.72 && turn.dir === -1 && turn.d1 < -turnAbs && pnlPct > 0) {
         return { action:'CLOSE', reason:`到顶止盈(从底${(pos._maLow*100).toFixed(0)}%升到顶${(posRatio*100).toFixed(0)}%+拐头下+实盈${pnlPct.toFixed(1)}%,吃满上涨)` };
       }
     } else if (pos.side === 'SHORT') {
-      // 平空: 必须从高位起(_maHigh>0.65, MA7曾到位) + 现到底<0.28 + 拐头上 + 实际盈利
+      // 平空: 从高位起(_maHigh>0.65) + 到底位(<0.28) + 拐头上 + 实际盈利
       if (pos._maHigh != null && pos._maHigh > 0.65 && posRatio < 0.28 && turn.dir === 1 && turn.d1 > turnAbs && pnlPct > 0) {
         return { action:'CLOSE', reason:`到底止盈(从顶${(pos._maHigh*100).toFixed(0)}%跌到底${(posRatio*100).toFixed(0)}%+拐头上+实盈${pnlPct.toFixed(1)}%,吃满下跌)` };
       }

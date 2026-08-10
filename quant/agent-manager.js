@@ -58,7 +58,8 @@ class QuantAgent {
       const last6 = closes[Math.max(0,closes.length-6)];
       const mom = (last-last6)/(last6||1)*100;
       const pos300 = (last-ma30v)/(ma30v||1)*100;
-      if (pos300 < -0.5 && mom < -0.1) return 'RISK';
+      if (pos300 < -0.5 && mom < -0.1) return 'DOWN';   // BTC走弱=下跌
+      if (pos300 > 0.5 && mom > 0.1) return 'UP';       // BTC走强=上涨
       return 'OK';
     } catch(e){ return 'OK'; }
   }
@@ -151,7 +152,12 @@ class QuantAgent {
       let sig;
       if (strat === 'trend') {
         if (this.pauseTrend) continue;   // 趋势引擎暂停开仓(只停新开,持仓管理不受影响)
+        // ═══ BTC大盘方向过滤: 逆大盘不开(跟随大盘) ═══
+        const btcState = this._marketRisk || 'OK';
         sig = this.trend.entrySignal(kl, decision.market.trendDir);
+        // ═══ 跟随大盘(BTC方向过滤): 逆BTC大盘不开仓 ═══
+        if (sig.signal === 'SHORT' && btcState === 'UP') continue;   // 大盘强→禁做空(顺势多)
+        if (sig.signal === 'LONG' && btcState === 'DOWN') continue;  // 大盘弱→禁做多(顺势空,不抄底)
         if (sig.signal === 'NONE') continue;
         const bs = this.trend.positionSize(this.balance, sig.signal, 0.15);
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: bs.leverage, precisionMap: pm, price, balance: this.balance });
