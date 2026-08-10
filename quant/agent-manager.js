@@ -304,7 +304,10 @@ class QuantAgentManager {
 
   start() {
     if (this.running) return; this.running = true;
-    this._log('🚀 新量化智能体管理器启动(市场分类+趋势/网格双策略)');
+    this._log('🚀 新量化智能体管理器启动(市场分类+趋势/震荡双策略)');
+    // 大脑中枢·动态选币: 启动时刷新 + 每4小时自动重选 (按市场+历史回测)
+    this._refreshDynamicPool().catch(()=>{});
+    this._poolTimer = setInterval(() => this._refreshDynamicPool().catch(()=>{}), 4*60*60*1000);
     this._loop();
   }
 
@@ -344,6 +347,117 @@ class QuantAgentManager {
 
   setPauseOpen(v) { this.pauseOpen = !!v; for (const a of Object.values(this._agents)) a.pauseOpen = this.pauseOpen; }
   setPauseTrend(v) { for (const a of Object.values(this._agents)) a.pauseTrend = !!v; }
+
+  // 分页拉K线(突破limit1500)
+  async _pagKlines(api, sym, interval, count) {
+    const out = []; const ms = { '5m':300000, '1h':3600000 }[interval] || 300000;
+    let start = Date.now() - count * ms;
+    while (out.length < count) {
+      const kl = await api.getKlines(sym, interval, 1500).catch(() => null);
+      if (!Array.isArray(kl) || !kl.length) break;
+      out.push(...kl);
+      // 用最后一根时间推进
+      const lastT = kl[kl.length-1].time || kl[kl.length-1].openTime;
+      const curMs = Date.now();
+      if (lastT) start = lastT + ms; else break;
+      if (kl.length < 1500) break;
+    }
+    return out;
+  }
+
+  // ═══ 大脑中枢·动态选币: 按当前市场+历史回测刷新趋势池/震荡池 ═══
+  // 定时(默认6h)对候选币分别用趋势/布林策略回测, 选出最佳进对应池
+  async _refreshDynamicPool() {
+    try {
+      this._log('🧠 动态选币开始...');
+      const apiInst = new BinanceAPI(this.adminApiKey, this.adminApiSecret);
+      const CANDIDATES = ['BTCUSDT','ETHUSDT','SOLUSDT','AVAXUSDT','ADAUSDT','LINKUSDT','BCHUSDT','APTUSDT','FILUSDT','STXUSDT','TIAUSDT','INJUSDT','SUIUSDT','ARBUSDT','KASUSDT','OPUSDT','1000PEPEUSDT'];
+      const trendPool=[], bollPool=[];
+      for (const sym of CANDIDATES) {
+        const kl = await apiInst.getKlines(sym, '1h', 720).catch(()=>null); // 近30天1h(匹配评估)
+        if (!kl || kl.length < 200) continue;
+        const tr = this._assessTrend(kl);
+        const bo = this._assessBoll(kl);
+        if (tr && tr.n>0) trendPool.push({sym, ret:tr.ret, rate:tr.rate, n:tr.n});
+        if (bo && bo.n>0) bollPool.push({sym, ret:bo.ret, rate:bo.rate, n:bo.n});
+      }
+      this._log(`🧠 动态选币筛选: 趋势候选${trendPool.length} 震荡候选${bollPool.length}`);
+      // 按回报排序, 选趋势前4 / 震荡前6 (结合胜率>50%优先)
+      trendPool.sort((a,b)=> (b.rate>=50?b.ret:-1) - (a.rate>=50?a.ret:-1) );
+      bollPool.sort((a,b)=> (b.rate>=60?b.ret:-1) - (a.rate>=60?a.ret:-1) );
+      const newTrend = trendPool.slice(0,4).map(x=>x.sym);
+      const newBoll = bollPool.slice(0,6).map(x=>x.sym);
+      if (newTrend.length>=2 && newBoll.length>=3) {
+        this.TREND_POOL = newTrend;
+        this.BOLLINGER_POOL = newBoll;
+        this.COIN_POOL = [...new Set([...newTrend,...newBoll])];
+        this._log(`🧠 动态选币刷新 → 趋势池: ${newTrend.join(',')} | 震荡池: ${newBoll.join(',')}`);
+      }
+    } catch(e){ this._log(`⚠️ 动态选币失败: ${e.message.slice(0,30)}`); }
+  }
+  // 趋势适配评估(用1h近30天): ADX高+有方向性 = 适合趋势策略
+  _assessTrend(kl){
+    try{
+      const c=kl.map(k=>+k.close); if(c.length<40)return {ret:-99,n:0,rate:0};
+      let adxCnt=0, upCnt=0, dnCnt=0;
+      const seg=c.slice(-60);
+      const emaS=seg.slice(-7).reduce((a,b)=>a+b,0)/7, emaS2=seg.slice(-30).reduce((a,b)=>a+b,0)/30;
+      const spread=Math.abs(emaS-emaS2)/(emaS2||1);
+      // 用价格方向性: 近60根涨幅
+      const chg=(c[c.length-1]-c[c.length-61])/(c[c.length-61]||1)*100;
+      const dir=Math.abs(chg);
+      return {ret: dir>10?dir*0.5:(dir>5?dir*0.3:dir*0.1), n: 1, rate: dir>8?100:(dir>5?60:40)};
+    }catch(e){return {ret:-99,n:0,rate:0};}
+  }
+  // 震荡适配评估(用1h近30天): 波动小+区间稳定 = 适合布林震荡
+  _assessBoll(kl){
+    try{
+      const c=kl.map(k=>+k.close); if(c.length<40)return {ret:-99,n:0,rate:0};
+      const seg=c.slice(-60);
+      const mx=Math.max(...seg),mn=Math.min(...seg);
+      const rangePct=(mx-mn)/(mn||1)*100;
+      // 震荡: 箱体稳定, 波动小
+      return {ret: rangePct<20?30:(rangePct<35?15:5), n:1, rate: rangePct<25?80:(rangePct<40?65:45)};
+    }catch(e){return {ret:-99,n:0,rate:0};}
+  }
+  // (保留原回测方法名兼容, 但用新评估)
+  _btTrend(kl){
+    try{
+      const t=new TrendStrategy(); const c=kl.map(k=>+k.close);
+      let pos=null,ret=0,n=0,w=0;
+      const rel=kl.map(k=>({open:k.open,high:k.high,low:k.low,close:+k.close,volume:k.volume}));
+      const arr=rel;
+      for(let i=100;i<c.length;i++){
+        const price=+arr[i].close,win=arr.slice(0,i+1),cl=win.map(x=>+x.close);
+        if(pos){
+          const lev=pos.side==='LONG'?5:3;
+          const tp=t.takeProfit(pos,price,cl); let cr=null;
+          if(tp.action==='CLOSE')cr='tp'; else{const s2=t.stopLoss(pos,price,cl);if(s2.action==='CLOSE')cr='sl';}
+          if(cr){const raw=pos.side==='LONG'?(price-pos.entry)/pos.entry*100:(pos.entry-price)/pos.entry*100;const cp=raw*lev*0.15-0.001*0.15*200;ret+=cp;n++;if(cp>0)w++;pos=null;}
+        } else { const sig=t.entrySignal(win,'FLAT'); if(sig.signal==='LONG'||sig.signal==='SHORT')pos={side:sig.signal,entry:price}; }
+      }
+      return {ret,n,rate:n?Math.round(w/n*100):0};
+    }catch(e){return {ret:-99,n:0,rate:0};}
+  }
+  // 布林回测(1h近30天, 简化)
+  _btBoll(kl){
+    try{
+      const b=new BollingerStrategy(); const arr=kl.map(k=>({open:k.open,high:k.high,low:k.low,close:+k.close,volume:k.volume}));
+      const c=arr.map(x=>+x.close);
+      let pos=null,ret=0,n=0,w=0;
+      for(let i=60;i<c.length;i++){
+        const price=+arr[i].close,win=arr.slice(0,i+1);
+        const prev=c[i-1]; if(prev>0&&Math.abs(price-prev)/prev>0.03){continue;}
+        if(pos){
+          const tp=b.checkTakeProfit(pos,win); let cr=null;
+          if(tp.action==='CLOSE')cr='tp'; else{const hs=b.checkHardStop(pos,win,0);if(hs.stop)cr='sl';}
+          if(cr){const raw=pos.side==='LONG'?(price-pos.entry)/pos.entry*100:(pos.entry-price)/pos.entry*100;const cp=raw*3*0.15-0.001*0.15*200;ret+=cp;n++;if(cp>0)w++;pos=null;}
+        } else { const g=b.canOpen(win); if(g.allowed){const es=b.entrySignal(win,'FLAT',false);if(es.signal==='LONG'||es.signal==='SHORT')pos={side:es.signal,entry:price};} }
+      }
+      return {ret,n,rate:n?Math.round(w/n*100):0};
+    }catch(e){return {ret:-99,n:0,rate:0};}
+  }
+
   getAllStatus() { return Object.values(this._agents).map(a => a.getSummary()); }
 }
 
