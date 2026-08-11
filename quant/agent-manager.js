@@ -20,9 +20,10 @@ const PLATFORM_FEE_RATE = 0.20;
 const ECO_FUND_RATE = 0.10;
 
 class QuantAgent {
-  constructor({ wallet, apiKey, apiSecret, isAdmin, userDB, pauseOpen }) {
+  constructor({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB, pauseOpen }) {
     this.wallet = wallet;
     this.isAdmin = isAdmin;
+    this.isWhitelist = isWhitelist || false;
     this.userDB = userDB;
     if (typeof pauseOpen === 'boolean') this.pauseOpen = pauseOpen;
     this.api = new BinanceAPI(apiKey, apiSecret);
@@ -239,7 +240,7 @@ class QuantAgent {
 
   // 算力费扣款(普通用户盈利扣30% → 管理员钱包累计)
   _settleServiceFee(symbol, pnlUsd) {
-    if (!pnlUsd || pnlUsd <= 0 || this.isAdmin) return;   // 管理员/白名单免
+    if (!pnlUsd || pnlUsd <= 0 || this.isAdmin || this.isWhitelist) return;   // 管理员/白名单免算力费
     const platformFee = pnlUsd * PLATFORM_FEE_RATE;
     const ecoFund = pnlUsd * ECO_FUND_RATE;
     const feeTotal = platformFee + ecoFund;
@@ -271,7 +272,7 @@ class QuantAgent {
     const t = Math.max(1, this.closedHistory.length);
     const wins = this.closedHistory.filter(c => c.pnl > 0).length;
     return {
-      wallet: this.wallet, isAdmin: this.isAdmin, balance: this.balance,
+      wallet: this.wallet, isAdmin: this.isAdmin, isWhitelist: this.isWhitelist, balance: this.balance,
       totalEquity: +(this.totalWalletBalance || ((this.balance||0)+(this._unrealizedPnl||0))).toFixed(2),  // 总资金 = 币安合约账户总余额
       unrealizedPnl: +((this._unrealizedPnl||0)).toFixed(2),
       positionCount: Object.keys(this.positions).length,
@@ -293,7 +294,12 @@ class QuantAgentManager {
     this.running = false;
     this.pauseOpen = false;
     this.pauseTrend = false;
-    this.ADMIN_WALLETS = ['0xfa3b90c574469909d20848273c06752a22fde74a','0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e','0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5','0xc6dbb4cd3b6a12068c7388248da2bd32df7ef9b7'];
+    // ═══ 角色区分 ═══
+    // 管理员(唯一): fa3b90c5(0xfA3b90c574469909D20848273C06752a22fdE74a)
+    this.ADMIN_WALLETS = ['0xfA3b90c574469909D20848273C06752a22fdE74a'];
+    // 白名单(免算力费, 非管理员): e6ddf077/41c89c7d/c6dbb4cd等
+    this.WHITELIST_WALLETS = ['0xe6ddf0771c7610dba77eb5a07ba7771dd7f5e91e','0x41c89c7df1ad4c8dd251c5afe45aa1c791fb6ea5','0xc6dbb4cd3b6a12068c7388248da2bd32df7ef9b7'];
+    this.ALL_WALLETS = [...this.ADMIN_WALLETS, ...this.WHITELIST_WALLETS];
     // ═══ 交易池(分开配置) ═══
     // 震荡行情交易池(专门给 布林带震荡策略引擎 调用) — 布林回测精选优质币
     // WIF/FIL/ETH/APT/TURBO/STX 等(触轨低买高卖胜率高)
@@ -309,6 +315,7 @@ class QuantAgentManager {
   }
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[Quant] ${ts} ${m}`); }
   _isAdmin(w) { return this.ADMIN_WALLETS.some(a => a.toLowerCase() === (w||'').toLowerCase()); }
+  _isWhitelist(w) { return this.WHITELIST_WALLETS.some(a => a.toLowerCase() === (w||'').toLowerCase()); }
 
   start() {
     if (this.running) return; this.running = true;
@@ -329,18 +336,20 @@ class QuantAgentManager {
         if (!wallet || !wallet.includes('0x')) continue;
         if (!this._agents[wallet]) {
           const isAdmin = this._isAdmin(wallet);
+          const isWhitelist = this._isWhitelist(wallet);
           let apiKey, apiSecret;
-          // 优先级: 用户有自己的key(即使是管理员/白名单) → 用独立key(查各自真实账户)
-          // 只有无独立key的管理员(如fa3b90c5)才用平台公用key
+          // 优先级: 用户有自己的key → 用独立key; 无key的管理员(fa3b90c5)用公用key
           if (u.binanceApiKey && u.binanceSecret) {
             apiKey = decrypt(u.binanceApiKey); apiSecret = decrypt(u.binanceSecret);
-            if (!apiKey || apiKey.length !== 64) { if (!isAdmin) continue; apiKey=this.adminApiKey; apiSecret=this.adminApiSecret; }
+            if (!apiKey || apiKey.length !== 64) { if (!isAdmin && !isWhitelist) continue; apiKey=this.adminApiKey; apiSecret=this.adminApiSecret; }
           } else {
-            if (!isAdmin) continue;
-            apiKey = this.adminApiKey; apiSecret = this.adminApiSecret;
+            if (!isAdmin && !isWhitelist) continue;
+            if (isAdmin) { apiKey = this.adminApiKey; apiSecret = this.adminApiSecret; }
+            else continue;  // 白名单无key不交易但保留
           }
-          this._agents[wallet] = new QuantAgent({ wallet, apiKey, apiSecret, isAdmin, userDB: this.userDB, pauseOpen: this.pauseOpen });
-          this._log(`${wallet.slice(0,10)} 智能体启动(${isAdmin?'管理员':'普通'})`);
+          this._agents[wallet] = new QuantAgent({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB: this.userDB, pauseOpen: this.pauseOpen });
+          const role = isAdmin ? '管理员' : (isWhitelist ? '白名单' : '普通');
+          this._log(`${wallet.slice(0,10)} 智能体启动(${role})`);
         }
       }
       // 全部用户(普通+管理员/白名单)开放开仓
