@@ -109,11 +109,27 @@ class QuantServer {
       const r = this.bt.run(kl);
       res.json({ symbol: req.params.symbol, days, ...r });
     });
-    // 用户智能体状态 + 震荡池/趋势池 + 大脑状态
+    // 用户智能体状态 + 震荡池/趋势池 + 大脑状态(补充币安真实已实现盈亏)
     this.app.get('/api/quant/agents', async (req, res) => {
       const mgr = global.__quantAgents;
+      const agents = mgr ? await Promise.all(await Promise.all(Object.values(mgr._agents).map(async (a) => {
+        const sum = a.getSummary();
+        // 从币安拉真实已实现盈亏(覆盖/补充closedHistory为0的问题)
+        try {
+          const inc = await a.api.getIncome(Date.now()-30*86400000, Date.now(), 'REALIZED_PNL').catch(()=>[]);
+          const arr = Array.isArray(inc)?inc:[];
+          if (arr.length) {
+            const total = arr.reduce((s,i)=>s+(+i.income||0),0);
+            const wins = arr.filter(i=>+i.income>0).length;
+            const trades = arr.length;
+            sum.trades = trades; sum.wins = wins; sum.losses = trades-wins;
+            sum.realizedPnl = +total.toFixed(2);
+          }
+        } catch(e){}
+        return sum;
+      }))) : [];
       res.json({
-        agents: mgr ? mgr.getAllStatus() : [],
+        agents,
         pools: mgr ? { bollinger: mgr.BOLLINGER_POOL, trend: mgr.TREND_POOL } : {},
         brain: mgr ? Object.values(mgr._agents).map(a => ({ wallet: a.wallet.slice(0,10), picks: a.brain ? a.brain.picks : {}, nnTrain: a.brain ? a.brain.nn.trainCount : 0 })) : [],
       });
@@ -127,7 +143,7 @@ class QuantServer {
     try {
       const mgr = new QuantAgentManager({ apiKey: APIKEY, apiSecret: APISECRET });
       mgr.pauseOpen = false;           // 灰度: 管理员可开仓
-      mgr.pauseTrend = true;           // 用户要求: 趋势引擎暂停开仓(只停新开,持仓管理正常)(agent-manager按isAdmin区分, 普通用户仍停)
+      mgr.pauseTrend = false;          // 用户要求: 趋势策略放开开仓(执行开仓)(agent-manager按isAdmin区分, 普通用户仍停)
       mgr.start();
       global.__quantAgents = mgr;
       console.log('[QuantServer] 🤖 多用户智能体管理器已挂载(展示状态, 停开仓)');
