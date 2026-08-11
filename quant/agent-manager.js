@@ -50,7 +50,13 @@ class QuantAgent {
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
   // 状态持久化: closedHistory/balance 保存到文件, 重启不丢失(交易/胜率/已实现盈亏)
   _saveState() { try { fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance }, null, 1)); } catch(e){} }
-  _loadState() { try { if (fs.existsSync(this._stateFile)) { const st = JSON.parse(fs.readFileSync(this._stateFile,'utf8')); if (Array.isArray(st.closedHistory)) this.closedHistory = st.closedHistory; if (typeof st.balance==='number') this.balance = st.balance; } } catch(e){} }
+  _loadState() { try { if (fs.existsSync(this._stateFile)) { const st = JSON.parse(fs.readFileSync(this._stateFile,'utf8')); if (Array.isArray(st.closedHistory)) {
+    // 合理性过滤: 单笔|pnl|超本金1.5倍(物理不可能, 旧_estimatePnl公式污染) → 丢弃
+    const bal = typeof st.balance==='number' && st.balance>0 ? st.balance : this.balance;
+    const thr = Math.max(30, bal*1.5);
+    this.closedHistory = st.closedHistory.filter(c => !c.pnl || Math.abs(c.pnl) <= thr);
+    if (this.closedHistory.length < st.closedHistory.length) this._log(`⚠️ 过滤${st.closedHistory.length-this.closedHistory.length}笔异常平仓(旧盈亏公式污染), 保留${this.closedHistory.length}笔`);
+  } if (typeof st.balance==='number') this.balance = st.balance; } } catch(e){} }
 
   // 大盘过滤器: BTC走弱(RISK)时不开新仓, 只管理已有持仓
   _btcRegime(btcKlines) {
@@ -243,8 +249,11 @@ class QuantAgent {
   }
 
   _estimatePnl(pos, price) {
+    // 正确合约真实盈亏(近似,不含手续费): 方向价差(USD) × 币数量
+    // LONG: (exit-entry)*qty ; SHORT: (entry-exit)*qty
+    // 注: 不能除以entry(那会把金额放大几百倍, 出过 -$329超本金的bug)
     const dir = pos.side === 'LONG' ? (price - pos.entryPrice) : (pos.entryPrice - price);
-    return dir / pos.entryPrice * pos.qty;   // 直接USD盈亏(近似)
+    return dir * (pos.qty || 0);
   }
 
   // 算力费扣款(普通用户盈利扣30% → 管理员钱包累计)
