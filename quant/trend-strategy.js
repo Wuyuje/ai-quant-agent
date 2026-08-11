@@ -20,9 +20,9 @@ function sma7(closes) {
 class TrendStrategy {
   constructor(opts = {}) {
     this.lookback = opts.lookback || 288;    // 位置区间: 近288根5min≈1天(判断低位/高位)
-    this.lowCut = opts.lowCut || 0.60;        // 做多: MA7低位区(<60%放宽)
-    this.highCut = opts.highCut || 0.40;      // 做空: MA7高位区(>40%放宽)
-    this.turnAbs = opts.turnAbs || 0.00008;   // 拐头幅度(略降,更多启动能触发)
+    this.lowCut = opts.lowCut || 0.45;        // 做多: MA7低位区(<45%精选精准)
+    this.highCut = opts.highCut || 0.55;      // 做空: MA7高位区(>55%精选精准)
+    this.turnAbs = opts.turnAbs || 0.0001;    // 拐头幅度(0.0001)
     this.stopLossPct = opts.stopLossPct || 4.0; // 硬止损兜底(防极端)
 this.trailPct = opts.trailPct || 3.0;         // 移动止损: 从最高/最低回撤3%才平(拿满趋势不中途震)
   }
