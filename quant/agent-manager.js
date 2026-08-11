@@ -227,6 +227,12 @@ class QuantAgent {
           if (r.success) {
             this._settleServiceFee(symbol, pnlToCount);
             this.closedHistory.unshift({ symbol: symbol.replace('USDT',''), side: pos.side, pnl: pnlToCount, reason: closeReason, ts: Date.now(), strat: pos.strategy });
+            // ═══ 大脑中枢自学习：每次平仓喂给神经网络+UCB绩效 ═══
+            try {
+              const notional = (pos.entryPrice || 0) * (pos.qty || 0);
+              const pnlPct = notional > 0 ? (pnlToCount / notional) * 100 : 0;
+              this.brain.recordResult(symbol.replace('USDT',''), pos.strategy === 'bollinger' ? 'bollinger' : 'trend', pnlPct);
+            } catch(e2){}
             this._saveState();  // 平仓后持久化统计
             delete this.positions[symbol];
             delete this._stratLock[symbol];  // 平仓后释放策略锁
