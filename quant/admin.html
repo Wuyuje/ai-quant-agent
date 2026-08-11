@@ -150,6 +150,6 @@ async function loadFees(){const d=await api('/api/quant/fees');const rows=$('#fe
 }
 function updateLive(){$('#liveTime').textContent='更新 '+new Date().toLocaleTimeString('zh-CN',{hour12:false});}
 function refreshAll(){const t=document.querySelector('.tab.act').dataset.t;if(t==='market')loadMkt();if(t==='chart')loadChart();if(t==='agents')loadAgents();if(t==='fees')loadFees();if(t==='backtest')loadBt();}
-loadMkt();setInterval(loadMkt,30000);
+loadMkt();setInterval(loadMkt,30000);setInterval(loadAgents,10000);
 </script>
 </body></html>
