@@ -112,22 +112,17 @@ class QuantServer {
     // 用户智能体状态 + 震荡池/趋势池 + 大脑状态(补充币安真实已实现盈亏)
     this.app.get('/api/quant/agents', async (req, res) => {
       const mgr = global.__quantAgents;
-      const agents = mgr ? await Promise.all(await Promise.all(Object.values(mgr._agents).map(async (a) => {
+      const agents = mgr ? await Promise.all(Object.values(mgr._agents).map(async (a) => {
         const sum = a.getSummary();
-        // 从币安拉真实已实现盈亏(覆盖/补充closedHistory为0的问题)
+        // 从币安拉账户级真实已实现盈亏(近30天, 作参考)
+        // 注意: 币安账户级getIncome不区分策略, 双策略独立统计用持久化closedHistory
         try {
           const inc = await a.api.getIncome(Date.now()-30*86400000, Date.now(), 'REALIZED_PNL').catch(()=>[]);
           const arr = Array.isArray(inc)?inc:[];
-          if (arr.length) {
-            const total = arr.reduce((s,i)=>s+(+i.income||0),0);
-            const wins = arr.filter(i=>+i.income>0).length;
-            const trades = arr.length;
-            sum.trades = trades; sum.wins = wins; sum.losses = trades-wins;
-            sum.realizedPnl = +total.toFixed(2);
-          }
+          if (arr.length) sum.accountRealized30d = +arr.reduce((s,i)=>s+(+i.income||0),0).toFixed(2);
         } catch(e){}
         return sum;
-      }))) : [];
+      })) : [];
       res.json({
         agents,
         pools: mgr ? { bollinger: mgr.BOLLINGER_POOL, trend: mgr.TREND_POOL } : {},

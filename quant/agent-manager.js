@@ -42,6 +42,9 @@ class QuantAgent {
     this.pauseOpen = false;
     this._runCount = 0;
     this._logTag = wallet.slice(0,10);
+    // 状态文件路径: 每个用户独立持久化(closedHistory/balance), 重启不丢
+    try { this._stateFile = path.join(__dirname, '..', 'data', 'users', wallet, 'quant-state.json'); fs.mkdirSync(path.dirname(this._stateFile), { recursive: true }); } catch(e){ this._stateFile = null; }
+    this._loadState();
   }
 
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
@@ -271,6 +274,16 @@ class QuantAgent {
   getSummary() {
     const t = Math.max(1, this.closedHistory.length);
     const wins = this.closedHistory.filter(c => c.pnl > 0).length;
+    // ═══ 双策略独立统计(trend趋势/ bollinger震荡) ═══
+    const trendT = this.closedHistory.filter(c => !c.strat || c.strat === 'trend');
+    const bollT  = this.closedHistory.filter(c => c.strat === 'bollinger');
+    const stratStat = (arr) => ({
+      trades: arr.length,
+      wins: arr.filter(c => c.pnl > 0).length,
+      losses: arr.filter(c => c.pnl < 0).length,
+      realizedPnl: +arr.reduce((a,c) => a + (c.pnl||0), 0).toFixed(2),
+      winRate: arr.length ? Math.round(arr.filter(c => c.pnl > 0).length / arr.length * 100) : 0
+    });
     return {
       wallet: this.wallet, isAdmin: this.isAdmin, isWhitelist: this.isWhitelist, balance: this.balance,
       totalEquity: +(this.totalWalletBalance || ((this.balance||0)+(this._unrealizedPnl||0))).toFixed(2),  // 总资金 = 币安合约账户总余额
@@ -279,6 +292,9 @@ class QuantAgent {
       positions: Object.entries(this.positions).map(([s,p]) => ({ symbol: s, side: p.side, strategy: p.strategy, entryPrice: p.entryPrice, currentPrice: p.currentPrice, leverage: p.leverage })),
       trades: this.closedHistory.length, wins, losses: this.closedHistory.length - wins,
       realizedPnl: this.closedHistory.reduce((a,c) => a + (c.pnl||0), 0),
+      // 双策略独立统计 + 每次平仓记录
+      strategyPnl: { trend: stratStat(trendT), bollinger: stratStat(bollT) },
+      closedTrades: this.closedHistory.slice(0, 100),
     };
   }
 }
