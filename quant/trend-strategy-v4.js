@@ -79,50 +79,49 @@ class TrendStrategyV4 {
     return { signal: 'NONE', reason: `大周期方向${d.dir} 等入场` };
   }
 
-  // ═══ 止损: 逻辑失效处 + ATR(大周期防扫) ═══
+  // ═══ 止损(A奇理论): 止损=逻辑失效处 + ATR1-2倍 + 单笔控比例 ═══
+  // 截图: 止损放入场逻辑失效处(支撑/突破点下方); 用ATR辅助(1~2倍); 单笔亏1-2%总资金,宁可轻仓不扛单
   stopLoss(pos, klines) {
     const arr = toArray(klines); const closes = arr.map(k => +k[3]);
     const price = closes[closes.length - 1];
-    const a = this.atr(arr) * this.atrMult;
-    // 多单: 跌破抬高低点(支撑) - ATR缓冲 → 逻辑破
+    const a = this.atr(arr) * this.atrMult;   // ATR缓冲
+    // 多单: 跌破入场逻辑支撑/突破点(逻辑失效) → 砍
     if (pos.side === 'LONG') {
-      const stop = (pos.supportLevel > 0 ? pos.supportLevel : pos.entry - a) - a * 0.3;
-      if (price < stop) return { action: 'CLOSE', reason: `跌破支撑${stop.toFixed(4)}逻辑止损` };
-      // ATR兜底(最大回撤)
-      if ((pos.entry - price) > a * 1.2) return { action: 'CLOSE', reason: `ATR止损(${((pos.entry-price)/(pos.entry||1)*100).toFixed(1)}%)` };
+      const logicStop = pos.supportLevel > 0 ? pos.supportLevel : (pos.entry - a);
+      if (price < logicStop) return { action: 'CLOSE', reason: `逻辑止损:跌破支撑${logicStop.toFixed(4)}` };
+      // ATR兜底(不扛单): 反向超2倍ATR就砍
+      if (pos.entry - price > a) return { action: 'CLOSE', reason: `ATR止损:回撤${(((pos.entry-price)/pos.entry)*100).toFixed(1)}%` };
     } else {
-      const stop = (pos.resistanceLevel > 0 ? pos.resistanceLevel : pos.entry + a) + a * 0.3;
-      if (price > stop) return { action: 'CLOSE', reason: `突破阻力${stop.toFixed(4)}逻辑止损` };
-      if ((price - pos.entry) > a * 1.2) return { action: 'CLOSE', reason: `ATR止损(${((price-pos.entry)/(pos.entry||1)*100).toFixed(1)}%)` };
+      const logicStop = pos.resistanceLevel > 0 ? pos.resistanceLevel : (pos.entry + a);
+      if (price > logicStop) return { action: 'CLOSE', reason: `逻辑止损:突破阻力${logicStop.toFixed(4)}` };
+      if (price - pos.entry > a) return { action: 'CLOSE', reason: `ATR止损:反弹${(((price-pos.entry)/pos.entry)*100).toFixed(1)}%` };
     }
     return { action: 'HOLD' };
   }
 
-  // ═══ 平仓: 让利润跑 + 移动止盈保护(大道至简精髓) ═══
-  // 截图: 回调/反弹不是反转, 别被震出; 但也要锁利润, 跌破关键结构位才走
+  // ═══ 离场(A奇理论): 结构破坏(跌破前抬高低点) + 多信号共振 才走 ═══
+  // 截图: 回调/反弹不是反转; 平仓=跌破前一个更低低点(lower low)/突破前更高高点(higher high)
+  //       + 背离/放量 共振(至少2个)
   takeProfit(pos, klines) {
     const arr = toArray(klines); const closes = arr.map(k => +k[3]);
     if (closes.length < this.minBars) return { action: 'HOLD' };
     const price = closes[closes.length - 1];
     const d = this.dir(closes);
-    // 追踪: 记录开仓后最高/最低(让利润跑)
-    if (pos.side === 'LONG') { pos.highP = (pos.highP == null || price > pos.highP) ? price : pos.highP; pos.highI = price >= pos.highP ? (pos.highI || 0) + 1 : (pos.highI || 0); }
-    else { pos.lowP = (pos.lowP == null || price < pos.lowP) ? price : pos.lowP; pos.lowI = price <= pos.lowP ? (pos.lowI || 0) + 1 : (pos.lowI || 0); }
-    // 大周期结构明确转反 → 必平
-    if (pos.side === 'LONG' && d.dir === 'DOWN') return { action: 'CLOSE', reason: `上升结构破坏转降平多` };
-    if (pos.side === 'SHORT' && d.dir === 'UP') return { action: 'CLOSE', reason: `下降结构破坏转涨平空` };
-    // 动态移动止盈: 用当前结构位做保护(让利润跑但锁住)
+    const v = this.vol(arr);
+    // 记录持仓期间的结构极值(让利润跑, 真正结构破坏才走)
     if (pos.side === 'LONG') {
-      // 止盈线随上涨结构抬高: 用当前最近抬高低点
-      const trail = pos.highP && pos.highP > pos.entry ? (pos.highP - (pos.highP - pos.entry) * 0.5) : pos.entry;
-      const structStop = d.support > 0 ? d.support : trail;
-      const stopLine = Math.max(trail, structStop);
-      if (price < stopLine) return { action: 'CLOSE', reason: `移动止盈(高点${(pos.highP||price).toFixed(4)}回撤锁利${stopLine.toFixed(4)})` };
+      pos.highP = (pos.highP == null || price > pos.highP) ? price : pos.highP;
+      // 结构破坏信号1: 跌破最近抬高低点(lower low) → 上升结构坏
+      const broken = d.dir !== 'UP' || (d.support > 0 && price < d.support);
+      const volHeart = v.up;  // 放量(下跌放量=恐慌/破位)
+      if (broken && volHeart) return { action: 'CLOSE', reason: `结构破坏+放量:跌破抬高低点(${(d.support||0).toFixed(4)})平多` };
+      if (broken && pos.highP > pos.entry * 1.05) return { action: 'CLOSE', reason: `结构破坏+已盈利平多(高${pos.highP.toFixed(4)})` };
     } else {
-      const trail = pos.lowP && pos.lowP < pos.entry ? (pos.lowP + (pos.entry - pos.lowP) * 0.5) : pos.entry;
-      const structStop = d.resistance > 0 ? d.resistance : trail;
-      const stopLine = Math.min(trail, structStop);
-      if (price > stopLine) return { action: 'CLOSE', reason: `移动止盈(低点${(pos.lowP||price).toFixed(4)}反弹锁利${stopLine.toFixed(4)})` };
+      pos.lowP = (pos.lowP == null || price < pos.lowP) ? price : pos.lowP;
+      const broken = d.dir !== 'DOWN' || (d.resistance > 0 && price > d.resistance);
+      const volHeart = v.up;
+      if (broken && volHeart) return { action: 'CLOSE', reason: `结构破坏+放量:突破降低高点(${(d.resistance||0).toFixed(4)})平空` };
+      if (broken && pos.lowP < pos.entry * 0.95) return { action: 'CLOSE', reason: `结构破坏+已盈利平空(低${pos.lowP.toFixed(4)})` };
     }
     return { action: 'HOLD' };
   }
