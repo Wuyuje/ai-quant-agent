@@ -12,6 +12,7 @@ const { FeatureEngineer, toArray } = require('./featurer');
 const { MarketClassifier } = require('./market-classifier');
 const { TrendStrategy } = require('./trend-strategy');  // MA趋势引擎(规格版)
 const { TradeExecutionCore } = require('./execution-core');
+const { TrendStrategyV4 } = require('./trend-strategy-v4'); // 阿奇日线大周期独立趋势引擎
 const { BollingerStrategy } = require('./bollinger-strategy');
 const { BrainCore } = require('./brain-core');
 
@@ -451,7 +452,7 @@ class QuantAgentManager {
       this._log('🧠 动态选币开始...');
       const apiInst = new BinanceAPI(this.adminApiKey, this.adminApiSecret);
       const CANDIDATES = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT'];
-      const trendPool=[], bollPool=[];
+      const trendPool=[], bollPool=[], trendV4Pool=[];
       for (const sym of CANDIDATES) {
         // 选币用与实盘一致的5分钟级别K线(分批拉近30天≈8640根): 严格策略交易稀少需要长窗口才有回测样本
         const kl = await this._fetchKlinesM(sym, '5m', 8640, apiInst).catch(()=>null);
@@ -465,17 +466,27 @@ class QuantAgentManager {
         } else {
           trendPool.push({sym, ret: basis.ret * 0.5, trRet: 0});   // 无回测样本(严格策略没成交) → 基础分减半排序, 不占奖励
         }
+        // ═══ V4阿奇日线趋势评估(独立趋势精选): 日线回测, 只保留盈利且趋势明确 ✅ ═══
+        const kld = await apiInst.getKlines(sym, '1d', 200).catch(()=>null);
+        if (kld && kld.length >= 80) {
+          const v4 = this._btTrendV4Daily(kld);
+          if (v4 && v4.n > 0 && v4.ret > 0) trendV4Pool.push({sym, ret: v4.ret, n: v4.n, rate: v4.rate});
+        }
         const bo = this._btBoll(kl);   // 用最新截图版振荡(BollingerStrategy)真实回测
         if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret, boRet: bo.ret});   // 优胜劣汰: 回测盈利才进震荡池, 亏损剔除
       }
-      this._log(`🧠 动态选币筛选: 趋势候选${trendPool.length} 震荡候选${bollPool.length}`);
+      trendV4Pool.sort((a,b)=> b.ret - a.ret);
+      this.TREND_V4_POOL = trendV4Pool.slice(0,10).map(x=>x.sym);   // V4日线趋势精选池(独立)
+      this._log(`🧠 V4日线趋势精选池: ${this.TREND_V4_POOL.join(',')}`);
+      this._log(`🧠 动态选币筛选: 趋势候选${trendPool.length} 震荡候选${bollPool.length} V4日线${trendV4Pool.length}`);
       // ═══ 独立各取前10 trend, 震荡池最多20只(用户:优胜劣汰) ═══
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
       const trendC = trendPool.slice(0,10);
       const bollC = bollPool.slice(0,20);   // 震荡池最多20只
       // 趋势池=趋势分前10; 震荡池=布林候选前20(不含趋势池重叠币), 最多20只
-      const newTrend = trendC.map(x=>x.sym);
+      // ═══ 趋势池优先用V4日线精选(剔亏+趋势明确), 后备旧MA7候选 ═══
+      const newTrend = (this.TREND_V4_POOL && this.TREND_V4_POOL.length) ? this.TREND_V4_POOL : trendC.map(x=>x.sym);
       const tSet = new Set(newTrend);
       const bollAll = bollPool.slice(0,40).filter(x=>!tSet.has(x.sym)).map(x=>x.sym);
       const newBoll = bollAll.slice(0,20);
@@ -569,6 +580,26 @@ class QuantAgentManager {
           if(tp.action==='CLOSE')cr='tp'; else{const hs=b.checkHardStop(pos,win,0);if(hs.stop)cr='sl';}
           if(cr){const raw=pos.side==='LONG'?(price-pos.entry)/pos.entry*100:(pos.entry-price)/pos.entry*100;const cp=raw*3*0.15-0.001*0.15*200;ret+=cp;n++;if(cp>0)w++;pos=null;}
         } else { const g=b.canOpen(win); if(g.allowed){const es=b.entrySignal(win,'FLAT',false);if(es.signal==='LONG'||es.signal==='SHORT')pos={side:es.signal,entry:price};} }
+      }
+      return {ret,n,rate:n?Math.round(w/n*100):0};
+    }catch(e){return {ret:-99,n:0,rate:0};}
+  }
+
+  // ═══ V4 阿奇日线大周期趋势回测(用于日线趋势精选池选币) ═══
+  // 日线K线: 横盘不做/收盘站稳突破/回踩/逻辑止损/盈利让跑
+  _btTrendV4Daily(kl){
+    try{
+      const t=new TrendStrategyV4({ minBars:60 }); const arr=kl.map(k=>({open:k.open,high:k.high,low:k.low,close:+k.close,volume:k.volume}));
+      const c=arr.map(x=>+x.close);
+      let pos=null,ret=0,n=0,w=0;
+      for(let i=80;i<c.length;i++){
+        const price=+arr[i].close,win=arr.slice(0,i+1);
+        if(pos){
+          let cr=null;
+          const sl=t.stopLoss(pos,win); if(sl.action==='CLOSE')cr='sl';
+          if(!cr){const tp=t.takeProfit(pos,win); if(tp.action==='CLOSE')cr='tp';}
+          if(cr){const raw=pos.side==='LONG'?(price-pos.entry)/pos.entry*100:(pos.entry-price)/pos.entry*100; const cp=raw*5*0.15-0.001*0.15*200; ret+=cp;n++; if(cp>0)w++; pos=null;}
+        } else { const sig=t.entrySignal(win); if(sig.signal==='LONG'||sig.signal==='SHORT')pos={side:sig.signal,entry:price,supportLevel:sig.supportLevel,resistanceLevel:sig.resistanceLevel}; }
       }
       return {ret,n,rate:n?Math.round(w/n*100):0};
     }catch(e){return {ret:-99,n:0,rate:0};}
