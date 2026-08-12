@@ -137,8 +137,8 @@ class QuantServer {
     // 绑定多用户智能体管理器(只展示状态, 默认停开仓, 不实盘)
     try {
       const mgr = new QuantAgentManager({ apiKey: APIKEY, apiSecret: APISECRET });
-      mgr.pauseOpen = false;           // 灰度: 管理员可开仓
-      mgr.pauseTrend = false;          // 用户要求: 趋势策略放开开仓(执行开仓)(agent-manager按isAdmin区分, 普通用户仍停)
+      mgr.pauseOpen = true;            // ⏸️ 停双策略开仓(修改策略期间不误开仓)
+      mgr.pauseTrend = true;           // ⏸️ 停趋势开仓
       mgr.start();
       global.__quantAgents = mgr;
       console.log('[QuantServer] 🤖 多用户智能体管理器已挂载(展示状态, 停开仓)');

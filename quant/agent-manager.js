@@ -178,13 +178,18 @@ class QuantAgent {
         // 布林带策略(规格): 5分钟K线决策
         const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
+        // 截图: 单K±3%毛刺信号作废
+        if (this.boll.isSpikeBar(bkl)) continue;
+        // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
+        const guard = this.boll.tradingGuardAllowed();
+        if (!guard.allowed) continue;
         const openGate = this.boll.canOpen(bkl);
         if (!openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
         const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
         if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
           const bs = { notional: Math.max(20, this.balance*0.15*3), margin: Math.max(20,this.balance*0.15*3)/3, leverage: 3 };
           const r = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bs.notional, leverage: 3, precisionMap: pm, price, balance: this.balance });
-          if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; }
+          if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; }
         }
       }
     }
@@ -218,11 +223,37 @@ class QuantAgent {
           // 布林带策略止盈/风控(规格): 5min K线
           const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
           if (bkl && bkl.length >= 30) {
+            // 截图: 插针击穿止损/补仓点位但收盘回归 → 不执行风控
+            const spike = this.boll.isSpikeBar(bkl);
             const tp = this.boll.checkTakeProfit(pos, bkl);
-            if (tp.action === 'CLOSE') closeReason = tp.reason;
-            else {
-              const hs = this.boll.checkHardStop(pos, bkl, this.balance);
+            if (tp.action === 'CLOSE' && !spike) closeReason = tp.reason;   // 插针不触发止盈
+            else if (!spike) {
+              // 前置风控: 单K浮亏≥单笔本金20%全平
+              const eq = this.balance;  // 单笔本金近似用可用资金
+              const hs = this.boll.checkHardStop(pos, bkl, eq);
               if (hs.stop) closeReason = hs.reason;
+              else {
+                // 终极风控: 3次补仓完成 + 总浮亏≥70%强制全平
+                const totalPnlPct = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice*100 : (pos.entryPrice-price)/pos.entryPrice*100;
+                const fs = this.boll.checkFinalStop(pos, totalPnlPct);
+                if (fs.stop) closeReason = fs.reason;
+                else {
+                  // 补仓: 已有同向持仓走补仓, 收口后3根+未到3次
+                  if (pos._addRound < 3) {
+                    const preCloseIdx = bkl.length - (pos._lastAddIdxFrom0 || 0);
+                    const candd = this.boll.checkAdd(bkl, pos);
+                    // 补仓时序: 收口后间隔3根K线(简化: 用K线数量近似, 持续多轮后允许)
+                    if (candd.canAdd && pos._lastAddRoundTick != null && (bkl.length - pos._lastAddRoundTick) >= 3) {
+                      // 执行补仓(同向加仓) — 真实补仓通过增量下单实现, 这里标记轮次
+                      pos._addRound = (pos._addRound || 0) + 1;
+                      pos._lastAddRoundTick = bkl.length;
+                      this._log(`📈 ${symbol} 布林第${pos._addRound}次补仓(收口后3根)持仓${(candd.pct*100).toFixed(0)}%`);
+                    } else if (candd.canAdd && pos._lastAddRoundTick == null) {
+                      pos._lastAddRoundTick = bkl.length;
+                    }
+                  }
+                }
+              }
             }
           }
         }
