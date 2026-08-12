@@ -20,9 +20,10 @@ function sma7(closes) {
 class TrendStrategy {
   constructor(opts = {}) {
     this.lookback = opts.lookback || 288;    // 位置区间: 近288根5min≈1天(判断低位/高位)
-    this.lowCut = opts.lowCut || 0.45;        // 做多: MA7低位区(<45%精选精准)
-    this.highCut = opts.highCut || 0.55;      // 做空: MA7高位区(>55%精选精准)
-    this.turnAbs = opts.turnAbs || 0.0001;    // 拐头幅度(0.0001)
+    this.lowCut = opts.lowCut || 0.25;        // 做多: MA7真底位(<25%跌无可跌才做多, 拒绝半路)
+    this.highCut = opts.highCut || 0.75;      // 做空: MA7真高位(>75%涨不上才做空, 拒绝半路)
+    this.turnAbs = opts.turnAbs || 0.0001;    // 拐头最小幅度
+    this.turnStrong = opts.turnStrong || 0.0004; // 拐头角度(强拐): 必须有明显角度才开(避免弱反弹假拐头)
     this.stopLossPct = opts.stopLossPct || 4.0; // 硬止损兜底(防极端)
 this.trailPct = opts.trailPct || 3.0;         // 移动止损: 从最高/最低回撤3%才平(拿满趋势不中途震)
     this.useDIF = opts.useDIF || false;        // DIF/MACD动能否确认: 拦截逆势假拐头(做多需DIF>0/做空需DIF<0)
@@ -96,30 +97,24 @@ this.trailPct = opts.trailPct || 3.0;         // 移动止损: 从最高/最低�
     const turn = this._turn(ma);
     const { pos, curMA } = posInfo;
     const turnAbs = this.turnAbs;
+    const turnStrong = this.turnStrong || turnAbs*4;
     // ═══ 跟随大盘方向过滤: 只顺势开仓, 不逆势 ═══
     const dir = this.marketDirection(closes);   // 该币多空排列方向
-    // 做多需在UP/FLAT(至少非DOWN下跌趋势); 若明确DOWN趋势→禁做多(不抄底)
-    if (dir === 'DOWN' && pos < this.lowCut) return { signal:'NONE', reason:`下跌趋势禁抄底做多(方向${dir})` };
-    // 做空需在DOWN/FLAT; 若明确UP趋势→禁做空
-    if (dir === 'UP' && pos > this.highCut) return { signal:'NONE', reason:`上涨趋势禁追空(方向${dir})` };
 
-    // 做多·低买: 低位区 + 拐头向上 + 不逆势(非DOWN趋势)
-    if (pos < this.lowCut && turn.dir === 1 && turn.d1 > turnAbs && turn.d2 < turnAbs && dir !== 'DOWN') {
-      if (this.useDIF) {
-        const dif = this._dif(closes);
-        if (dif != null && dif <= 0) return { signal:'NONE', reason:`DIF动能否认做多(DIF=${dif.toFixed(6)}≤0, 多头动能不足)` };
-      }
-      return { signal:'LONG', reason:`低买(MA7位${(pos*100).toFixed(0)}%底区,拐头向上)`, price };
+    // ═══ 大道至简·低买高卖 (严格版) ═══
+    // 做多·真底位强拐头: MA7在真正底位(pos<25%跌无可跌) + 前一刻还在下行(d2<0)
+    //   + 现在突然强上拐(d1>角度, 有角度) → 底部真正反转才开多
+    //   注意: 绝不能高位追死/半路开多
+    if (pos < this.lowCut && turn.dir === 1 && turn.d1 > turnStrong && turn.d2 < 0 && dir !== 'DOWN') {
+      return { signal:'LONG', reason:`底位强拐头做多(MA7位${(pos*100).toFixed(0)}%真底+下行后突然上拐d1=${(turn.d1*100).toFixed(3)}%),吃满上涨` };
     }
-    // 做空·高卖: MA7在高位区(>highCut, 涨不上去了) + 最新拐头向下(突然反转)
-    if (pos > this.highCut && turn.dir === -1 && turn.d1 < -turnAbs && turn.d2 > -turnAbs && dir !== 'UP') {
-      if (this.useDIF) {
-        const dif = this._dif(closes);
-        if (dif != null && dif >= 0) return { signal:'NONE', reason:`DIF动能否认做空(DIF=${dif.toFixed(6)}≥0, 空头动能不足)` };
-      }
-      return { signal:'SHORT', reason:`高卖(MA7位${(pos*100).toFixed(0)}%顶区,拐头向下)`, price };
+    // 做空·真高位强拐头: MA7在真正高位(pos>75%涨不上) + 前一刻还在上行(d2>0)
+    //   + 现在突然强下拐(d1<-角度, 有角度) → 顶部真正反转才做空
+    //   注意: 绝不能低位追空/半路做空(这是MUU那种-2.6%逆势空的根源)
+    if (pos > this.highCut && turn.dir === -1 && turn.d1 < -turnStrong && turn.d2 > 0 && dir !== 'UP') {
+      return { signal:'SHORT', reason:`高位强拐头做空(MA7位${(pos*100).toFixed(0)}%真顶+上行后突然下拐d1=${(turn.d1*100).toFixed(3)}%),吃满下跌` };
     }
-    return { signal:'NONE', reason:`位${(pos*100).toFixed(0)}% 拐=${turn.dir>=0?'上':'下'}(${pos<this.lowCut?'近底':(pos>this.highCut?'近顶':'中')})` };
+    return { signal:'NONE', reason:`MA7位${(pos*100).toFixed(0)}% 拐${turn.dir>=0?'上':'下'} d1=${(turn.d1*100).toFixed(3)}% (${pos<this.lowCut?'近底':(pos>this.highCut?'近顶':'中')})` };
   }
 
   // ═══ 止盈: 必须到最高/最低才平(绝不被震荡震出) ═══
