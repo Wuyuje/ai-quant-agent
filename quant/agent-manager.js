@@ -29,7 +29,7 @@ class QuantAgent {
     this.api = new BinanceAPI(apiKey, apiSecret);
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
-    this.trend = new TrendStrategy();  // MA多空排列趋势引擎
+    this.trend = new TrendStrategy({ useDIF: true });  // MA多空排列趋势引擎(开DIF动能否认: 拦截逆势假拐头)
     this.boll = new BollingerStrategy();      // 新震荡·布林带策略
     this.brain = new BrainCore();             // 大脑中枢(切换+自学习+NN)
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
@@ -424,7 +424,7 @@ class QuantAgentManager {
       for (const sym of CANDIDATES) {
         const kl = await apiInst.getKlines(sym, '1h', 720).catch(()=>null); // 近30天1h(匹配评估)
         if (!kl || kl.length < 200) continue;
-        const tr = this._assessTrend(kl);
+        const tr = this._btTrend(kl);   // 用含DIF的新趋势策略真实回测选币(拦截逆势)
         const bo = this._assessBoll(kl);
         if (tr && tr.n>0) trendPool.push({sym, ret:tr.ret, trRet:tr.ret});
         if (bo && bo.n>0) bollPool.push({sym, ret:bo.ret, boRet:bo.ret});
@@ -480,7 +480,7 @@ class QuantAgentManager {
   // (保留原回测方法名兼容, 但用新评估)
   _btTrend(kl){
     try{
-      const t=new TrendStrategy(); const c=kl.map(k=>+k.close);
+      const t=new TrendStrategy({ useDIF: true }); const c=kl.map(k=>+k.close); // 含DIF动能否认的新趋势策略
       let pos=null,ret=0,n=0,w=0;
       const rel=kl.map(k=>({open:k.open,high:k.high,low:k.low,close:+k.close,volume:k.volume}));
       const arr=rel;
@@ -492,6 +492,21 @@ class QuantAgentManager {
           if(tp.action==='CLOSE')cr='tp'; else{const s2=t.stopLoss(pos,price,cl);if(s2.action==='CLOSE')cr='sl';}
           if(cr){const raw=pos.side==='LONG'?(price-pos.entry)/pos.entry*100:(pos.entry-price)/pos.entry*100;const cp=raw*lev*0.15-0.001*0.15*200;ret+=cp;n++;if(cp>0)w++;pos=null;}
         } else { const sig=t.entrySignal(win,'FLAT'); if(sig.signal==='LONG'||sig.signal==='SHORT')pos={side:sig.signal,entry:price}; }
+      }
+      // 若实盘开仓条件过严没成交(n=0), 用DIF动能方向统计兜底(保证候选非空且含DIF评估)
+      if (n === 0) {
+        const seg = c.slice(-120);
+        const emaLast=(arr,p)=>{ if(arr.length<p)return null; const k=2/(p+1); let e=arr[arr.length-p]; for(let i=arr.length-p+1;i<arr.length;i++)e=arr[i]*k+e*(1-k); return e; };
+        const difs = [];
+        for (let j=100;j<c.length;j++){ const e12=emaLast(c.slice(0,j+1),12), e26=emaLast(c.slice(0,j+1),26); if(e12!=null&&e26!=null) difs.push(e12-e26); }
+        const up = difs.filter(d=>d>0).length;
+        const trendUpScore = difs.length ? up/difs.length : 0;  // 0~1, 越多DIF>0 = 上行趋势越强
+        // 趋势分: DIF方向一致度 * 涨跌幅强度
+        const chg = seg.length>1 ? (c[c.length-1]-c[c.length-seg.length])/(c[c.length-seg.length]||1)*100 : 0;
+        // 多头多(DIF>0比例高)或空头强(DIF<0但跌幅大)都算趋势
+        const dirScore = Math.max(trendUpScore, 1-trendUpScore);
+        const score = dirScore * Math.min(40, Math.abs(chg));
+        return { ret: score, n: 1, rate: Math.round(dirScore*100) };
       }
       return {ret,n,rate:n?Math.round(w/n*100):0};
     }catch(e){return {ret:-99,n:0,rate:0};}

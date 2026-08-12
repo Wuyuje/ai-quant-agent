@@ -25,6 +25,18 @@ class TrendStrategy {
     this.turnAbs = opts.turnAbs || 0.0001;    // 拐头幅度(0.0001)
     this.stopLossPct = opts.stopLossPct || 4.0; // 硬止损兜底(防极端)
 this.trailPct = opts.trailPct || 3.0;         // 移动止损: 从最高/最低回撤3%才平(拿满趋势不中途震)
+    this.useDIF = opts.useDIF || false;        // DIF/MACD动能否确认: 拦截逆势假拐头(做多需DIF>0/做空需DIF<0)
+    this.macdFast = opts.macdFast || 12;
+    this.macdSlow = opts.macdSlow || 26;
+  }
+
+  // ═══ DIF/MACD动能: 短期EMA-长期EMA (方向确认) ═══
+  _dif(closes) {
+    if (!closes || closes.length < this.macdSlow) return null;
+    const emaLast = (arr, p) => { if (arr.length < p) return null; const k = 2/(p+1); let e = arr[arr.length-p]; for (let i=arr.length-p+1;i<arr.length;i++) e = arr[i]*k + e*(1-k); return e; };
+    const E12 = emaLast(closes, this.macdFast);
+    const E26 = emaLast(closes, this.macdSlow);
+    return (E12!=null && E26!=null) ? E12 - E26 : null;
   }
 
   // ═══ 核心: MA7位置 + 拐头判定 ═══
@@ -93,10 +105,18 @@ this.trailPct = opts.trailPct || 3.0;         // 移动止损: 从最高/最低�
 
     // 做多·低买: 低位区 + 拐头向上 + 不逆势(非DOWN趋势)
     if (pos < this.lowCut && turn.dir === 1 && turn.d1 > turnAbs && turn.d2 < turnAbs && dir !== 'DOWN') {
+      if (this.useDIF) {
+        const dif = this._dif(closes);
+        if (dif != null && dif <= 0) return { signal:'NONE', reason:`DIF动能否认做多(DIF=${dif.toFixed(6)}≤0, 多头动能不足)` };
+      }
       return { signal:'LONG', reason:`低买(MA7位${(pos*100).toFixed(0)}%底区,拐头向上)`, price };
     }
     // 做空·高卖: MA7在高位区(>highCut, 涨不上去了) + 最新拐头向下(突然反转)
     if (pos > this.highCut && turn.dir === -1 && turn.d1 < -turnAbs && turn.d2 > -turnAbs && dir !== 'UP') {
+      if (this.useDIF) {
+        const dif = this._dif(closes);
+        if (dif != null && dif >= 0) return { signal:'NONE', reason:`DIF动能否认做空(DIF=${dif.toFixed(6)}≥0, 空头动能不足)` };
+      }
       return { signal:'SHORT', reason:`高卖(MA7位${(pos*100).toFixed(0)}%顶区,拐头向下)`, price };
     }
     return { signal:'NONE', reason:`位${(pos*100).toFixed(0)}% 拐=${turn.dir>=0?'上':'下'}(${pos<this.lowCut?'近底':(pos>this.highCut?'近顶':'中')})` };
