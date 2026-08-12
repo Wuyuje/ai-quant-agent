@@ -23,10 +23,8 @@ class BollingerStrategy {
     this.tpTriggerPct = 2.0;          // 止盈前提: 浮盈≥2%持仓资金
     this.volSpikeRatio = 1.8;         // 放量: 成交量>20周期均量×1.8
     this.atrTrail = 0.3;              // 放量ATR跟踪止盈倍数(0.3ATR)
-    this.lossKillPct = 20;            // 前置风控: 单K浮亏≥单笔本金20%全平
-    this.finalLossPct = 70;           // 终极风控: 总浮亏≥持仓金额70%全平(截图)
-    this.earlyStopPct = 20;           // A.提前终极止损: 总浮亏≥20%提前平(不等70%吃满, 保住本金)
-    this.maxTradeLossPct = 15;        // B.单笔最大亏损上限: 单笔亏损≥本金15%即平(防ARUSDT/MRVL型大亏)
+    this.lossKillPct = 20;            // 前置风控(截图): 单K浮亏≥单笔本金20%全平
+    this.finalLossPct = 70;           // 终极风控(截图): 总浮亏≥持仓金额70%全平
     this.maxAddRounds = 3;            // 补仓3次
     this.addPcts = [0.50, 0.30, 0.20]; // 补仓比例 50%/30%/20%
     this.addGapBars = 3;              // 补仓: 布林收口后间隔3根K线
@@ -201,21 +199,11 @@ class BollingerStrategy {
   }
 
   // ═══ 终极风控(截图): 3次补仓完成 + 总浮亏≥持仓金额70% → 强制全平 ═══
-  // A.提前终极止损: 总浮亏≥earlyStopPct(20%)提前平, 不等70%吃满
-  checkFinalStop(pos, totalPnlPct, filledAddRounds) {
-    const added = (filledAddRounds !== undefined ? filledAddRounds : pos._addRound);
-    const absPct = Math.abs(totalPnlPct);
-    // B.单笔最大亏损上限: 无论补仓与否, 总浮亏≥单笔本金15%即全平(防大亏单)
-    if (absPct >= this.maxTradeLossPct) {
-      return { stop: true, reason: `单笔风控总浮亏${absPct.toFixed(0)}%≥本金${this.maxTradeLossPct}%强平` };
-    }
-    // A.提前止损: 总浮亏≥20%提前全平(不等70%)
-    if (absPct >= this.earlyStopPct) {
-      return { stop: true, reason: `提前终极止损总浮亏${absPct.toFixed(0)}%≥${this.earlyStopPct}%强平(不等70%)` };
-    }
-    // 原截图: 3次补满 + 总浮亏≥70%
-    if (added >= this.maxAddRounds && absPct >= this.finalLossPct) {
-      return { stop: true, reason: `终极风控已补${added}次+总浮亏${absPct.toFixed(0)}%≥${this.finalLossPct}%强制全平` };
+  // 严格按截图, 不加额外风控(用户: 之前实盘已测试, 止盈止损都不加风控, 全按截图)
+  checkFinalStop(pos, totalPnlPct) {
+    // 截图: 3次补满 + 总浮亏≥70% 才终极止损
+    if ((pos._addRound || 0) >= this.maxAddRounds && Math.abs(totalPnlPct) >= this.finalLossPct) {
+      return { stop: true, reason: `终极风控已补${pos._addRound || 0}次+总浮亏${Math.abs(totalPnlPct).toFixed(0)}%≥${this.finalLossPct}%强制全平` };
     }
     return { stop: false };
   }
