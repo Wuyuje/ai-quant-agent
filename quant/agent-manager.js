@@ -450,7 +450,7 @@ class QuantAgentManager {
     try {
       this._log('🧠 动态选币开始...');
       const apiInst = new BinanceAPI(this.adminApiKey, this.adminApiSecret);
-      const CANDIDATES = ['BTCUSDT','ETHUSDT','SOLUSDT','AVAXUSDT','ADAUSDT','LINKUSDT','BCHUSDT','APTUSDT','FILUSDT','STXUSDT','TIAUSDT','INJUSDT','SUIUSDT','ARBUSDT','KASUSDT','OPUSDT','1000PEPEUSDT'];
+      const CANDIDATES = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT'];
       const trendPool=[], bollPool=[];
       for (const sym of CANDIDATES) {
         // 选币用与实盘一致的5分钟级别K线(分批拉近30天≈8640根): 严格策略交易稀少需要长窗口才有回测样本
@@ -465,20 +465,20 @@ class QuantAgentManager {
         } else {
           trendPool.push({sym, ret: basis.ret * 0.5, trRet: 0});   // 无回测样本(严格策略没成交) → 基础分减半排序, 不占奖励
         }
-        const bo = this._assessBoll(kl);
-        if (bo && bo.ret > 0) bollPool.push({sym, ret:bo.ret, boRet:bo.ret});
+        const bo = this._btBoll(kl);   // 用最新截图版振荡(BollingerStrategy)真实回测
+        if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret, boRet: bo.ret});   // 优胜劣汰: 回测盈利才进震荡池, 亏损剔除
       }
       this._log(`🧠 动态选币筛选: 趋势候选${trendPool.length} 震荡候选${bollPool.length}`);
-      // ═══ 独立各取前10, 重叠币归趋势分高者(避免一池占满另一池空) ═══
+      // ═══ 独立各取前10 trend, 震荡池最多20只(用户:优胜劣汰) ═══
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
       const trendC = trendPool.slice(0,10);
-      const bollC = bollPool.slice(0,10);
-      // 趋势池=趋势分前10; 震荡池=布林分候选(前20)中不属于趋势池的前10(保证数量充足)
+      const bollC = bollPool.slice(0,20);   // 震荡池最多20只
+      // 趋势池=趋势分前10; 震荡池=布林候选前20(不含趋势池重叠币), 最多20只
       const newTrend = trendC.map(x=>x.sym);
       const tSet = new Set(newTrend);
-      const bollAll = bollPool.slice(0,20).filter(x=>!tSet.has(x.sym)).map(x=>x.sym);
-      const newBoll = bollAll.slice(0,10);
+      const bollAll = bollPool.slice(0,40).filter(x=>!tSet.has(x.sym)).map(x=>x.sym);
+      const newBoll = bollAll.slice(0,20);
       if (newTrend.length>=3 && newBoll.length>=3) {
         this.TREND_POOL = newTrend;
         this.BOLLINGER_POOL = newBoll;
@@ -486,7 +486,7 @@ class QuantAgentManager {
         // 排名靠前子集(开仓限): 各前5只(按回测性能), 池内排名靠后才开仓
         this.trendTop = newTrend.slice(0,5);
         this.bollTop = newBoll.slice(0,5);
-        this._log(`🧠 动态选币 → 趋势池${newTrend.length}只: ${newTrend.join(',')} | 震荡池${newBoll.length}只: ${newBoll.join(',')}`);
+        this._log(`🧠 动态选币 → 趋势池${newTrend.length}只: ${newTrend.join(',')} | 震荡池${newBoll.length}只(≤20): ${newBoll.join(',')}`);
         this._log(`🟢 开仓限排名靠前 → 趋势Top: ${this.trendTop.join(',')} | 震荡Top: ${this.bollTop.join(',')}`);
       }
     } catch(e){ this._log(`⚠️ 动态选币失败: ${e.message.slice(0,30)}`); }
