@@ -29,7 +29,7 @@ class QuantAgent {
     this.api = new BinanceAPI(apiKey, apiSecret);
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
-    this.trend = new TrendStrategy({ useDIF: true });  // MA多空排列趋势引擎(开DIF动能否认: 拦截逆势假拐头)
+    this.trend = new TrendStrategy();  // MA多空排列趋势引擎(纯MA7, 回测一致无DIF)
     this.boll = new BollingerStrategy();      // 新震荡·布林带策略
     this.brain = new BrainCore();             // 大脑中枢(切换+自学习+NN)
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
@@ -422,9 +422,10 @@ class QuantAgentManager {
       const CANDIDATES = ['BTCUSDT','ETHUSDT','SOLUSDT','AVAXUSDT','ADAUSDT','LINKUSDT','BCHUSDT','APTUSDT','FILUSDT','STXUSDT','TIAUSDT','INJUSDT','SUIUSDT','ARBUSDT','KASUSDT','OPUSDT','1000PEPEUSDT'];
       const trendPool=[], bollPool=[];
       for (const sym of CANDIDATES) {
-        const kl = await apiInst.getKlines(sym, '1h', 720).catch(()=>null); // 近30天1h(匹配评估)
-        if (!kl || kl.length < 200) continue;
-        const tr = this._btTrend(kl);   // 用含DIF的新趋势策略真实回测选币(拦截逆势)
+        // 选币用与实盘一致的5分钟级别K线(近5天≈1440根, 足够评估且避免拉8640根超时限流)
+        const kl = await apiInst.getKlines(sym, '5m', 1440).catch(()=>null);
+        if (!kl || kl.length < 600) continue;
+        const tr = this._btTrend(kl);   // 用含DIF的新趋势策略(5m)真实回测选币(拦截逆势)
         const bo = this._assessBoll(kl);
         if (tr && tr.n>0) trendPool.push({sym, ret:tr.ret, trRet:tr.ret});
         if (bo && bo.n>0) bollPool.push({sym, ret:bo.ret, boRet:bo.ret});
@@ -453,6 +454,24 @@ class QuantAgentManager {
     } catch(e){ this._log(`⚠️ 动态选币失败: ${e.message.slice(0,30)}`); }
   }
   // 趋势适配评估(用1h近30天): ADX高+有方向性 = 适合趋势策略
+  // ═══ 动态选币: 分批拉取指定隔离数5m K线(绕过单次limit1500限制) ═══
+  async _fetchKlinesM(symbol, interval, target, apiInst) {
+    const out = [];
+    let endTime = Date.now();
+    while (out.length < target) {
+      const q = `/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=1000&endTime=${endTime}`;
+      const batch = await apiInst._get(q).catch(() => null);
+      if (!batch || !batch.length) break;
+      const mapped = batch.map(k => ({ time: k[0], open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]), volume: parseFloat(k[5]) }));
+      const newOnes = mapped.filter(k => k.time < endTime);
+      if (!newOnes.length) break;
+      out.unshift(...newOnes.reverse());
+      endTime = newOnes[0].time - 1;
+      if (batch.length < 1000) break;
+    }
+    return out;
+  }
+
   _assessTrend(kl){
     try{
       const c=kl.map(k=>+k.close); if(c.length<40)return {ret:-99,n:0,rate:0};
@@ -480,11 +499,11 @@ class QuantAgentManager {
   // (保留原回测方法名兼容, 但用新评估)
   _btTrend(kl){
     try{
-      const t=new TrendStrategy({ useDIF: true }); const c=kl.map(k=>+k.close); // 含DIF动能否认的新趋势策略
+      const t=new TrendStrategy(); const c=kl.map(k=>+k.close); // 纯MA7趋势策略(与实盘一致)
       let pos=null,ret=0,n=0,w=0;
       const rel=kl.map(k=>({open:k.open,high:k.high,low:k.low,close:+k.close,volume:k.volume}));
       const arr=rel;
-      for(let i=100;i<c.length;i++){
+      for(let i=300;i<c.length;i++){
         const price=+arr[i].close,win=arr.slice(0,i+1),cl=win.map(x=>+x.close);
         if(pos){
           const lev=pos.side==='LONG'?5:3;
