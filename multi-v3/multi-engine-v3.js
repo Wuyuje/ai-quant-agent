@@ -146,24 +146,25 @@ class MultiEngine extends EventEmitter {
     if (activeUsers.length === 0) return;
 
     const marketData = this.sharedDataBus
-      ? (this.sharedDataBus.getLatestData?.() || this._getMarketFromDataBus())
-      : this._getMockMarketData();
-    if (!marketData || !marketData.price) return;
-
-    // ═══ 共享量化信号: 一套共享选币池(趋势+震荡)+最新双策略, 所有用户共用 ═══
+      ? (this.sharedDataBus.getLatestData?.() || this._getMarketFromDataBus() || {})
+      : (this._getMockMarketData() || {});
+    // ═══ 共享选币池: 不依赖 getLatestData.price, 共享策略从 dataBus.klines 独立算信号 ═══
     let sharedSignals = {};
     let sharedPool = null;
     if (this.sharedStrategy) {
       try {
         sharedSignals = (await this.sharedStrategy.scanSignals()) || {};
-        sharedPool = {
-          trend: this.sharedStrategy.getTrendPool() || [],
-          bollinger: this.sharedStrategy.getBollPool() || [],
-        };
+        sharedPool = { trend: this.sharedStrategy.getTrendPool() || [], bollinger: this.sharedStrategy.getBollPool() || [] };
         marketData.sharedSignals = sharedSignals;
         marketData.sharedPool = sharedPool;
+        // 只要有共享信号/共享池就推进(价格不再是硬门槛)
+        marketData.price = marketData.price || (Object.keys(sharedSignals).length ? 1 : (sharedPool ? 1 : 0));
       } catch (e) { this.log('⚠️ 共享信号计算失败: ' + (e.message||e)); }
     }
+    if (!marketData.price) return;
+
+    // ═══ 共享量化信号: 一套共享选币池(趋势+震荡)+最新双策略, 所有用户共用 ═══
+    if (this.sharedStrategy) { try { marketData.sharedSignals = await this.sharedStrategy.scanSignals() || {}; } catch (e) {} }
 
     // v113.14: 分批处理 — 每轮只处理 batchSize 个用户
     const batchSize = this.config.batchSize;
