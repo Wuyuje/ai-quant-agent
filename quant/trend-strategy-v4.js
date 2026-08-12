@@ -79,11 +79,27 @@ class TrendStrategyV4 {
     return trs.slice(-14).reduce((x, y) => x + y, 0) / Math.min(14, trs.length);
   }
 
+  // ═══ 横盘检测(阿奇: 没有趋势就不画线/不做): 近N根无明确方向 or 窄幅区间反复 → 禁开仓 ═══
+  isRange(closes, n = 40) {
+    const win = closes.slice(-n);
+    if (win.length < 20) return true;   // 数据不足, 当横盘
+    const hi = Math.max(...win), lo = Math.min(...win);
+    const rangePct = hi > 0 ? (hi - lo) / lo * 100 : 0;
+    // 振幅<阈值(如<6%) 或 结构方向反复切换 → 横盘
+    if (rangePct < 6) return true;      // 太窄=无波动/横盘
+    // 结构方向频繁切换(最近抬高低点不全一致) → 横盘
+    const d = this.dir(closes);
+    if (d.dir === 'FLAT') return true;
+    return false;
+  }
+
   // ═══ 入场(阻力/支撑/量价精髓): 关键位突破回踩(角色互换)+放量确认 ═══
-  // 截图: 关键位(多次触碰)放量突破/跌破=真变盘; 突破后回踩原阻力/前高不破(阻力变支撑)=经典确认; 缩量突破=假突破不追
+  // 截图: 关键位(多次触碰)放量突破/跌破=真变盘; 突破后回踩原阻力/前高不破(阻力变支撑)=经典确认; 缩量突破=假突破不追; 没有趋势(横盘)不做
   entrySignal(klines) {
     const arr = toArray(klines); const closes = arr.map(k => +k[3]);
     if (closes.length < this.minBars) return { signal: 'NONE', reason: '数据不足' };
+    // ═══ 关键: 横盘禁入(大道至简, 没有趋势不做) ═══
+    if (this.isRange(closes)) return { signal: 'NONE', reason: '横盘区间禁开仓(无明确趋势)' };
     const d = this.dir(closes);
     const kl = this.keyLevels(closes);   // 多次触碰关键位
     const v = this.vol(arr);
