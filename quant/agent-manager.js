@@ -454,9 +454,9 @@ class QuantAgentManager {
       const CANDIDATES = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT'];
       const trendPool=[], bollPool=[], trendV4Pool=[];
       for (const sym of CANDIDATES) {
-        // 选币用与实盘一致的5分钟级别K线(分批拉近30天≈8640根): 严格策略交易稀少需要长窗口才有回测样本
-        const kl = await this._fetchKlinesM(sym, '5m', 8640, apiInst).catch(()=>null);
-        if (!kl || kl.length < 4500) continue;
+        // 选币用5分钟级K线(近5天≈1440根, 加快选币; 震荡评估足够)
+        const kl = await this._fetchKlinesM(sym, '5m', 1440, apiInst).catch(()=>null);
+        if (!kl || kl.length < 900) continue;
         const basis = this._assessTrend(kl);              // 基础趋势强度分(保证所有币能排序)
         const tr = this._btTrend(kl);                     // 严格MA7真实回测收益
         // ═══ 核心: 真实回测亏损(ret<0)的币剔除(用户要求), 无样本(n<=0)用基础分, 正收益优先 ═══
