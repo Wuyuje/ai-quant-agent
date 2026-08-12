@@ -132,29 +132,30 @@ class TrendStrategyV4 {
     return { signal: 'NONE', reason: `方向${d.dir} 价${price.toFixed(4)} 量${v.ratio.toFixed(1)}x` };
   }
 
-  // ═══ 止损(阿奇精简): 逻辑破即果断走 + ATR防空扫 + 控单笔亏损 ═══
-  // 截图: 止损放逻辑失效处(支撑/突破点); ATR距离≥正常波动; 宁可轻仓不扛单; 止损挂单执行
+  // ═══ 止损(阿奇精确): 逻辑失效处+ATR≥正常波动, 止损挂单执行 ═══
+  // 截图: 支撑入场→止损支撑下2-3%; 突破入场→突破点下; ATR=3%波动则止损距离≥3%否则被震; 挂单执行
   stopLoss(pos, klines) {
     const arr = toArray(klines); const closes = arr.map(k => +k[3]);
     const price = closes[closes.length - 1];
-    const aVal = this.atr(arr) * this.atrMult;
-    // 止损距离: 至少覆盖正常波动(1ATR) 且不超单笔亏损上限(3%, 换算控损)
-    const stopDist = Math.max(aVal, pos.entry * 0.015);   // 至少1ATR 或 1.5%价幅
+    // ATR: 正常波动范围, 止损距离至少≥正常波动(避免被震)
+    const aPct = this.atr(arr) / (closes[closes.length - 1] || 1) * 100;   // ATR百分比
+    const minStop = Math.max(aPct, 2.5);   // ATR距离 ≥ 正常波动 且 ≥2.5%(至少)
+    const stopDist = closes[closes.length-1] * minStop / 100;
     if (pos.side === 'LONG') {
-      // 突破/回踩入场 → 破了入场逻辑位(关键支撑下方)果断走
-      const logicStop = pos.supportLevel > 0 ? pos.supportLevel * 0.985 : (pos.entry - stopDist);
-      if (price < logicStop) return { action: 'CLOSE', reason: `止损:破关键支撑${logicStop.toFixed(4)}(逻辑破)` };
-      // ATR兜底(不扛单): 回撤超1ATR就走
-      if (pos.entry - price > stopDist) return { action: 'CLOSE', reason: `ATR止损回撤${(((pos.entry-price)/pos.entry)*100).toFixed(1)}%` };
+      // 支撑入场 → 止损支撑下3%; 否则 ATR距离
+      const logicStop = pos.supportLevel > 0 ? pos.supportLevel * (1 - 0.03) : (pos.entry - stopDist);
+      if (price < logicStop) return { action: 'CLOSE', reason: `止损:破支撑${logicStop.toFixed(4)}(逻辑失效)` };
+      if (pos.entry - price > stopDist) return { action: 'CLOSE', reason: `ATR止损:回撤${(((pos.entry-price)/pos.entry)*100).toFixed(1)}%≥${minStop.toFixed(1)}%` };
     } else {
-      const logicStop = pos.resistanceLevel > 0 ? pos.resistanceLevel * 1.015 : (pos.entry + stopDist);
-      if (price > logicStop) return { action: 'CLOSE', reason: `止损:破关键阻力${logicStop.toFixed(4)}(逻辑破)` };
-      if (price - pos.entry > stopDist) return { action: 'CLOSE', reason: `ATR止损反弹${(((price-pos.entry)/pos.entry)*100).toFixed(1)}%` };
+      const logicStop = pos.resistanceLevel > 0 ? pos.resistanceLevel * (1 + 0.03) : (pos.entry + stopDist);
+      if (price > logicStop) return { action: 'CLOSE', reason: `止损:破阻力${logicStop.toFixed(4)}(逻辑失效)` };
+      if (price - pos.entry > stopDist) return { action: 'CLOSE', reason: `ATR止损:反弹${(((price-pos.entry)/pos.entry)*100).toFixed(1)}%≥${minStop.toFixed(1)}%` };
     }
     return { action: 'HOLD' };
   }
 
-  // ═══ 离场(阿奇精简): 盈利单让利润跑(量价/结构确认), 亏损单结构破就走 ═══
+  // ═══ 离场(阿奇精确): 结构破坏两步确认 + 多信号共振 ═══
+  // 截图: 上升趋势跌破前更高低点(higher low)+反弹不过前高才结构变; 回调不是反转; 多信号共振(结构+放量+背离)
   takeProfit(pos, klines) {
     const arr = toArray(klines); const closes = arr.map(k => +k[3]);
     if (closes.length < this.minBars) return { action: 'HOLD' };
@@ -163,18 +164,26 @@ class TrendStrategyV4 {
     const v = this.vol(arr);
     const entry = pos.entry || price;
     const pnlPct = pos.side === 'LONG' ? (price - entry) / entry * 100 : (entry - price) / entry * 100;
+    // 记录持仓极值(让利润跑)
     if (pos.side === 'LONG') pos.highP = (pos.highP == null || price > pos.highP) ? price : pos.highP;
     else pos.lowP = (pos.lowP == null || price < pos.lowP) ? price : pos.lowP;
-    const broken = (pos.side === 'LONG') ? (d.dir !== 'UP' || (d.support > 0 && price < d.support)) : (d.dir !== 'DOWN' || (d.resistance > 0 && price > d.resistance));
-    // 盈利单: 让利润跑, 量价背离(缩量涨/顶放量滞涨)或结构破坏+确认 才走
-    if (pnlPct > 0) {
-      if (pos.side === 'LONG' && (v.stall && v.ratio > 1)) return { action: 'CLOSE', reason: `顶部放量滞涨(量${v.ratio.toFixed(1)}x)平多+${pnlPct.toFixed(1)}%` };
-      if (pos.side === 'LONG' && v.shrinkRising && price < pos.highP) return { action: 'CLOSE', reason: `缩量涨衰竭平多+${pnlPct.toFixed(1)}%` };
-      if (broken && price < pos.highP && v.up && pnlPct > 2) return { action: 'CLOSE', reason: `结构破坏+放量平多+${pnlPct.toFixed(1)}%` };
-      if (broken && price < (d.support || price) && pnlPct > 5) return { action: 'CLOSE', reason: `趋势破位锁利+${pnlPct.toFixed(1)}%` };
-    } else {
-      // 亏损单: 结构破就果断走(逻辑错, 配合止损), 不拖
-      if (broken) return { action: 'CLOSE', reason: `结构破坏止损(亏${pnlPct.toFixed(1)}%)` };
+
+    // ═══ 结构破坏两步确认(盈利单:让利润跑) + 亏损单果断 ═══
+    const brokenA = pos.side === 'LONG' ? (d.support > 0 && price < d.support) : (d.resistance > 0 && price > d.resistance);  // 第一步破位
+    // 亏损单: 结构破就果断走(亏得明白, 逻辑破不受两步拖累; 截图亏损靠止损)
+    if (pnlPct <= 0 && brokenA) {
+      // 空也触发(下降破前低只做空, 上升破支撑只在多): 直接止损
+    }
+    if (pnlPct <= 0) {
+      // 亏损单交给 stopLoss 果断, 这里若结构已破(跌破支撑/突破阻力)也联动走, 不硬扛等两步
+      if (brokenA) return { action: 'CLOSE', reason: `破位止损(亏${pnlPct.toFixed(1)}%)` };
+      return { action: 'HOLD' };  // 未破结构位, 交给止损(A奇: 逻辑没破就还持)
+    }
+    // 盈利单: 让利润跑, 结构破坏两步确认(跌破前更高低点+反弹不过前高)才走
+    const brokenB = pos.side === 'LONG' ? (pos.highP && price < pos.highP) : (pos.lowP && price > pos.lowP);  // 未创新高/低
+    const signalResonant = v.up;
+    if (brokenA && brokenB) {
+      return { action: 'CLOSE', reason: `结构破坏(破${pos.side==='LONG'?'前高低点':'前低高点'}+未${pos.side==='LONG'?'反弹过前高':'回踩破前低'})平${pos.side==='LONG'?'多':'空'}+${pnlPct.toFixed(1)}%` };
     }
     return { action: 'HOLD' };
   }
