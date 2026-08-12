@@ -100,6 +100,19 @@ class MultiEngine extends EventEmitter {
 
   async init() {
     this.log('初始化 MultiEngine v3...');
+    // ═══ 共享量化策略(百万用户核心): 共享选币池+最新双策略, 所有用户共用 ═══
+    if (!this.sharedStrategy) {
+      try {
+        const { SharedQuantStrategy } = require('./shared-quant-strategy');
+        this.sharedStrategy = new SharedQuantStrategy({
+          dataBus: this.sharedDataBus,
+          trendPool: process.env.MULTI_TREND_POOL ? process.env.MULTI_TREND_POOL.split(',').map(s=>s.trim()) : ['BTCUSDT','ETHUSDT','SOLUSDT','ADAUSDT','OPUSDT'],
+          bollPool: process.env.MULTI_BOLL_POOL ? process.env.MULTI_BOLL_POOL.split(',').map(s=>s.trim()) : ['LINKUSDT','AVAXUSDT','SUIUSDT','ARBUSDT','INJUSDT'],
+          logFn: m => this.log('[' + (m||'') + ']'),
+        });
+        this.log('✅ 共享量化策略已初始化 (SharedQuantStrategy)');
+      } catch (e) { this.log('⚠️ 共享策略初始化失败: ' + (e.message||e)); }
+    }
     this.riskIsolator.start();
     await this._loadUsersStream();
     this.server = http.createServer((req, res) => this._handleRequest(req, res));
@@ -136,6 +149,21 @@ class MultiEngine extends EventEmitter {
       ? (this.sharedDataBus.getLatestData?.() || this._getMarketFromDataBus())
       : this._getMockMarketData();
     if (!marketData || !marketData.price) return;
+
+    // ═══ 共享量化信号: 一套共享选币池(趋势+震荡)+最新双策略, 所有用户共用 ═══
+    let sharedSignals = {};
+    let sharedPool = null;
+    if (this.sharedStrategy) {
+      try {
+        sharedSignals = (await this.sharedStrategy.scanSignals()) || {};
+        sharedPool = {
+          trend: this.sharedStrategy.getTrendPool() || [],
+          bollinger: this.sharedStrategy.getBollPool() || [],
+        };
+        marketData.sharedSignals = sharedSignals;
+        marketData.sharedPool = sharedPool;
+      } catch (e) { this.log('⚠️ 共享信号计算失败: ' + (e.message||e)); }
+    }
 
     // v113.14: 分批处理 — 每轮只处理 batchSize 个用户
     const batchSize = this.config.batchSize;

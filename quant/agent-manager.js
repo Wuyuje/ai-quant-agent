@@ -422,13 +422,20 @@ class QuantAgentManager {
       const CANDIDATES = ['BTCUSDT','ETHUSDT','SOLUSDT','AVAXUSDT','ADAUSDT','LINKUSDT','BCHUSDT','APTUSDT','FILUSDT','STXUSDT','TIAUSDT','INJUSDT','SUIUSDT','ARBUSDT','KASUSDT','OPUSDT','1000PEPEUSDT'];
       const trendPool=[], bollPool=[];
       for (const sym of CANDIDATES) {
-        // 选币用与实盘一致的5分钟级别K线(近5天≈1440根, 足够评估且避免拉8640根超时限流)
-        const kl = await apiInst.getKlines(sym, '5m', 1440).catch(()=>null);
-        if (!kl || kl.length < 600) continue;
-        const tr = this._btTrend(kl);   // 用含DIF的新趋势策略(5m)真实回测选币(拦截逆势)
+        // 选币用与实盘一致的5分钟级别K线(分批拉近30天≈8640根): 严格策略交易稀少需要长窗口才有回测样本
+        const kl = await this._fetchKlinesM(sym, '5m', 8640, apiInst).catch(()=>null);
+        if (!kl || kl.length < 4500) continue;
+        const basis = this._assessTrend(kl);              // 基础趋势强度分(保证所有币能排序)
+        const tr = this._btTrend(kl);                     // 严格MA7真实回测收益
+        // ═══ 核心: 真实回测亏损(ret<0)的币剔除(用户要求), 无样本(n<=0)用基础分, 正收益优先 ═══
+        if (tr && tr.n > 0) {
+          if (tr.ret > 0) trendPool.push({sym, ret: basis.ret + tr.ret, trRet: tr.ret});  // 真实盈利 → 基础分+奖励
+          // 真实亏损(tr.ret<0) → 剔除, 不进趋势池
+        } else {
+          trendPool.push({sym, ret: basis.ret * 0.5, trRet: 0});   // 无回测样本(严格策略没成交) → 基础分减半排序, 不占奖励
+        }
         const bo = this._assessBoll(kl);
-        if (tr && tr.n>0) trendPool.push({sym, ret:tr.ret, trRet:tr.ret});
-        if (bo && bo.n>0) bollPool.push({sym, ret:bo.ret, boRet:bo.ret});
+        if (bo && bo.ret > 0) bollPool.push({sym, ret:bo.ret, boRet:bo.ret});
       }
       this._log(`🧠 动态选币筛选: 趋势候选${trendPool.length} 震荡候选${bollPool.length}`);
       // ═══ 独立各取前10, 重叠币归趋势分高者(避免一池占满另一池空) ═══
@@ -512,21 +519,8 @@ class QuantAgentManager {
           if(cr){const raw=pos.side==='LONG'?(price-pos.entry)/pos.entry*100:(pos.entry-price)/pos.entry*100;const cp=raw*lev*0.15-0.001*0.15*200;ret+=cp;n++;if(cp>0)w++;pos=null;}
         } else { const sig=t.entrySignal(win,'FLAT'); if(sig.signal==='LONG'||sig.signal==='SHORT')pos={side:sig.signal,entry:price}; }
       }
-      // 若实盘开仓条件过严没成交(n=0), 用DIF动能方向统计兜底(保证候选非空且含DIF评估)
-      if (n === 0) {
-        const seg = c.slice(-120);
-        const emaLast=(arr,p)=>{ if(arr.length<p)return null; const k=2/(p+1); let e=arr[arr.length-p]; for(let i=arr.length-p+1;i<arr.length;i++)e=arr[i]*k+e*(1-k); return e; };
-        const difs = [];
-        for (let j=100;j<c.length;j++){ const e12=emaLast(c.slice(0,j+1),12), e26=emaLast(c.slice(0,j+1),26); if(e12!=null&&e26!=null) difs.push(e12-e26); }
-        const up = difs.filter(d=>d>0).length;
-        const trendUpScore = difs.length ? up/difs.length : 0;  // 0~1, 越多DIF>0 = 上行趋势越强
-        // 趋势分: DIF方向一致度 * 涨跌幅强度
-        const chg = seg.length>1 ? (c[c.length-1]-c[c.length-seg.length])/(c[c.length-seg.length]||1)*100 : 0;
-        // 多头多(DIF>0比例高)或空头强(DIF<0但跌幅大)都算趋势
-        const dirScore = Math.max(trendUpScore, 1-trendUpScore);
-        const score = dirScore * Math.min(40, Math.abs(chg));
-        return { ret: score, n: 1, rate: Math.round(dirScore*100) };
-      }
+      // 无真实回测成交(n=0): 不值得入选趋势池(可能是横盘/极端波动, 避免靠虚高得分塞币)
+      if (n === 0) return { ret: -1, n: 0, rate: 0 };
       return {ret,n,rate:n?Math.round(w/n*100):0};
     }catch(e){return {ret:-99,n:0,rate:0};}
   }

@@ -331,6 +331,29 @@ class UserEngine extends EventEmitter {
   }
 
   async _collectSignals(marketData) {
+    // ═══ v113.14+百万用户: 优先使用共享多币信号池(共享选币池+最新双策略)
+    if (marketData && marketData.sharedSignals) {
+      const signals = {};
+      const reasons = [];
+      // 每个币一个信号, 全部取(多币池共筛选)
+      for (const [symbol, sig] of Object.entries(marketData.sharedSignals)) {
+        if (!sig || sig.direction !== 'long' && sig.direction !== 'short') continue;
+        signals[symbol] = { ...sig, symbol };
+        reasons.push(`[${sig.strategy}] ${symbol} ${sig.direction} ${(sig.signal*100).toFixed(0)}%`);
+      }
+      // 汇总: 有多少个有信号的币
+      const cnt = Object.keys(signals).length;
+      return {
+        signals, multi: true,
+        summary: {
+          score: cnt > 0 ? 0.8 : 0,
+          direction: cnt > 0 ? 'multiple' : 'neutral',
+          confidence: cnt > 0 ? 0.8 : 0,
+          signalCount: cnt, reasons: reasons.slice(0, 8),
+        },
+      };
+    }
+
     const signals = {};
     let totalWeight = 0;
     let weightedScore = 0;
@@ -376,6 +399,28 @@ class UserEngine extends EventEmitter {
   }
 
   _makeDecision(signals, realPositions) {
+    // ═══ 百万用户多币: 从共享信号池挑一个未持仓的币 ═══
+    if (signals && signals.multi && signals.signals) {
+      const candidates = Object.values(signals.signals);
+      if (candidates.length === 0) return { action: 'hold', reason: '共享池无信号' };
+      // 已有持仓的币跳过(避免重复开同币)
+      const held = realPositions.map(p => (p.symbol || '').toUpperCase());
+      const available = candidates.filter(c => !held.includes((c.symbol || '').toUpperCase()));
+      // 满仓检查
+      const _maxPos = this.sharedPositionSizer
+        ? (this.sharedPositionSizer._calcMaxPositions ? this.sharedPositionSizer._calcMaxPositions(this.state.pnl > 0 ? 1000 : 1000) : (this.config.maxPositions || 3))
+        : (this.config.maxPositions || 3);
+      if (realPositions.length >= _maxPos) return { action: 'hold', reason: '满仓' };
+      const pool = (available.length > 0 ? available : candidates);
+      // 按信号强度+新鲜度排序, 取最强
+      pool.sort((a,b) => (b.signal||0) - (a.signal||0));
+      const pick = pool[0];
+      return {
+        action: 'open', symbol: pick.symbol, side: pick.direction,
+        direction: pick.direction, positionPct: 0.15, leverage: this.config.leverage || 3,
+        reason: `共享信号 ${pick.symbol} ${pick.direction} ${pick.strategy}`, confidence: pick.signal || 0.7,
+      };
+    }
     const { summary } = signals;
     if (summary.confidence < 0.3 || summary.direction === 'neutral')
       return { action: 'hold', reason: '信号不足', ...summary };
@@ -424,7 +469,7 @@ class UserEngine extends EventEmitter {
       : (this.config.maxPositions || 3);
     if (realPositions.length >= _maxPos) return { success: false, reason: '满仓' };
 
-    const symbol = this.config.primaryPair || 'BTCUSDT';
+    const symbol = decision.symbol || this.config.primaryPair || 'BTCUSDT';  // 百万用户: 用决策选出的币(共享池)
     const positionUsdt = Math.min(
       decision.positionPct * balance.balance,
       balance.available * 0.4,
