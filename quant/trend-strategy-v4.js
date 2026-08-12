@@ -98,15 +98,32 @@ class TrendStrategyV4 {
     return { action: 'HOLD' };
   }
 
-  // ═══ 平仓: 结构破坏(大周期转反)才走, 让利润跑 ═══
+  // ═══ 平仓: 让利润跑 + 移动止盈保护(大道至简精髓) ═══
+  // 截图: 回调/反弹不是反转, 别被震出; 但也要锁利润, 跌破关键结构位才走
   takeProfit(pos, klines) {
     const arr = toArray(klines); const closes = arr.map(k => +k[3]);
     if (closes.length < this.minBars) return { action: 'HOLD' };
-    const d = this.dir(closes);
     const price = closes[closes.length - 1];
-    // 大周期结构明确转反 → 平(趋势坏了)
-    if (pos.side === 'LONG' && d.dir === 'DOWN') return { action: 'CLOSE', reason: `大周期上升结构破坏转下降平多` };
-    if (pos.side === 'SHORT' && d.dir === 'UP') return { action: 'CLOSE', reason: `大周期下降结构破坏转上升平空` };
+    const d = this.dir(closes);
+    // 追踪: 记录开仓后最高/最低(让利润跑)
+    if (pos.side === 'LONG') { pos.highP = (pos.highP == null || price > pos.highP) ? price : pos.highP; pos.highI = price >= pos.highP ? (pos.highI || 0) + 1 : (pos.highI || 0); }
+    else { pos.lowP = (pos.lowP == null || price < pos.lowP) ? price : pos.lowP; pos.lowI = price <= pos.lowP ? (pos.lowI || 0) + 1 : (pos.lowI || 0); }
+    // 大周期结构明确转反 → 必平
+    if (pos.side === 'LONG' && d.dir === 'DOWN') return { action: 'CLOSE', reason: `上升结构破坏转降平多` };
+    if (pos.side === 'SHORT' && d.dir === 'UP') return { action: 'CLOSE', reason: `下降结构破坏转涨平空` };
+    // 动态移动止盈: 用当前结构位做保护(让利润跑但锁住)
+    if (pos.side === 'LONG') {
+      // 止盈线随上涨结构抬高: 用当前最近抬高低点
+      const trail = pos.highP && pos.highP > pos.entry ? (pos.highP - (pos.highP - pos.entry) * 0.5) : pos.entry;
+      const structStop = d.support > 0 ? d.support : trail;
+      const stopLine = Math.max(trail, structStop);
+      if (price < stopLine) return { action: 'CLOSE', reason: `移动止盈(高点${(pos.highP||price).toFixed(4)}回撤锁利${stopLine.toFixed(4)})` };
+    } else {
+      const trail = pos.lowP && pos.lowP < pos.entry ? (pos.lowP + (pos.entry - pos.lowP) * 0.5) : pos.entry;
+      const structStop = d.resistance > 0 ? d.resistance : trail;
+      const stopLine = Math.min(trail, structStop);
+      if (price > stopLine) return { action: 'CLOSE', reason: `移动止盈(低点${(pos.lowP||price).toFixed(4)}反弹锁利${stopLine.toFixed(4)})` };
+    }
     return { action: 'HOLD' };
   }
 
