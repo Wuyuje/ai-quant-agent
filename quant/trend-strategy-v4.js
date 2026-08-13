@@ -93,8 +93,43 @@ class TrendStrategyV4 {
     return false;
   }
 
-  // ═══ 入场(阻力/支撑/量价精髓): 关键位突破回踩(角色互换)+放量确认 ═══
-  // 截图: 关键位(多次触碰)放量突破/跌破=真变盘; 突破后回踩原阻力/前高不破(阻力变支撑)=经典确认; 缩量突破=假突破不追; 没有趋势(横盘)不做
+  // ═══ 专业胜率提升: 趋势强度/大级别方向/RSI背离 过滤 ═══
+  // ADX类趋势强度: 近N根方向性动量, 太弱=假趋势不做
+  _trendStrength(closes) {
+    if (closes.length < 30) return 0;
+    const seg = closes.slice(-20);
+    const up = seg.filter((_, i) => i > 0 && seg[i] > seg[i - 1]).length;
+    const ratio = up / (seg.length - 1);   // 上涨K线占比
+    return Math.round(ratio * 100);         // 50=中性, >60多头强, <40空头强
+  }
+  // 大级别方向(周期均线): EMA20 vs EMA60, 逆大级别不开(阿奇: 大周期配合)
+  _higherDir(closes) {
+    if (closes.length < 70) return 'FLAT';
+    const ema = (p) => { const k = 2 / (p + 1); let e = closes[70 - p]; for (let i = 71 - p; i < closes.length; i++) e = closes[i] * k + e * (1 - k); return e; };
+    const e20 = ema(20), e60 = ema(60);
+    if (e20 > e60) return 'UP';
+    if (e20 < e60) return 'DOWN';
+    return 'FLAT';
+  }
+  // RSI背离: 价格新高但RSI不新高=顶背离(禁追多); 底背离=禁追空
+  _rsiDivergence(closes, highLevel) {
+    const rsi = (arr) => { let up=0,dn=0; for(let i=1;i<arr.length;i++){const c=arr[i]-arr[i-1]; if(c>0)up+=c; else if(c<0)dn-=c;} return dn>0?100-(100/(1+up/dn)):0; };
+    if (closes.length < 40) return false;
+    const lastP = closes[closes.length-1], prevP = closes[closes.length-9]||closes[closes.length-1];
+    // 找近20根的swing高低点价格对比
+    let maxP=-Infinity, maxR=0, minP=Infinity, minR=100;
+    for(let i=closes.length-25;i<closes.length-3;i++){
+      const r=rsi(closes.slice(0,i+1));
+      if(closes[i]>maxP){maxP=closes[i];maxR=r;}
+      if(closes[i]<minP){minP=closes[i];minR=r;}
+    }
+    const curR=rsi(closes);
+    // 顶背离: 当前价格创新高但RSI低于之前新高时的RSI
+    if (highLevel && lastP >= maxP && curR < maxR) return true;
+    // 底背离: 当前价格创新低但RSI高于之前新低时的RSI
+    if (!highLevel && lastP <= minP && curR > minR) return true;
+    return false;
+  }
   entrySignal(klines) {
     const arr = toArray(klines); const closes = arr.map(k => +k[3]);
     if (closes.length < this.minBars) return { signal: 'NONE', reason: '数据不足' };
@@ -110,6 +145,10 @@ class TrendStrategyV4 {
     if (d.dir === 'UP') {
       const res = d.resistance > 0 ? d.resistance : (kl.resistance || 0);
       const sup = d.support > 0 ? d.support : (kl.support || 0);
+      // ═══ 胜率提升过滤: 趋势强度够强 + 大级别方向一致 + 无顶背离 ═══
+      if (this._trendStrength(closes) < 55) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做多` };
+      if (this._higherDir(closes) === 'DOWN') return { signal: 'NONE', reason: '大级别向下,禁追多(顺势大级别)' };
+      if (this._rsiDivergence(closes, true)) return { signal: 'NONE', reason: '顶背离,禁追多' };
       // A. 放量突破关键阻力(真突破): 收盘站稳+放量, 且非缩量(缩量不追=假突破)
       if (res > 0 && price > res && prev <= res && v.up && !v.shrinkRising) {
         return { signal: 'LONG', reason: `放量突破关键阻力${(res).toFixed(4)}+量${v.ratio.toFixed(1)}x`, supportLevel: sup, resistanceLevel: res };
@@ -122,6 +161,10 @@ class TrendStrategyV4 {
     if (d.dir === 'DOWN') {
       const sup = d.support > 0 ? d.support : (kl.support || 0);
       const res = d.resistance > 0 ? d.resistance : (kl.resistance || 0);
+      // ═══ 胜率提升过滤: 趋势强度够强 + 大级别方向一致 + 无底背离 ═══
+      if (this._trendStrength(closes) > 45) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做空` };
+      if (this._higherDir(closes) === 'UP') return { signal: 'NONE', reason: '大级别向上,禁追空(顺势大级别)' };
+      if (this._rsiDivergence(closes, false)) return { signal: 'NONE', reason: '底背离,禁追空' };
       if (sup > 0 && price < sup && prev >= sup && v.up && !v.shrinkRising) {
         return { signal: 'SHORT', reason: `放量跌破关键支撑${(sup).toFixed(4)}+量${v.ratio.toFixed(1)}x`, supportLevel: sup, resistanceLevel: res };
       }
