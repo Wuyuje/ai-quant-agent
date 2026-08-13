@@ -17,16 +17,22 @@ echo ""
 echo "[2/6] 检查/安装 node..."
 if ! command -v node >/dev/null 2>&1; then
   echo "  未装node, 开始安装..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>/dev/null
-  apt-get install -y nodejs >/dev/null 2>&1 || apt install -y nodejs >/dev/null 2>&1
+  IS_UBUNTU=$(grep -qi ubuntu /etc/os-release 2>/dev/null && echo 1 || echo 0)
+  if [ "$IS_UBUNTU" = "1" ]; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>/dev/null
+    (apt-get install -y nodejs 2>/dev/null || apt install -y nodejs 2>/dev/null) || true
+  else
+    # RHEL/AlibabaCloud: 用 dnf/yum
+    (curl -fsSL https://rpm.nodesource.com/setup_20.x | bash - 2>/dev/null && dnf install -y nodejs 2>/dev/null) ||     (dnf install -y nodejs 2>/dev/null || yum install -y nodejs 2>/dev/null) ||     (dnf module install -y nodejs:20 2>/dev/null) || true
+  fi
 fi
-echo "  node版本: $(node -v 2>/dev/null || echo '安装失败')"
+echo "  node版本: $(node -v 2>/dev/null || echo '安装失败，请把上面输出发给我')"
 echo "  npm版本:  $(npm -v 2>/dev/null || echo '无')"
 
 # 3. 安装 git
 echo ""
 echo "[3/6] 检查/安装 git..."
-command -v git >/dev/null 2>&1 || { apt-get install -y git >/dev/null 2>&1 || yum install -y git >/dev/null 2>&1; }
+command -v git >/dev/null 2>&1 || { apt-get install -y git >/dev/null 2>&1 || dnf install -y git >/dev/null 2>&1 || yum install -y git >/dev/null 2>&1; }
 
 # 4. 拉代码
 echo ""
