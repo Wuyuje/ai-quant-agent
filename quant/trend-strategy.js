@@ -20,10 +20,10 @@ function sma7(closes) {
 class TrendStrategy {
   constructor(opts = {}) {
     this.lookback = opts.lookback || 288;    // 位置区间: 近288根5min≈1天(判断低位/高位)
-    this.lowCut = opts.lowCut || 0.25;        // 做多: MA7真底位(<25%跌无可跌才做多, 拒绝半路)
-    this.highCut = opts.highCut || 0.75;      // 做空: MA7真高位(>75%涨不上才做空, 拒绝半路)
+    this.lowCut = opts.lowCut || 0.35;        // 做多: MA7底位(<35%, 适当放宽原25%)
+    this.highCut = opts.highCut || 0.65;      // 做空: MA7高位(>65%, 适当放宽原75%)
     this.turnAbs = opts.turnAbs || 0.0001;    // 拐头最小幅度
-    this.turnStrong = opts.turnStrong || 0.0004; // 拐头角度(强拐): 必须有明显角度才开(避免弱反弹假拐头)
+    this.turnStrong = opts.turnStrong || 0.0002; // 拐头角度(放宽原0.0004)
     this.stopLossPct = opts.stopLossPct || 4.0; // 硬止损兜底(防极端)
 this.trailPct = opts.trailPct || 3.0;         // 移动止损: 从最高/最低回撤3%才平(拿满趋势不中途震)
     this.useDIF = opts.useDIF || false;        // DIF/MACD动能否确认: 拦截逆势假拐头(做多需DIF>0/做空需DIF<0)
@@ -102,17 +102,14 @@ this.trailPct = opts.trailPct || 3.0;         // 移动止损: 从最高/最低�
     const dir = this.marketDirection(closes);   // 该币多空排列方向
 
     // ═══ 大道至简·低买高卖 (严格版) ═══
-    // 做多·真底位强拐头: MA7在真正底位(pos<25%跌无可跌) + 前一刻还在下行(d2<0)
-    //   + 现在突然强上拐(d1>角度, 有角度) → 底部真正反转才开多
-    //   注意: 绝不能高位追死/半路开多
-    if (pos < this.lowCut && turn.dir === 1 && turn.d1 > turnStrong && turn.d2 < 0 && dir !== 'DOWN') {
-      return { signal:'LONG', reason:`底位强拐头做多(MA7位${(pos*100).toFixed(0)}%真底+下行后突然上拐d1=${(turn.d1*100).toFixed(3)}%),吃满上涨` };
+    // 做多·底位强拐头: MA7在真底位(pos<35%) + 现在突然强上拐(d1>角度) → 底部反转开多
+    // 放宽: 去掉'd2<0前一刻还在下行'要求, 允许直接从底部拐上
+    if (pos < this.lowCut && turn.dir === 1 && turn.d1 > turnStrong && dir !== 'DOWN') {
+      return { signal:'LONG', reason:`底位强拐头做多(MA7位${(pos*100).toFixed(0)}%真底+强上拐d1=${(turn.d1*100).toFixed(3)}%),吃满上涨` };
     }
-    // 做空·真高位强拐头: MA7在真正高位(pos>75%涨不上) + 前一刻还在上行(d2>0)
-    //   + 现在突然强下拐(d1<-角度, 有角度) → 顶部真正反转才做空
-    //   注意: 绝不能低位追空/半路做空(这是MUU那种-2.6%逆势空的根源)
-    if (pos > this.highCut && turn.dir === -1 && turn.d1 < -turnStrong && turn.d2 > 0 && dir !== 'UP') {
-      return { signal:'SHORT', reason:`高位强拐头做空(MA7位${(pos*100).toFixed(0)}%真顶+上行后突然下拐d1=${(turn.d1*100).toFixed(3)}%),吃满下跌` };
+    // 做空·高位强拐头: MA7在真正高位(pos>65%) + 突然强下拐(d1<-角度)
+    if (pos > this.highCut && turn.dir === -1 && turn.d1 < -turnStrong && dir !== 'UP') {
+      return { signal:'SHORT', reason:`高位强拐头做空(MA7位${(pos*100).toFixed(0)}%真顶+强下拐d1=${(turn.d1*100).toFixed(3)}%),吃满下跌` };
     }
     return { signal:'NONE', reason:`MA7位${(pos*100).toFixed(0)}% 拐${turn.dir>=0?'上':'下'} d1=${(turn.d1*100).toFixed(3)}% (${pos<this.lowCut?'近底':(pos>this.highCut?'近顶':'中')})` };
   }
