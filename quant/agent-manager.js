@@ -165,37 +165,34 @@ class QuantAgent {
       if (strat === 'trend') {
         if (this.pauseTrend) continue;   // 趋势引擎暂停开仓
         if (!this.isAdmin) continue;     // ⏸️ 只管理员开仓测试, 其他用户暂停
-        // ═══ 多币并仓: 趋势池(不限于trendTop), 多个币可同时持有 ═══
-        // 已有该币仓 → 跳过(同币不开第二仓)
-        if (this.positions[symbol]) continue;
-        // ═══ 1) V4日线主仓信号 ═══
+        if (this.positions[symbol]) continue;   // 同币已持单, 不再开(含其他策略)
+        // ═══ 三策略并行: 趋势拆 MA7(15m大道至简) + V4(日线阿奇), 各自独立开仓 ═══
+        let sig = null, stg = null, stf = null;
+        // 1) V4 阿奇日线趋势(中长线)
         const kld = await this.api.getKlines(symbol, '1d', 120).catch(()=>null);
-        let sigMain = null;
         if (kld && kld.length >= 60) {
           const dObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
-          sigMain = this.trendV4.entrySignal(dObj);
+          const sm = this.trendV4.entrySignal(dObj);
+          if (sm.signal === 'LONG' || sm.signal === 'SHORT') { sig = sm; stg = 'v4'; stf = '1d'; }
         }
-        // ═══ 2) 4h次级趋势信号(提高频率/资金使用): 日线无信号则看4h ═══
-        let sig = sigMain && sigMain.signal !== 'NONE' ? sigMain : null;
-        let tf = '1d';
+        // 2) MA7 大道至简(短中期): V4无信号时, 用15m MA7低买高卖
         if (!sig) {
-          const k4h = await this.api.getKlines(symbol, '4h', 200).catch(()=>null);
-          if (k4h && k4h.length >= 120) {
-            const h4Obj = toArray(k4h).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
-            const sig4h = this.trendV4.entrySignal(h4Obj);
-            if (sig4h.signal !== 'NONE') { sig = sig4h; tf = '4h'; }
-          }
+          const sm = this.trend.entrySignal(kl, decision.market.trendDir);
+          if (sm.signal === 'LONG' || sm.signal === 'SHORT') { sig = sm; stg = 'ma7'; stf = '15m'; }
         }
         if (!sig || sig.signal === 'NONE') continue;
-        // 仓位: 日线主仓30%(强趋势), 4h次级15%
-        const posPct = tf === '1d' ? 0.30 : 0.15;
-        const bs = this.trendV4.positionSize(this.balance * (tf==='1d'?2:1), sig.signal, posPct);
-        if ((this.balance || 0) < 100) continue;   // 余额过少不开
-        // 最多同时5个趋势仓(资金分散)
-        const trendHeld = Object.values(this.positions).filter(p=>p.strategy==='trend').length;
-        if (trendHeld >= 5) continue;
-        const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: bs.leverage, precisionMap: pm, price, balance: this.balance });
-        if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, tf, openTime: Date.now() }; this._stratLock[symbol]='trend'; }
+        // 仓位: V4日线30%(中长线)/MA7 20%(短线)
+        const posPct = stg === 'v4' ? 0.30 : 0.20;
+        const eng = stg === 'v4' ? this.trendV4 : this.trend;
+        const bs = eng.positionSize(this.balance, sig.signal, posPct);
+        if ((this.balance || 0) < 100) continue;
+        // 各策略独立持仓上限(V4≤3, MA7≤4)
+        const stgHeld = Object.values(this.positions).filter(p=>p.strategy===stg).length;
+        const maxPerStg = stg === 'v4' ? 3 : 4;
+        if (stgHeld >= maxPerStg) continue;
+        const lev = stg === 'v4' ? 5 : 3;
+        const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: lev, precisionMap: pm, price, balance: this.balance });
+        if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: lev, strategy: stg, _t: stf, _peak: price, openTime: Date.now() }; this._stratLock[symbol]=stg; }
       } else if (strat === 'bollinger') {
         // 多币并仓: 震荡池全部币可开(不限bollTop前5, 提高资金使用)
         if (this.pauseBoll) continue;   // 暂停震荡(布林)策略开仓
@@ -232,18 +229,26 @@ class QuantAgent {
         const pm = await this.api.getExchangeInfo().catch(()=>null);
         let closeReason = null, pnlToCount = null;
 
-        if (pos.strategy === 'trend') {
-          // 阿奇趋势(V4): 按仓位周期(tf)拉K线管理(日线主仓/4h次级), 逻辑止损/结构破坏止盈
-          const tf = pos.tf || '1d';
+        if (pos.strategy === 'v4') {
+          // V4 阿奇日线趋势: 按周期(tf)拉K线, V4逻辑止损/结构破坏止盈
+          const tf = pos._t || '1d';
           const klast = await this.api.getKlines(symbol, tf, 150).catch(() => null);
           if (klast && klast.length >= 40) {
             const dObj = toArray(klast).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
             const sl = this.trendV4.stopLoss(pos, dObj);
             if (sl.action === 'CLOSE') closeReason = sl.reason;
-            else {
-              const tp = this.trendV4.takeProfit(pos, dObj);
-              if (tp.action === 'CLOSE') closeReason = tp.reason;
-            }
+            else { const tp = this.trendV4.takeProfit(pos, dObj); if (tp.action === 'CLOSE') closeReason = tp.reason; }
+          }
+        }
+        if (pos.strategy === 'ma7') {
+          // MA7 大道至简: 用15m/5m K线, MA7低买高卖止盈(到顶/到底拐头) + 硬止损
+          const mkl = await this.api.getKlines(symbol, '15m', 120).catch(() => null);
+          if (mkl && mkl.length >= 40) {
+            const mObj = toArray(mkl).map(k => +k[3]);
+            const price = mObj[mObj.length - 1];
+            const ts = this.trend.takeProfit(pos, price, mObj);
+            if (ts.action === 'CLOSE') closeReason = ts.reason;
+            else { const sl = this.trend.stopLoss(pos, price, mObj); if (sl.action === 'CLOSE') closeReason = sl.reason; }
           }
         }
         if (pos.strategy === 'bollinger') {
@@ -295,7 +300,7 @@ class QuantAgent {
             try {
               const notional = (pos.entryPrice || 0) * (pos.qty || 0);
               const pnlPct = notional > 0 ? (pnlToCount / notional) * 100 : 0;
-              this.brain.recordResult(symbol.replace('USDT',''), pos.strategy === 'bollinger' ? 'bollinger' : 'trend', pnlPct);
+              this.brain.recordResult(symbol.replace('USDT',''), pos.strategy || 'ma7', pnlPct);
             } catch(e2){}
             this._saveState();  // 平仓后持久化统计
             delete this.positions[symbol];
@@ -347,9 +352,10 @@ class QuantAgent {
   getSummary() {
     const t = Math.max(1, this.closedHistory.length);
     const wins = this.closedHistory.filter(c => c.pnl > 0).length;
-    // ═══ 双策略独立统计(trend趋势/ bollinger震荡) ═══
-    const trendT = this.closedHistory.filter(c => !c.strat || c.strat === 'trend');
-    const bollT  = this.closedHistory.filter(c => c.strat === 'bollinger');
+    // ═══ 三策略独立统计(MA7大道至简 / V4阿奇日线 / 布林震荡) ═══
+    const ma7T = this.closedHistory.filter(c => c.strat === 'ma7');
+    const v4T  = this.closedHistory.filter(c => c.strat === 'v4');
+    const bollT= this.closedHistory.filter(c => c.strat === 'bollinger');
     const stratStat = (arr) => ({
       trades: arr.length,
       wins: arr.filter(c => c.pnl > 0).length,
@@ -366,7 +372,7 @@ class QuantAgent {
       trades: this.closedHistory.length, wins, losses: this.closedHistory.length - wins,
       realizedPnl: this.closedHistory.reduce((a,c) => a + (c.pnl||0), 0),
       // 双策略独立统计 + 每次平仓记录
-      strategyPnl: { trend: stratStat(trendT), bollinger: stratStat(bollT) },
+      strategyPnl: { ma7: stratStat(ma7T), v4: stratStat(v4T), bollinger: stratStat(bollT) },
       closedTrades: this.closedHistory.slice(0, 100),
     };
   }
