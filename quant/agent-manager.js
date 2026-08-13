@@ -166,7 +166,6 @@ class QuantAgent {
       let sig;
       if (strat === 'trend_ma7' || strat === 'trend_v4') {
         if (this.pauseTrend) continue;   // 趋势引擎暂停开仓
-        if (!this.isAdmin) continue;     // ⏸️ 只管理员开仓测试
         if (this.positions[symbol]) continue;   // 同币已持单, 不再开
         // ═══ 分开选池: 币在MA7池只跑MA7(15m), 在V4池只跑V4(日线) ═══
         let sig = null, stg = strat === 'trend_v4' ? 'v4' : 'ma7', stf = strat === 'trend_v4' ? '1d' : '15m';
