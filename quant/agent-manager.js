@@ -136,22 +136,23 @@ class QuantAgent {
       // 已有仓位 → 交给平仓管理(趋势移动止损/网格离场)
       if (this.positions[symbol]) continue;
 
-      const kl = await this.api.getKlines(symbol, '15m', 120).catch(() => null);
-      if (!kl || kl.length < 80) continue;
+      const kl = await this.api.getKlines(symbol, '15m', 300).catch(() => null);   // 300根够MA7 lookback(288)算位置区间
+      if (this.isAdmin && (this._runCount % 1 === 0)) this._log(`🔍scan ${symbol}: kl=${kl?(kl.length||0):'null'}枚`);
+      if (!kl || kl.length < 288) { if (this.isAdmin) this._log(`  ⏭️ ${symbol} 数据不足(kl=${kl?(kl.length||0):0})`); continue; }
       // 资金费率
       let fr = 0; try { const f = await this.api.getFundingRate(symbol); fr = Array.isArray(f)&&f[0] ? +f[0].fundingRate : 0; } catch(e){}
-      // ═══ 大脑中枢: 自学习+神经网络 切换 趋势/布林带策略 ═══
+      // ═══ 大脑中枢: 提供市场分类/方向(不再用它的'none'拦截池内币) ═══
       const decision = this.brain.decide(symbol, kl);
-      let strat = decision.chosen;
-      if (strat === 'none') continue;   // shock观望
       // ═══ 分池决定策略: 币在MA7池→ma7, 在V4池→v4, 在震荡池→bollinger ═══
       const inMA7 = this.MA7_POOL && this.MA7_POOL.includes(symbol);
-      const inV4  = this.V4_POOL && this.TREND_V4_POOL && this.V4_POOL.includes(symbol);
+      const inV4  = this.V4_POOL && this.V4_POOL.includes(symbol);
       const inBollP = this.BOLLINGER_POOL && this.BOLLINGER_POOL.includes(symbol);
+      let strat;
       if (inMA7) strat = 'trend_ma7';
       else if (inV4) strat = 'trend_v4';
-      else if (inBollP && !inMA7 && !inV4) strat = 'bollinger';
-      else if (!inMA7 && !inV4 && !inBollP) continue;
+      else if (inBollP) strat = 'bollinger';
+      else continue;   // 不在任何池 → 跳过
+      if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} V4池${inV4?'✓':'✗'} 震荡${inBollP?'✓':'✗'} → ${strat}`);
       // ═══ 各引擎独立仓位配额: 趋势≤3 / 震荡≤5 (互不干涉) ═══
       const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend' && !p._managed).length;
       const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger' && !p._managed).length;
@@ -180,7 +181,8 @@ class QuantAgent {
           // MA7 池币: 只按 MA7(15m) 大道至简低买高卖
           sig = this.trend.entrySignal(kl, decision.market.trendDir);
         }
-        if (!sig || sig.signal === 'NONE') continue;
+        if (!sig || sig.signal === 'NONE') { this._log(`🔍 ${symbol} ${stg}信号NONE(${(sig&&sig.reason)||'无'})`); continue; }
+        this._log(`🔍 ${symbol} ${stg}信号=${sig.signal} 准备开仓`);
         // 仓位: V4日线30%/MA7 20%
         const posPct = stg === 'v4' ? 0.30 : 0.20;
         const eng = stg === 'v4' ? this.trendV4 : this.trend;
@@ -477,7 +479,9 @@ class QuantAgentManager {
       }
       // 全部用户(普通+管理员/白名单)开放开仓
       const agents = Object.values(this._agents);
-      for (const a of agents) { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; a.pauseBoll = !!this.pauseBoll; }
+      for (const a of agents) { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; a.pauseBoll = !!this.pauseBoll; 
+        // ═══ 同步manager的池给agent(MA7/V4/布林各自独立池) ═══
+        a.MA7_POOL = this.MA7_POOL; a.V4_POOL = this.V4_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL; }
       await Promise.all(agents.map(a => a.scan(this.COIN_POOL).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
     } catch(e) { this._log(`❌ 循环异常: ${e.message}`); }
