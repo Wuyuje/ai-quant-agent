@@ -165,16 +165,37 @@ class QuantAgent {
       if (strat === 'trend') {
         if (this.pauseTrend) continue;   // 趋势引擎暂停开仓
         if (!this.isAdmin) continue;     // ⏸️ 只管理员开仓测试, 其他用户暂停
-        if (this.trendTop && !this.trendTop.includes(symbol)) continue;  // 只开池内排名靠前的币
-        // ═══ V4 阿奇日线趋势信号(实盘测试): 拉日线K线, 用V4 entrySignal ═══
-        const kld = await this.api.getKlines(symbol, '1d', 100).catch(()=>null);
-        if (!kld || kld.length < 50) continue;
-        const klDailyObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
-        sig = this.trendV4.entrySignal(klDailyObj);
-        if (sig.signal === 'NONE') continue;
-        const bs = this.trendV4.positionSize(this.balance, sig.signal, 0.15);
+        // ═══ 多币并仓: 趋势池(不限于trendTop), 多个币可同时持有 ═══
+        // 已有该币仓 → 跳过(同币不开第二仓)
+        if (this.positions[symbol]) continue;
+        // ═══ 1) V4日线主仓信号 ═══
+        const kld = await this.api.getKlines(symbol, '1d', 120).catch(()=>null);
+        let sigMain = null;
+        if (kld && kld.length >= 60) {
+          const dObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
+          sigMain = this.trendV4.entrySignal(dObj);
+        }
+        // ═══ 2) 4h次级趋势信号(提高频率/资金使用): 日线无信号则看4h ═══
+        let sig = sigMain && sigMain.signal !== 'NONE' ? sigMain : null;
+        let tf = '1d';
+        if (!sig) {
+          const k4h = await this.api.getKlines(symbol, '4h', 200).catch(()=>null);
+          if (k4h && k4h.length >= 120) {
+            const h4Obj = toArray(k4h).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
+            const sig4h = this.trendV4.entrySignal(h4Obj);
+            if (sig4h.signal !== 'NONE') { sig = sig4h; tf = '4h'; }
+          }
+        }
+        if (!sig || sig.signal === 'NONE') continue;
+        // 仓位: 日线主仓30%(强趋势), 4h次级15%
+        const posPct = tf === '1d' ? 0.30 : 0.15;
+        const bs = this.trendV4.positionSize(this.balance * (tf==='1d'?2:1), sig.signal, posPct);
+        if ((this.balance || 0) < 100) continue;   // 余额过少不开
+        // 最多同时5个趋势仓(资金分散)
+        const trendHeld = Object.values(this.positions).filter(p=>p.strategy==='trend').length;
+        if (trendHeld >= 5) continue;
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: bs.leverage, precisionMap: pm, price, balance: this.balance });
-        if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, openTime: Date.now() }; this._stratLock[symbol]='trend'; }
+        if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, tf, openTime: Date.now() }; this._stratLock[symbol]='trend'; }
       } else if (strat === 'bollinger') {
         if (this.bollTop && !this.bollTop.includes(symbol)) continue;  // 只开池内排名靠前的币
         if (this.pauseBoll) continue;   // 暂停震荡(布林)策略开仓(只交易趋势)
@@ -212,10 +233,11 @@ class QuantAgent {
         let closeReason = null, pnlToCount = null;
 
         if (pos.strategy === 'trend') {
-          // 阿奇日线趋势(V4): 用日线K线管理(逻辑止损/结构破坏止盈)
-          const tkld = await this.api.getKlines(symbol, '1d', 100).catch(() => null);
-          if (tkld && tkld.length >= 40) {
-            const dObj = toArray(tkld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
+          // 阿奇趋势(V4): 按仓位周期(tf)拉K线管理(日线主仓/4h次级), 逻辑止损/结构破坏止盈
+          const tf = pos.tf || '1d';
+          const klast = await this.api.getKlines(symbol, tf, 150).catch(() => null);
+          if (klast && klast.length >= 40) {
+            const dObj = toArray(klast).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
             const sl = this.trendV4.stopLoss(pos, dObj);
             if (sl.action === 'CLOSE') closeReason = sl.reason;
             else {
