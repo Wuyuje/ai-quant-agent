@@ -532,24 +532,28 @@ class QuantAgentManager {
         if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret, boRet: bo.ret});   // 优胜劣汰: 回测盈利才进震荡池, 亏损剔除
       }
       trendV4Pool.sort((a,b)=> b.ret - a.ret);
-      this.TREND_V4_POOL = trendV4Pool.slice(0,10).map(x=>x.sym);   // V4日线趋势精选池(独立)
+      this.TREND_V4_POOL = trendV4Pool.slice(0,25).map(x=>x.sym);   // V4日线趋势精选池(独立,25)
       this._log(`🧠 V4日线趋势精选池: ${this.TREND_V4_POOL.join(',')}`);
       this._log(`🧠 动态选币筛选: 趋势候选${trendPool.length} 震荡候选${bollPool.length} V4日线${trendV4Pool.length}`);
-      // ═══ 独立各取前10 trend, 震荡池最多20只(用户:优胜劣汰) ═══
+      // ═══ 趋势池/震荡池各放大到25, 符合策略+不回测亏损币, 且两池绝合 ═══
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
-      const trendC = trendPool.slice(0,10);
-      const bollC = bollPool.slice(0,20);   // 震荡池最多20只
-      // ═══ 趋势池: V4日线精选优先, 不足3只用MA7候选补足(保证池能更新且不低于3) ═══
+      const trendC = trendPool.slice(0,25);      // 趋势候选(仅回测盈利, 亏损剔除)
+      const bollC = bollPool.slice(0,25);        // 震荡候选(仅回测盈利, 亏损剔除)
+      // ═══ 趋势池: V4日线精选优先(仅当前趋势+盈利), MA7候选补足, 最多25 ═══
       const v4List = (this.TREND_V4_POOL && this.TREND_V4_POOL.length) ? this.TREND_V4_POOL : [];
-      const maCand = trendC.map(x=>x.sym);
-      const merged = [...new Set([...v4List, ...maCand])];   // V4在前优先, MA7补足
-      const newTrend = merged.slice(0,10);
-      // 后备: 若仍不足3(极端市场全横盘), 用全部候选保底
+      const maCand = trendC.map(x=>x.sym);       // 仅含回测盈利的MA7币
+      const merged = [...new Set([...v4List, ...maCand])];
+      // 从合并中仅保留'符合趋势策略且正回报'的币(排除负数)
+      const v4Set = new Set(v4List);
+      const mergedPos = merged.filter(s => v4Set.has(s) || trendC.find(c=>c.sym===s));
+      const newTrend = mergedPos.slice(0,25);
+      // ═══ 震荡池: 从布林盈利候选选取, 剔除已进趋势池的币(两池绝合) ═══
       const tSet = new Set(newTrend);
-      const bollAll = bollPool.slice(0,40).filter(x=>!tSet.has(x.sym)).map(x=>x.sym);
-      const newBoll = bollAll.slice(0,20);
-      if (newTrend.length>=3 && newBoll.length>=3) {
+      const bollAll = bollPool.slice(0,50).filter(x=>!tSet.has(x.sym)).map(x=>x.sym);   // 绝不与趋势池重合
+      const newBoll = bollAll.slice(0,25);
+      // 只要选出新版就更新池(即使数量不足25, 绝不保留含重叠的旧池)
+      if (newTrend.length>=1 && newBoll.length>=1) {
         this.TREND_POOL = newTrend;
         this.BOLLINGER_POOL = newBoll;
         this.COIN_POOL = [...new Set([...newTrend,...newBoll])];
