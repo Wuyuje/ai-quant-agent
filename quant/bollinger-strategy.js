@@ -17,9 +17,9 @@ class BollingerStrategy {
     this.period = 20;                 // 布林周期
     this.stdDev = 2;                  // 标准差倍数
     this.histLookback = 100;          // 带宽100根历史分位(截图: 100根)
-    this.openBandPct = 0.90;          // 禁开: 带宽分位>90%
-    this.releaseBandPct = 0.85;       // 解禁: <85%
-    this.shrinkBars = 3;              // 连续3根收窄
+    this.openBandPct = 1.0;           // 禁开: 带宽分位>100%才禁(放宽一点, 保留禁开机制兜底; 原99%→1.0让开口也能开)
+    this.releaseBandPct = 1.0;        // 解禁: <100%(B1用户确认, 配合当前触轨开仓)
+    this.shrinkBars = 2;              // 连续2根收窄(用户定: 从3放宽到2, 提高开仓机会但仍保留收窄纪律)
     this.tpTriggerPct = 2.0;          // 止盈前提: 浮盈≥2%持仓资金
     this.volSpikeRatio = 1.8;         // 放量: 成交量>20周期均量×1.8
     this.atrTrail = 0.3;              // 放量ATR跟踪止盈倍数(0.3ATR)
@@ -91,12 +91,12 @@ class BollingerStrategy {
   canOpen(arr) {
     const b = this.calcBands(arr);
     if (!b) return { allowed: false, reason: '布林数据不足' };
-    // 禁开: 带宽分位>90%
-    if (b.widthPct > this.openBandPct) return { allowed: false, reason: `带宽分位${(b.widthPct*100).toFixed(0)}%>90%禁开` };
-    // 解禁: 分位<85% 且 连续3根收窄
-    const released = b.widthPct < this.releaseBandPct && b.shrinking;
+    // 禁开: 带宽分位>99%
+    if (b.widthPct > this.openBandPct) return { allowed: false, reason: `带宽分位${(b.widthPct*100).toFixed(0)}%>${(this.openBandPct*100).toFixed(0)}%禁开` };
+    // 解禁: 分位<=100% 且 连续3根收窄(放宽到等于,让100%极限也可开)
+    const released = b.widthPct <= this.releaseBandPct && b.shrinking;
     if (!released) return { allowed: false, reason: `未解禁(分位${(b.widthPct*100).toFixed(0)}%${b.shrinking?',':'非'}连续3根收窄)` };
-    return { allowed: true, reason: `解禁(分位${(b.widthPct*100).toFixed(0)}%<85%+连续${this.shrinkBars}根收窄)`, bands: b };
+    return { allowed: true, reason: `解禁(分位${(b.widthPct*100).toFixed(0)}%<=${(this.releaseBandPct*100).toFixed(0)}%+连续${this.shrinkBars}根收窄)`, bands: b };
   }
 
   // ═══ 开仓信号: 只收盘价, 触下轨开多/触上轨开空 ═══
