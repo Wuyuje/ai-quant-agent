@@ -493,11 +493,14 @@ class QuantAgentManager {
         } else {
           trendPool.push({sym, ret: basis.ret * 0.5, trRet: 0});   // 无回测样本(严格策略没成交) → 基础分减半排序, 不占奖励
         }
-        // ═══ V4阿奇日线趋势评估(独立趋势精选): 日线回测, 只保留盈利且趋势明确 ✅ ═══
+        // ═══ V4阿奇日线趋势评估(独立趋势精选): 日线回测盈利 + 当前正走单边趋势才入选 ═══
         const kld = await apiInst.getKlines(sym, '1d', 200).catch(()=>null);
         if (kld && kld.length >= 80) {
           const v4 = this._btTrendV4Daily(kld);
-          if (v4 && v4.n > 0 && v4.ret > 0) trendV4Pool.push({sym, ret: v4.ret, n: v4.n, rate: v4.rate});
+          // 当前趋势检测: 最近K线V4信号非'横盘/FLAT'(当前正在走单边), 确保选出的币现在可交易
+          const nowObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
+          const curSig = this._trendV4Now(kld);   // 'UP'有上行趋势/'DOWN'下行/'FLAT'横盘
+          if (v4 && v4.n > 0 && v4.ret > 0 && curSig !== 'FLAT') trendV4Pool.push({sym, ret: v4.ret, n: v4.n, rate: v4.rate, cur: curSig});
         }
         const bo = this._btBoll(kl);   // 用最新截图版振荡(BollingerStrategy)真实回测
         if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret, boRet: bo.ret});   // 优胜劣汰: 回测盈利才进震荡池, 亏损剔除
@@ -630,6 +633,22 @@ class QuantAgentManager {
       }
       return {ret,n,rate:n?Math.round(w/n*100):0};
     }catch(e){return {ret:-99,n:0,rate:0};}
+  }
+
+  // ═══ 当前趋势检测: 近N根日线是否正走单边趋势(UP/DOWN) 还是横盘(FLAT) ═══
+  _trendV4Now(kl) {
+    try {
+      const c = kl.slice(-45).map(k => +k.close);
+      if (c.length < 40) return 'FLAT';
+      const ups = c.slice(-30).filter((_, i) => i > 0 && c.slice(-30)[i] > c.slice(-30)[i-1]).length;
+      const ratio = ups / 29;   // 近30日上涨占比
+      const seg = c.slice(-20);
+      const amp = (Math.max(...seg) - Math.min(...seg)) / (Math.min(...seg) || 1);
+      // 方向性明确(占比>60%上或<40%下) 且振幅足(>8%) = 单边趋势
+      if (ratio > 0.62 && amp > 0.08) return 'UP';
+      if (ratio < 0.38 && amp > 0.08) return 'DOWN';
+      return 'FLAT';
+    } catch(e) { return 'FLAT'; }
   }
 
   getAllStatus() { return Object.values(this._agents).map(a => a.getSummary()); }

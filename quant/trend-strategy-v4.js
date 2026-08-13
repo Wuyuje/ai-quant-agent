@@ -79,17 +79,19 @@ class TrendStrategyV4 {
     return trs.slice(-14).reduce((x, y) => x + y, 0) / Math.min(14, trs.length);
   }
 
-  // ═══ 横盘检测(阿奇: 没有趋势就不画线/不做): 近N根无明确方向 or 窄幅区间反复 → 禁开仓 ═══
+  // ═══ 横盘检测(阿奇: 没有趋势就不画线/不做): 只拒绝真横盘(窄幅 或 完全无方向) ═══
   isRange(closes, n = 40) {
     const win = closes.slice(-n);
-    if (win.length < 20) return true;   // 数据不足, 当横盘
+    if (win.length < 20) return true;
     const hi = Math.max(...win), lo = Math.min(...win);
     const rangePct = hi > 0 ? (hi - lo) / lo * 100 : 0;
-    // 振幅<阈值(如<6%) 或 结构方向反复切换 → 横盘
-    if (rangePct < 6) return true;      // 太窄=无波动/横盘
-    // 结构方向频繁切换(最近抬高低点不全一致) → 横盘
-    const d = this.dir(closes);
-    if (d.dir === 'FLAT') return true;
+    // 真横盘: 振幅太窄(<5%日线) 才拒; 波动够大(=有机会) 不算横盘
+    if (rangePct < 5) return true;
+    // 方向性: 近30根上涨占比<42% 且 >58% 都算有方向(非横盘); 42~58%=来回震荡拒
+    const seg = win.slice(-30);
+    let up = 0; for (let i = 1; i < seg.length; i++) if (seg[i] > seg[i - 1]) up++;
+    const ratio = up / (seg.length - 1);
+    if (ratio >= 0.42 && ratio <= 0.58) return true;   // 来回震荡=横盘拒
     return false;
   }
 
@@ -136,13 +138,17 @@ class TrendStrategyV4 {
     // ═══ 关键: 横盘禁入(大道至简, 没有趋势不做) ═══
     if (this.isRange(closes)) return { signal: 'NONE', reason: '横盘区间禁开仓(无明确趋势)' };
     const d = this.dir(closes);
+    // 方向补充: 近30日方向占比趋势(让方向明确的币即使swing结构FLAT也能入场)
+    const seg30 = closes.slice(-30); let upN = 0; for (let i = 1; i < seg30.length; i++) if (seg30[i] > seg30[i-1]) upN++;
+    const ratio = upN / (seg30.length - 1);
+    const effDir = d.dir !== 'FLAT' ? d.dir : (ratio > 0.62 ? 'UP' : (ratio < 0.38 ? 'DOWN' : 'FLAT'));
     const kl = this.keyLevels(closes);   // 多次触碰关键位
     const v = this.vol(arr);
     const price = closes[closes.length - 1];
     const prev = closes[closes.length - 2] || price;
     // 关键位取较高可信度: 趋势结构位 或 多次触碰位
 
-    if (d.dir === 'UP') {
+    if (effDir === 'UP') {
       const res = d.resistance > 0 ? d.resistance : (kl.resistance || 0);
       const sup = d.support > 0 ? d.support : (kl.support || 0);
       // ═══ 胜率提升过滤: 趋势强度够强 + 大级别方向一致 + 无顶背离 ═══
@@ -158,7 +164,7 @@ class TrendStrategyV4 {
         return { signal: 'LONG', reason: `回踩关键支撑${(sup).toFixed(4)}不破+量${v.ratio.toFixed(1)}x`, supportLevel: sup, resistanceLevel: res };
       }
     }
-    if (d.dir === 'DOWN') {
+    if (effDir === 'DOWN') {
       const sup = d.support > 0 ? d.support : (kl.support || 0);
       const res = d.resistance > 0 ? d.resistance : (kl.resistance || 0);
       // ═══ 胜率提升过滤: 趋势强度够强 + 大级别方向一致 + 无底背离 ═══
