@@ -197,8 +197,8 @@ class QuantAgent {
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: bs.leverage, precisionMap: pm, price, balance: this.balance });
         if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, tf, openTime: Date.now() }; this._stratLock[symbol]='trend'; }
       } else if (strat === 'bollinger') {
-        if (this.bollTop && !this.bollTop.includes(symbol)) continue;  // 只开池内排名靠前的币
-        if (this.pauseBoll) continue;   // 暂停震荡(布林)策略开仓(只交易趋势)
+        // 多币并仓: 震荡池全部币可开(不限bollTop前5, 提高资金使用)
+        if (this.pauseBoll) continue;   // 暂停震荡(布林)策略开仓
         // 布林带策略(规格): 5分钟K线决策
         const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
@@ -394,7 +394,7 @@ class QuantAgentManager {
     // 震荡行情交易池(专门给 布林带震荡策略引擎 调用) — 布林回测精选优质币
     // WIF/FIL/ETH/APT/TURBO/STX 等(触轨低买高卖胜率高)
     // 震荡行情交易池(布林带引擎) — 修复NaN bug后最优回测精选(交易≥3+胜率100%)
-    this.BOLLINGER_POOL = ['APTUSDT','FILUSDT','STXUSDT','TIAUSDT','1000PEPEUSDT','INJUSDT','LINKUSDT','SUIUSDT','ARBUSDT'];
+    this.BOLLINGER_POOL = ['LINKUSDT','ORDIUSDT','SOLUSDT','OPUSDT','NEARUSDT','TONUSDT','SUIUSDT','AVAXUSDT','INJUSDT','LTCUSDT'];   // 活跃波动币, 提高布林触轨开仓机会
     // 趋势行情交易池(给趋势策略引擎调用) — 30天趋势回测精选
     // 正期望: LINK/FIL(TIA/ADA等趋势弱负期望不纳入)
     // 趋势行情交易池(给趋势引擎调用) — v6摆动结构90天回测精选(胜率≥50%+正回报)
@@ -410,10 +410,36 @@ class QuantAgentManager {
   start() {
     if (this.running) return; this.running = true;
     this._log('🚀 新量化智能体管理器启动(市场分类+趋势/震荡双策略)');
-    // 大脑中枢·动态选币: 启动时刷新 + 每4小时自动重选 (按市场+历史回测)
+    // ═══ 动态选币: 启动刷新一次 + 根据主流大盘(BTC)行情不定时自动重选 ═══
     this._refreshDynamicPool().catch(()=>{});
-    this._poolTimer = setInterval(() => this._refreshDynamicPool().catch(()=>{}), 4*60*60*1000);
+    this._lastPoolBTC = null;
+    this._poolTimer = setInterval(() => this._checkBTCAndRefresh().catch(()=>{}), 15*60*1000);  // 每15分钟检测大盘, 变化才重选(不固定时间)
     this._loop();
+  }
+
+  // ═══ 根据主流大盘(BTC)行情不定时触发重选币 ═══
+  // 当BTC日线趋势方向(UP/DOWN/FLAT)或波动发生变化时, 重新动态选币
+  async _checkBTCAndRefresh() {
+    try {
+      const apiInst = new BinanceAPI(this.adminApiKey, this.adminApiSecret);
+      const bkl = await apiInst.getKlines('BTCUSDT', '1d', 60).catch(() => null);
+      if (!bkl || bkl.length < 40) return;
+      const closes = bkl.map(k => +k.close);
+      // BTC日线方向(近20日趋势方向)
+      const seg = closes.slice(-20); let upN = 0; for (let i = 1; i < seg.length; i++) if (seg[i] > seg[i-1]) upN++;
+      const ratio = upN / (seg.length - 1);
+      const dir = ratio > 0.62 ? 'UP' : (ratio < 0.38 ? 'DOWN' : 'FLAT');
+      const range = (Math.max(...seg) - Math.min(...seg)) / (Math.min(...seg) || 1);
+      const state = dir + ':' + (range > 0.05 ? 'WIDE' : 'NARROW');
+      // 大盘状态首次 或 与上次不同 → 重新选币(跟随时大盘变化)
+      if (this._lastPoolBTC !== state) {
+        this._log(`🧠 主流大盘BTC状态变化(${this._lastPoolBTC||'初'}→${state}), 触发重新选币`);
+        this._lastPoolBTC = state;
+        await this._refreshDynamicPool();
+      } else {
+        this._log(`🧠 大盘BTC状态不变(${state}), 暂不重选`);
+      }
+    } catch(e) { /* 忽略 */ }
   }
 
   async _loop() {
@@ -514,9 +540,12 @@ class QuantAgentManager {
       bollPool.sort((a,b)=> b.ret - a.ret);
       const trendC = trendPool.slice(0,10);
       const bollC = bollPool.slice(0,20);   // 震荡池最多20只
-      // 趋势池=趋势分前10; 震荡池=布林候选前20(不含趋势池重叠币), 最多20只
-      // ═══ 趋势池优先用V4日线精选(剔亏+趋势明确), 后备旧MA7候选 ═══
-      const newTrend = (this.TREND_V4_POOL && this.TREND_V4_POOL.length) ? this.TREND_V4_POOL : trendC.map(x=>x.sym);
+      // ═══ 趋势池: V4日线精选优先, 不足3只用MA7候选补足(保证池能更新且不低于3) ═══
+      const v4List = (this.TREND_V4_POOL && this.TREND_V4_POOL.length) ? this.TREND_V4_POOL : [];
+      const maCand = trendC.map(x=>x.sym);
+      const merged = [...new Set([...v4List, ...maCand])];   // V4在前优先, MA7补足
+      const newTrend = merged.slice(0,10);
+      // 后备: 若仍不足3(极端市场全横盘), 用全部候选保底
       const tSet = new Set(newTrend);
       const bollAll = bollPool.slice(0,40).filter(x=>!tSet.has(x.sym)).map(x=>x.sym);
       const newBoll = bollAll.slice(0,20);
