@@ -144,12 +144,14 @@ class QuantAgent {
       const decision = this.brain.decide(symbol, kl);
       let strat = decision.chosen;
       if (strat === 'none') continue;   // shock观望
-      // ═══ 分池决定策略(优先级高于大脑decide): 币在趋势池→trend, 在震荡池→bollinger ═══
-      const inTrendP = this.TREND_POOL && this.TREND_POOL.includes(symbol);
+      // ═══ 分池决定策略: 币在MA7池→ma7, 在V4池→v4, 在震荡池→bollinger ═══
+      const inMA7 = this.MA7_POOL && this.MA7_POOL.includes(symbol);
+      const inV4  = this.V4_POOL && this.TREND_V4_POOL && this.V4_POOL.includes(symbol);
       const inBollP = this.BOLLINGER_POOL && this.BOLLINGER_POOL.includes(symbol);
-      if (inTrendP && !inBollP) strat = 'trend';
-      else if (inBollP && !inTrendP) strat = 'bollinger';
-      else if (!inTrendP && !inBollP) continue;
+      if (inMA7) strat = 'trend_ma7';
+      else if (inV4) strat = 'trend_v4';
+      else if (inBollP && !inMA7 && !inV4) strat = 'bollinger';
+      else if (!inMA7 && !inV4 && !inBollP) continue;
       // ═══ 各引擎独立仓位配额: 趋势≤3 / 震荡≤5 (互不干涉) ═══
       const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend' && !p._managed).length;
       const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger' && !p._managed).length;
@@ -162,31 +164,29 @@ class QuantAgent {
       const pm = await this.api.getExchangeInfo().catch(()=>null);
       const price = +toArray(kl)[kl.length-1][3];
       let sig;
-      if (strat === 'trend') {
+      if (strat === 'trend_ma7' || strat === 'trend_v4') {
         if (this.pauseTrend) continue;   // 趋势引擎暂停开仓
-        if (!this.isAdmin) continue;     // ⏸️ 只管理员开仓测试, 其他用户暂停
-        if (this.positions[symbol]) continue;   // 同币已持单, 不再开(含其他策略)
-        // ═══ 三策略并行: 趋势拆 MA7(15m大道至简) + V4(日线阿奇), 各自独立开仓 ═══
-        let sig = null, stg = null, stf = null;
-        // 1) V4 阿奇日线趋势(中长线)
-        const kld = await this.api.getKlines(symbol, '1d', 120).catch(()=>null);
-        if (kld && kld.length >= 60) {
-          const dObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
-          const sm = this.trendV4.entrySignal(dObj);
-          if (sm.signal === 'LONG' || sm.signal === 'SHORT') { sig = sm; stg = 'v4'; stf = '1d'; }
-        }
-        // 2) MA7 大道至简(短中期): V4无信号时, 用15m MA7低买高卖
-        if (!sig) {
-          const sm = this.trend.entrySignal(kl, decision.market.trendDir);
-          if (sm.signal === 'LONG' || sm.signal === 'SHORT') { sig = sm; stg = 'ma7'; stf = '15m'; }
+        if (!this.isAdmin) continue;     // ⏸️ 只管理员开仓测试
+        if (this.positions[symbol]) continue;   // 同币已持单, 不再开
+        // ═══ 分开选池: 币在MA7池只跑MA7(15m), 在V4池只跑V4(日线) ═══
+        let sig = null, stg = strat === 'trend_v4' ? 'v4' : 'ma7', stf = strat === 'trend_v4' ? '1d' : '15m';
+        if (strat === 'trend_v4') {
+          // V4 池币: 只按 V4(日线) 信号
+          const kld = await this.api.getKlines(symbol, '1d', 120).catch(()=>null);
+          if (kld && kld.length >= 60) {
+            const dObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
+            sig = this.trendV4.entrySignal(dObj);
+          }
+        } else {
+          // MA7 池币: 只按 MA7(15m) 大道至简低买高卖
+          sig = this.trend.entrySignal(kl, decision.market.trendDir);
         }
         if (!sig || sig.signal === 'NONE') continue;
-        // 仓位: V4日线30%(中长线)/MA7 20%(短线)
+        // 仓位: V4日线30%/MA7 20%
         const posPct = stg === 'v4' ? 0.30 : 0.20;
         const eng = stg === 'v4' ? this.trendV4 : this.trend;
         const bs = eng.positionSize(this.balance, sig.signal, posPct);
         if ((this.balance || 0) < 100) continue;
-        // 各策略独立持仓上限(V4≤3, MA7≤4)
         const stgHeld = Object.values(this.positions).filter(p=>p.strategy===stg).length;
         const maxPerStg = stg === 'v4' ? 3 : 4;
         if (stgHeld >= maxPerStg) continue;
@@ -406,6 +406,8 @@ class QuantAgentManager {
     // 趋势行情交易池(给趋势引擎调用) — v6摆动结构90天回测精选(胜率≥50%+正回报)
     // 趋势池(v7大道至简MA7·30天回测正期望精选): AVAX+5%/KAS+2.9%/TIA+1.5%/ADA+0.5%/BTC+0.4%
     this.TREND_POOL = ['AVAXUSDT','KASUSDT','TIAUSDT','ADAUSDT','BTCUSDT'];
+    this.MA7_POOL = this.TREND_POOL;   // MA7趋势池(15m大道至简)
+    this.V4_POOL = this.TREND_POOL;    // V4趋势池(日线阿奇)
     // 合并扫描池
     this.COIN_POOL = [...new Set([...this.BOLLINGER_POOL, ...this.TREND_POOL])];
   }
@@ -540,34 +542,31 @@ class QuantAgentManager {
       trendV4Pool.sort((a,b)=> b.ret - a.ret);
       this.TREND_V4_POOL = trendV4Pool.slice(0,25).map(x=>x.sym);   // V4日线趋势精选池(独立,25)
       this._log(`🧠 V4日线趋势精选池: ${this.TREND_V4_POOL.join(',')}`);
-      this._log(`🧠 动态选币筛选: 趋势候选${trendPool.length} 震荡候选${bollPool.length} V4日线${trendV4Pool.length}`);
-      // ═══ 趋势池/震荡池各放大到25, 符合策略+不回测亏损币, 且两池绝合 ═══
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
-      const trendC = trendPool.slice(0,25);      // 趋势候选(仅回测盈利, 亏损剔除)
-      const bollC = bollPool.slice(0,25);        // 震荡候选(仅回测盈利, 亏损剔除)
-      // ═══ 趋势池: V4日线精选优先(仅当前趋势+盈利), MA7候选补足, 最多25 ═══
-      const v4List = (this.TREND_V4_POOL && this.TREND_V4_POOL.length) ? this.TREND_V4_POOL : [];
-      const maCand = trendC.map(x=>x.sym);       // 仅含回测盈利的MA7币
-      const merged = [...new Set([...v4List, ...maCand])];
-      // 从合并中仅保留'符合趋势策略且正回报'的币(排除负数)
-      const v4Set = new Set(v4List);
-      const mergedPos = merged.filter(s => v4Set.has(s) || trendC.find(c=>c.sym===s));
-      const newTrend = mergedPos.slice(0,25);
-      // ═══ 震荡池: 从布林盈利候选选取, 剔除已进趋势池的币(两池绝合) ═══
-      const tSet = new Set(newTrend);
-      const bollAll = bollPool.slice(0,50).filter(x=>!tSet.has(x.sym)).map(x=>x.sym);   // 绝不与趋势池重合
+      const trendC = trendPool.slice(0,25);      // MA7候选(仅回测盈利)
+      const bollC = bollPool.slice(0,25);        // 震荡候选
+      // ═══ 分开选池: MA7趋势池(15m) 和 V4趋势池(日线) 各自独立 ═══
+      const ma7Sym = trendC.map(x=>x.sym);       // MA7池 = 15m回测盈利币
+      const v4Sym  = (this.TREND_V4_POOL && this.TREND_V4_POOL.length) ? this.TREND_V4_POOL : [];   // V4池 = 日线回测盈利币
+      const newMA7 = ma7Sym.slice(0,25);
+      const newV4  = v4Sym.slice(0,25);
+      // 震荡池: 从布林盈利候选剔除进入任一趋势池的币(共同合)
+      const allTrend = new Set([...newMA7, ...newV4]);
+      const bollAll = bollPool.slice(0,50).filter(x=>!allTrend.has(x.sym)).map(x=>x.sym);
       const newBoll = bollAll.slice(0,25);
-      // 只要选出新版就更新池(即使数量不足25, 绝不保留含重叠的旧池)
-      if (newTrend.length>=1 && newBoll.length>=1) {
-        this.TREND_POOL = newTrend;
+      // 只要选出新版就更新池
+      if (newMA7.length>=1 && newV4.length>=1 && newBoll.length>=1) {
+        this.MA7_POOL = newMA7;
+        this.V4_POOL = newV4;
+        this.TREND_POOL = [...new Set([...newMA7, ...newV4])];   // 趋势总池(兼容)
         this.BOLLINGER_POOL = newBoll;
-        this.COIN_POOL = [...new Set([...newTrend,...newBoll])];
+        this.COIN_POOL = [...new Set([...newMA7, ...newV4, ...newBoll])];
         // 排名靠前子集(开仓限): 各前5只(按回测性能), 池内排名靠后才开仓
-        this.trendTop = newTrend.slice(0,5);
+        this.trendTop = [...new Set([...newMA7, ...newV4])].slice(0,5);
         this.bollTop = newBoll.slice(0,5);
-        this._log(`🧠 动态选币 → 趋势池${newTrend.length}只: ${newTrend.join(',')} | 震荡池${newBoll.length}只(≤20): ${newBoll.join(',')}`);
-        this._log(`🟢 开仓限排名靠前 → 趋势Top: ${this.trendTop.join(',')} | 震荡Top: ${this.bollTop.join(',')}`);
+        this._log(`🧠 动态选币 → MA7池${newMA7.length}只: ${newMA7.join(',')} | V4池${newV4.length}只: ${newV4.join(',')} | 震荡池${newBoll.length}只(≤20): ${newBoll.join(',')}`);
+        this._log(`🟢 开仓限 → MA7/V4 Top: ${this.trendTop.join(',')} | 震荡Top: ${this.bollTop.join(',')}`);
       }
     } catch(e){ this._log(`⚠️ 动态选币失败: ${e.message.slice(0,30)}`); }
   }
