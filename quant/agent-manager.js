@@ -31,6 +31,7 @@ class QuantAgent {
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
     this.trend = new TrendStrategy();  // MA多空排列趋势引擎(纯MA7, 回测一致无DIF)
+    this.trendV4 = new TrendStrategyV4({ minBars: 60 });  // 阿奇日线大周期趋势引擎(实盘测试用)
     this.boll = new BollingerStrategy();      // 新震荡·布林带策略
     this.brain = new BrainCore();             // 大脑中枢(切换+自学习+NN)
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
@@ -162,20 +163,21 @@ class QuantAgent {
       const price = +toArray(kl)[kl.length-1][3];
       let sig;
       if (strat === 'trend') {
-        if (this.pauseTrend) continue;   // 趋势引擎暂停开仓(只停新开,持仓管理不受影响)
+        if (this.pauseTrend) continue;   // 趋势引擎暂停开仓
+        if (!this.isAdmin) continue;     // ⏸️ 只管理员开仓测试, 其他用户暂停
         if (this.trendTop && !this.trendTop.includes(symbol)) continue;  // 只开池内排名靠前的币
-        // ═══ BTC大盘方向过滤: 逆大盘不开(跟随大盘) ═══
-        const btcState = this._marketRisk || 'OK';
-        sig = this.trend.entrySignal(kl, decision.market.trendDir);
-        // ═══ 跟随大盘(BTC方向过滤): 逆BTC大盘不开仓 ═══
-        if (sig.signal === 'SHORT' && btcState === 'UP') continue;   // 大盘强→禁做空(顺势多)
-        if (sig.signal === 'LONG' && btcState === 'DOWN') continue;  // 大盘弱→禁做多(顺势空,不抄底)
+        // ═══ V4 阿奇日线趋势信号(实盘测试): 拉日线K线, 用V4 entrySignal ═══
+        const kld = await this.api.getKlines(symbol, '1d', 100).catch(()=>null);
+        if (!kld || kld.length < 50) continue;
+        const klDailyObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
+        sig = this.trendV4.entrySignal(klDailyObj);
         if (sig.signal === 'NONE') continue;
-        const bs = this.trend.positionSize(this.balance, sig.signal, 0.15);
+        const bs = this.trendV4.positionSize(this.balance, sig.signal, 0.15);
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: bs.leverage, precisionMap: pm, price, balance: this.balance });
         if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: 5, strategy: 'trend', _peak: price, openTime: Date.now() }; this._stratLock[symbol]='trend'; }
       } else if (strat === 'bollinger') {
         if (this.bollTop && !this.bollTop.includes(symbol)) continue;  // 只开池内排名靠前的币
+        if (this.pauseBoll) continue;   // 暂停震荡(布林)策略开仓(只交易趋势)
         // 布林带策略(规格): 5分钟K线决策
         const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
@@ -210,14 +212,16 @@ class QuantAgent {
         let closeReason = null, pnlToCount = null;
 
         if (pos.strategy === 'trend') {
-          // 大道至简MA7趋势: 用5min K线管理(位置+拐头判定)
-          const tkl = await this.api.getKlines(symbol, '5m', 300).catch(() => null);
-          const tcloses = tkl ? toArray(tkl).map(k => +k[3]) : (toArray(kl).map(k=>+k[3]));
-          const ts = this.trend.takeProfit(pos, price, tcloses);
-          if (ts.action === 'CLOSE') { closeReason = ts.reason; }
-          else {
-            const sl = this.trend.stopLoss(pos, price, tcloses);
+          // 阿奇日线趋势(V4): 用日线K线管理(逻辑止损/结构破坏止盈)
+          const tkld = await this.api.getKlines(symbol, '1d', 100).catch(() => null);
+          if (tkld && tkld.length >= 40) {
+            const dObj = toArray(tkld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
+            const sl = this.trendV4.stopLoss(pos, dObj);
             if (sl.action === 'CLOSE') closeReason = sl.reason;
+            else {
+              const tp = this.trendV4.takeProfit(pos, dObj);
+              if (tp.action === 'CLOSE') closeReason = tp.reason;
+            }
           }
         }
         if (pos.strategy === 'bollinger') {
@@ -357,6 +361,7 @@ class QuantAgentManager {
     this.running = false;
     this.pauseOpen = false;
     this.pauseTrend = false;
+    this.pauseBoll = false;      // 暂停震荡(布林)开仓
     // ═══ 角色区分 ═══
     // 管理员(唯一): fa3b90c5(0xfA3b90c574469909D20848273C06752a22fdE74a)
     this.ADMIN_WALLETS = ['0xfA3b90c574469909D20848273C06752a22fdE74a'];
@@ -417,7 +422,7 @@ class QuantAgentManager {
       }
       // 全部用户(普通+管理员/白名单)开放开仓
       const agents = Object.values(this._agents);
-      for (const a of agents) { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; }
+      for (const a of agents) { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; a.pauseBoll = !!this.pauseBoll; }
       await Promise.all(agents.map(a => a.scan(this.COIN_POOL).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
     } catch(e) { this._log(`❌ 循环异常: ${e.message}`); }
