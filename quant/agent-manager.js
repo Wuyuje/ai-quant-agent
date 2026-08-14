@@ -451,8 +451,9 @@ class QuantAgent {
         return null;
       }
       if (adx >= 25) return `市场闸门: ADX=${adx.toFixed(1)}≥25单边非震荡禁开`;
-      if (atrPct < 0.5) return `市场闸门: ATR波动${atrPct.toFixed(2)}%<0.5%太窄(没来回)禁开`;
-      if (atrPct > 6) return `市场闸门: ATR波动${atrPct.toFixed(2)}%>6%太剧烈禁开`;
+      // 震荡(5m): 需 ATR 有来回空间(0.05%~0.8%, 适配5m单根波动小) - 原0.5%~6%按更长周期定, 5m全部被误拦
+      if (atrPct < 0.05) return `市场闸门: ATR波动${atrPct.toFixed(2)}%<0.05%太窄(没来回)禁开`;
+      if (atrPct > 0.8) return `市场闸门: ATR波动${atrPct.toFixed(2)}%>0.8%太剧烈禁开`;
       return null;
     } catch (e) { return null; }
   }
