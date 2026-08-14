@@ -420,6 +420,8 @@ class QuantAgentManager {
     this.pauseOpen = false;
     this.pauseTrend = false;
     this.pauseBoll = false;      // 暂停震荡(布林)开仓
+    // ═══ 黑名单(禁区币) — 管理器层(选币/scan共用): ATOM高频秒仓连亏; STX贴EMA99被秒止损 ═══
+    this.BLACKLIST = ['ATOMUSDT', 'STXUSDT'];
     // ═══ 角色区分 ═══
     // 管理员(唯一): fa3b90c5(0xfA3b90c574469909D20848273C06752a22fdE74a)
     this.ADMIN_WALLETS = ['0xfA3b90c574469909D20848273C06752a22fdE74a'];
@@ -558,7 +560,7 @@ class QuantAgentManager {
           // 低波动(振幅<12%) 且 无方向(占比38-62%) = 横盘恶币 → 自动踢出
           if (amp < 12 && ratio >= 0.38 && ratio <= 0.62) {
             // 加自动黑名单, 之后scan也跳过
-            if (!this.BLACKLIST.includes(sym)) this.BLACKLIST.push(sym);
+            if (this.BLACKLIST && !this.BLACKLIST.includes(sym)) this.BLACKLIST.push(sym);
             this._log(`🚽 自动识别低波动横盘币踢出: ${sym} (40日振幅${amp.toFixed(0)}%, 方向${(ratio*100).toFixed(0)}%)`);
             continue;
           }
