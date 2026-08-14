@@ -20,10 +20,10 @@ function sma7(closes) {
 class TrendStrategy {
   constructor(opts = {}) {
     this.lookback = opts.lookback || 288;    // 位置区间: 近288根5min≈1天(判断低位/高位)
-    this.lowCut = opts.lowCut || 0.35;        // 做多: MA7底位(<35%, 适当放宽原25%)
-    this.highCut = opts.highCut || 0.65;      // 做空: MA7高位(>65%, 适当放宽原75%)
+    this.lowCut = opts.lowCut || 0.30;        // 做多: MA7底位(<30%, 折中恢复)
+    this.highCut = opts.highCut || 0.70;      // 做空: MA7高位(>70%, 折中恢复)
     this.turnAbs = opts.turnAbs || 0.0001;    // 拐头最小幅度
-    this.turnStrong = opts.turnStrong || 0.0002; // 拐头角度(放宽原0.0004)
+    this.turnStrong = opts.turnStrong || 0.0003; // 拐头角度(折中恢复原0.0004收紧)
     this.stopLossPct = opts.stopLossPct || 4.0; // 硬止损兜底(防极端)
 this.trailPct = opts.trailPct || 3.0;         // 移动止损: 从最高/最低回撤3%才平(拿满趋势不中途震)
     this.useDIF = opts.useDIF || false;        // DIF/MACD动能否确认: 拦截逆势假拐头(做多需DIF>0/做空需DIF<0)
