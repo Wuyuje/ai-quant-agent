@@ -291,15 +291,16 @@ class QuantAgent {
           }
         }
 
-        if (pos.strategy === 'trend') {
-          // 接管仓(旧trend): 新策略接管, 用MA7大道至简逻辑管理(止损/止盈)
+        if (pos.strategy === 'trend' || (pos.strategy === 'ma7' && pos._managed)) {
+          // 接管仓(旧trend/ma7存量): 只用硬止损兜底防极端亏损, 不适用EMA止盈平多(避免5m短期震荡误杀中长线趋势仓)
           const mkl = await this.api.getKlines(symbol, '15m', 150).catch(() => null);
           if (mkl && mkl.length >= 40) {
             const mObj = toArray(mkl).map(k => +k[3]);
             const price = mObj[mObj.length - 1];
-            const ts = this.trend.takeProfit(pos, price, mObj);
-            if (ts.action === 'CLOSE') closeReason = ts.reason;
-            else { const sl = this.trend.stopLoss(pos, price, mObj); if (sl.action === 'CLOSE') closeReason = sl.reason; }
+            // 仅硬止损(价格跌超阈值才平), 不因EMA排列转空误杀
+            const sl = this.trend.stopLoss(pos, price, mObj);
+            if (sl.action === 'CLOSE') closeReason = sl.reason;
+            // 不做EMA takeProfit(避免短期均线翻转平掉中长线仓)
           }
         }
 
