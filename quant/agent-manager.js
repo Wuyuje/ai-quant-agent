@@ -42,7 +42,7 @@ class QuantAgent {
     this.closedHistory = [];
     this._stratLock = {};      // symbol → 锁定的策略(trend/bollinger), 防双引擎互博
     this.pauseOpen = false;
-    this.BLACKLIST = ['ATOMUSDT'];   // ═══ 黑名单(禁区币): ATOM高频秒仓连亏, 禁交易 ═══
+    this.BLACKLIST = ['ATOMUSDT', 'STXUSDT'];   // ═══ 黑名单(禁区币): ATOM高频秒仓连亏; STX贴EMA99横盘被秒止损, 禁交易 ═══
     this._runCount = 0;
     this._logTag = wallet.slice(0,10);
     // 状态文件路径: 每个用户独立持久化(closedHistory/balance), 重启不丢
@@ -186,6 +186,9 @@ class QuantAgent {
           sig = this.trend.entrySignal(kl5 || kl, decision.market.trendDir);
         }
         if (!sig || sig.signal === 'NONE') { this._log(`🔍 ${symbol} ${stg}信号NONE(${(sig&&sig.reason)||'无'})`); continue; }
+        // ═══ 贴EMA99禁开仓: 价格距EMA99太近(悬崖边)不开, 避免开仓即被破EMA99秒止损 ═══
+        const nearLine = this.trend.nearEMA99(kl5 || kl, price, 0.5);
+        if (nearLine) { this._log(`🚫 ${symbol} ${stg}禁开: ${nearLine}`); continue; }
         this._log(`🔍 ${symbol} ${stg}信号=${sig.signal} 准备开仓`);
         // 仓位: V4日线30%/MA7 20%
         const posPct = stg === 'v4' ? 0.30 : 0.20;

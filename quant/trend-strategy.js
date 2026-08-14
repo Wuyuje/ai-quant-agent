@@ -74,6 +74,19 @@ class TrendStrategy {
     return { signal: 'NONE', reason: `EMA排列=${dir} 价${price.toFixed(4)}` };
   }
 
+  // ═══ 贴EMA99检测: 当前价距EMA99太近则禁开仓(避免开在悬崖边被秒止损) ═══
+  // 返回 null=未贴线可开; 返回字符串=贴EBMA99原因(禁开)
+  nearEMA99(closes, price, thresholdPct) {
+    if (!closes || closes.length < 40) return null;
+    const e99 = this._ema(closes, this.slow);
+    if (!e99) return null;
+    const dist = Math.abs(price - e99) / e99 * 100;
+    if (dist <= (thresholdPct != null ? thresholdPct : 0.5)) {
+      return `价格${price.toFixed(4)}贴EMA99(${e99.toFixed(4)},距离${dist.toFixed(2)}%≤${thresholdPct != null ? thresholdPct : 0.5}%)禁开仓`;
+    }
+    return null;
+  }
+
   // ═══ 止损: 跌破EMA99(逻辑失效) / 硬止损 ═══ (签名: pos, price, closes数字数组)
   stopLoss(pos, price, closes) {
     const e99 = this._ema(closes, this.slow);
