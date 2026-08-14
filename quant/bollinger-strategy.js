@@ -99,7 +99,7 @@ class BollingerStrategy {
     return { allowed: true, reason: `解禁(分位${(b.widthPct*100).toFixed(0)}%<=${(this.releaseBandPct*100).toFixed(0)}%+连续${this.shrinkBars}根收窄)`, bands: b };
   }
 
-  // ═══ 开仓信号: 只收盘价, 触下轨开多/触上轨开空 ═══
+  // ═══ 开仓信号: 只收盘价, 触下轨开多/触上轨开空 (严格截图规格) ═══
   entrySignal(arr, trendDir, existingSame) {
     const b = this.calcBands(arr);
     if (!b) return { signal: 'NONE', reason: '布林不足' };
@@ -107,13 +107,6 @@ class BollingerStrategy {
     if (existingSame) return { signal: 'ADD', reason: '已有同向持仓走补仓', bands: b };
     if (price <= b.lower) return { signal: 'LONG', reason: `收盘触/破下轨开多(收${price.toFixed(4)}≤下轨${b.lower.toFixed(4)})`, bands: b };
     if (price >= b.upper) return { signal: 'SHORT', reason: `收盘触/破上轨开空(收${price.toFixed(4)}≥上轨${b.upper.toFixed(4)})`, bands: b };
-    // ═══ 近轨放宽: 价格在中轨下方且逼近下轨(距离下轨≤0.3倍带宽) → 低吸做多, 对称做空 ═══
-    // 解决价格长期在带内中游走导致震荡永远不开仓的问题
-    if (b.mid != null && b.mid > b.lower) {
-      const bandW = b.upper - b.lower;
-      if (price < b.mid && price <= b.lower + bandW * 0.3) return { signal: 'LONG', reason: `近下轨低吸做多(收${price.toFixed(4)}距下轨≤0.3带宽)`, bands: b };
-      if (price > b.mid && price >= b.upper - bandW * 0.3) return { signal: 'SHORT', reason: `近上轨高抛做空(收${price.toFixed(4)}距上轨≤0.3带宽)`, bands: b };
-    }
     return { signal: 'NONE', reason: `收盘在轨道内(下${b.lower.toFixed(4)}~上${b.upper.toFixed(4)})` };
   }
 

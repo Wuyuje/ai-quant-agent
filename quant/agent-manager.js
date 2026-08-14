@@ -219,9 +219,7 @@ class QuantAgent {
         if (!guard.allowed) continue;
         const openGate = this.boll.canOpen(bkl);
         if (!openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
-        // ═══ 实时市场健康闸门: 当下ADX/ATR校验(震荡只碰真震荡, 非单边) ═══
-        const bgate = this._marketGate('boll', bkl);
-        if (bgate) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林禁开: ${bgate}`); continue; }
+        /* 严格按用户截图规格: 不额外加 ADX/ATR 外部过滤, 布林自身带宽门禁+触轨信号+双模式止盈已够 */
         const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
         if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
           const bs = { notional: Math.max(20, this.balance*0.15*3), margin: Math.max(20,this.balance*0.15*3)/3, leverage: 3 };
