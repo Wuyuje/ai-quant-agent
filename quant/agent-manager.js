@@ -291,6 +291,18 @@ class QuantAgent {
           }
         }
 
+        if (pos.strategy === 'trend') {
+          // 接管仓(旧trend): 新策略接管, 用MA7大道至简逻辑管理(止损/止盈)
+          const mkl = await this.api.getKlines(symbol, '15m', 150).catch(() => null);
+          if (mkl && mkl.length >= 40) {
+            const mObj = toArray(mkl).map(k => +k[3]);
+            const price = mObj[mObj.length - 1];
+            const ts = this.trend.takeProfit(pos, price, mObj);
+            if (ts.action === 'CLOSE') closeReason = ts.reason;
+            else { const sl = this.trend.stopLoss(pos, price, mObj); if (sl.action === 'CLOSE') closeReason = sl.reason; }
+          }
+        }
+
         if (closeReason) {
           pnlToCount = this._estimatePnl(pos, price);
           const r = await this.executor.closePosition(symbol, pos.side, pos.qty, pm, closeReason, pnlToCount);
