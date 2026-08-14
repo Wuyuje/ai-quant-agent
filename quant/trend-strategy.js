@@ -110,8 +110,8 @@ class TrendStrategy {
   }
 
   // 仓位: 8x杠杆(图2)
-  positionSize(balance, side, nRatio = 0.25) {
-    const lev = side === 'LONG' ? 8 : 8;   // 8x
+  positionSize(balance, side, nRatio = 0.15) {
+    const lev = 3;   // 3x(EMA回测亏损, 从8x降3x控风险)
     return { notional: Math.max(20, balance * nRatio * lev), margin: Math.max(20, balance * nRatio * lev) / lev, leverage: lev };
   }
 }
