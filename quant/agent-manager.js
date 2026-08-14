@@ -538,6 +538,22 @@ class QuantAgentManager {
       const CANDIDATES = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT'];
       const trendPool=[], bollPool=[], trendV4Pool=[];
       for (const sym of CANDIDATES) {
+        // ═══ 自动识别低波动横盘币并踢出(不手动拉黑) ═══
+        const kld0 = await apiInst.getKlines(sym, '1d', 45).catch(()=>null);
+        if (kld0 && kld0.length >= 40) {
+          const c45 = kld0.map(k => +k.close);
+          const win = c45.slice(-40);
+          const amp = (Math.max(...win) - Math.min(...win)) / (Math.min(...win) || 1) * 100;  // 40日振幅%
+          let up = 0; for (let i = 1; i < win.length; i++) if (win[i] > win[i-1]) up++;
+          const ratio = up / (win.length - 1);
+          // 低波动(振幅<12%) 且 无方向(占比38-62%) = 横盘恶币 → 自动踢出
+          if (amp < 12 && ratio >= 0.38 && ratio <= 0.62) {
+            // 加自动黑名单, 之后scan也跳过
+            if (!this.BLACKLIST.includes(sym)) this.BLACKLIST.push(sym);
+            this._log(`🚽 自动识别低波动横盘币踢出: ${sym} (40日振幅${amp.toFixed(0)}%, 方向${(ratio*100).toFixed(0)}%)`);
+            continue;
+          }
+        }
         // 选币用5分钟级K线(近5天≈1440根, 加快选币; 震荡评估足够)
         const kl = await this._fetchKlinesM(sym, '5m', 1440, apiInst).catch(()=>null);
         if (!kl || kl.length < 900) continue;
