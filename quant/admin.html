@@ -122,14 +122,34 @@ rows.innerHTML=h||'<tr><td colspan="8">无数据</td></tr>';updateLive();}
 async function loadChart(){const sym=$('#chartSym').value;const kl=await api('/api/quant/klines/'+sym);const a=await api('/api/quant/analyze/'+sym);const cv=$('#chart');const ctx=cv.getContext('2d');ctx.clearRect(0,0,cv.width,cv.height);const closes=kl.map(k=>k[4]);const mx=Math.max(...closes),mn=Math.min(...closes);const W=cv.width,H=cv.height;ctx.strokeStyle='#3fb950';ctx.beginPath();closes.forEach((c,i)=>{const x=i/(closes.length-1)*W,y=H-(c-mn)/(mx-mn)*(H-20)-10;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();
 const info=$('#chartInfo');const stt=a.state==='ranging'?'震荡':a.state==='trending'?'趋势':'剧烈';info.innerHTML='<b>'+sym+'</b> '+stt+' · 趋势'+a.trendDir+' · ADX '+(a.adx||0).toFixed(1)+' · 建议: '+(a.recommended)+'';
 const ab=$('#analyzeBox');ab.innerHTML='<b>'+sym+'</b> 状态='+stt+'<br>趋势方向='+a.trendDir+'<br>ADX='+(a.adx||0).toFixed(1)+'<br>建议策略='+(a.recommended||'-')+'<br>信号: '+(a.signal?JSON.stringify(a.signal):'-');}
+function toggleGrp(id){const el=document.getElementById(id);if(el)el.style.display=el.style.display==='none'?'':'none';}
 async function loadAgents(){const d=await api('/api/quant/agents');const rows=$('#agentRows');let h='';for(const u of (d.agents||[])){const wr=u.trades>0?(u.wins/u.trades*100):0;const pc=u.realizedPnl>=0?'g':'r';h+='<tr><td>'+u.wallet.slice(0,12)+'...</td><td>'+(u.isAdmin?'<span class="tag t-trend">管理员</span>':(u.isWhitelist?'<span class="tag t-rang">白名单</span>':'<span class="tag">普通</span>'))+'</td><td>$'+(u.balance||0).toFixed(1)+'</td><td class="bl">$'+(u.totalEquity!==undefined?u.totalEquity:u.balance||0).toFixed(1)+'</td><td>'+u.positionCount+'</td><td>'+u.trades+'</td><td>'+wr.toFixed(0)+'%</td><td class="'+pc+'">$'+(u.realizedPnl||0).toFixed(2)+'</td></tr>';}
 rows.innerHTML=h||'<tr><td colspan="8">智能体管理器未运行（仅看盘模式）</td></tr>';
   // 三策略独立统计 + 每次平仓记录表
   const spEl=document.getElementById('strategyPnlRows');
   if(spEl){let sh='';for(const u of (d.agents||[])){const sp=u.strategyPnl||{};const M=sp.ma7||{},V=sp.v4||{},B=sp.bollinger||{};const role=u.isAdmin?'管理员':(u.isWhitelist?'白名单':'普通');sh+='<tr><td>'+u.wallet.slice(0,12)+'·'+role+'</td>'+'<td class="b">'+M.trades+'</td><td>'+M.winRate+'%</td><td class="'+((M.realizedPnl||0)>=0?'g':'r')+'">$'+(M.realizedPnl||0).toFixed(2)+'</td>'+'<td class="b">'+V.trades+'</td><td>'+V.winRate+'%</td><td class="'+((V.realizedPnl||0)>=0?'g':'r')+'">$'+(V.realizedPnl||0).toFixed(2)+'</td>'+'<td class="b">'+B.trades+'</td><td>'+B.winRate+'%</td><td class="'+((B.realizedPnl||0)>=0?'g':'r')+'">$'+(B.realizedPnl||0).toFixed(2)+'</td>'+'<td>'+((u.closedTrades||[]).length)+'</td></tr>';}spEl.innerHTML=sh||'<tr><td colspan="11" class="muted">暂无平仓记录</td></tr>';}
-  // 每次平仓明细表
+  // 每次平仓明细表-按用户分组(下拉), 管理员/白名单在上, 每用户最近10只币
   const ctEl=document.getElementById('closedTradeRows');
-  if(ctEl){let ch='';for(const u of (d.agents||[])){for(const c of (u.closedTrades||[])){const cc=c.pnl>=0?'g':'r';ch+='<tr><td>'+u.wallet.slice(0,10)+'</td><td>'+(c.strat? 'H':'趋势')+'</td><td>'+c.symbol+'</td><td>'+(c.side==='LONG'?'多':'空')+'</td><td class="'+cc+'">$'+(c.pnl||0).toFixed(2)+'</td><td>'+(c.reason||'').split('(')[0]+'</td><td>'+new Date(c.ts).toLocaleString('zh-CN')+'</td></tr>';}}ctEl.innerHTML=ch||'<tr><td colspan="7" class="muted">暂无平仓记录（系统从今天起记录每次平仓并永久保存）</td></tr>';}
+  if(ctEl){
+    // 排序: 管理员>白名单>普通, 组内按最近平仓时间倒序
+    const rank={admin:0,whlist:1,normal:2};
+    const users=(d.agents||[]).map(u=>({u, role:u.isAdmin?'admin':(u.isWhitelist?'whlist':'normal')})).sort((a,b)=>rank[a.role]-rank[b.role] || b.u.closedTrades.length-a.u.closedTrades.length);
+    let ch='';
+    for(const {u,role} of users){
+      const trades=(u.closedTrades||[]).slice(0,10);  // 最近10只币
+      if(!trades.length) continue;
+      const roleName=role==='admin'?'管理员':(role==='whlist'?'白名单':'普通');
+      const uid=('u'+u.wallet.replace(/[^a-zA-Z0-9]/g,'')).slice(0,12);
+      // 下拉摘要行(点击展开该用户平仓)
+      ch+='<tr class="grp" onclick="toggleGrp("'+uid+'")" style="cursor:pointer;background:#1f2430;font-weight:bold">';
+      ch+='<td colspan="7">▸ '+(role==='normal'?'':'🟢 ')+u.wallet.slice(0,14)+' · '+roleName+' （点开查看最近'+trades.length+'笔平仓）</td></tr>';
+      // 该用户的平仓明细(默认收起)
+      ch+='<tbody id="'+uid+'" style="display:none">';
+      for(const c of trades){const cc=(c.pnl||0)>=0?'g':'r';const sname={'ma7':'MA7','v4':'V4','bollinger':'布林','trend':'趋势'}[c.strat]||(c.strat||'?');ch+='<tr><td>'+u.wallet.slice(0,10)+'</td><td>'+sname+'</td><td>'+c.symbol+'</td><td>'+(c.side==='LONG'?'多':'空')+'</td><td class="'+cc+'">$'+(c.pnl||0).toFixed(2)+'</td><td>'+(c.reason||'').split('(')[0]+'</td><td>'+new Date(c.ts).toLocaleString('zh-CN')+'</td></tr>';}
+      ch+='</tbody>';
+    }
+    ctEl.innerHTML=ch||'<tr><td colspan="7" class="muted">暂无平仓记录</td></tr>';
+  }
   // 池配置 + 大脑中枢
   const poolEl=document.getElementById('poolBox');
   if(poolEl){poolEl.innerHTML='<b>🟢 震荡行情交易池(布林带引擎):</b> '+(d.pools&&d.pools.bollinger?d.pools.bollinger.map(x=>x.replace('USDT','')).join(' '):'--')+'<br><b>🔵 趋势池(趋势引擎):</b> '+(d.pools&&d.pools.trend?d.pools.trend.map(x=>x.replace('USDT','')).join(' '):'--');}
