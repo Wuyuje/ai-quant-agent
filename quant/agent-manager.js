@@ -697,9 +697,9 @@ class QuantAgentManager {
       const ratio = ups / 29;   // 近30日上涨占比
       const seg = c.slice(-20);
       const amp = (Math.max(...seg) - Math.min(...seg)) / (Math.min(...seg) || 1);
-      // 方向性明确(占比>60%上或<40%下) 且振幅足(>8%) = 单边趋势
-      if (ratio > 0.62 && amp > 0.08) return 'UP';
-      if (ratio < 0.38 && amp > 0.08) return 'DOWN';
+      // 方向性(放宽: 占比>55%上 或 <45%下) + 振幅足(>5%) = 有趋势方向可入V4池
+      if (ratio > 0.55 && amp > 0.05) return 'UP';
+      if (ratio < 0.45 && amp > 0.05) return 'DOWN';
       return 'FLAT';
     } catch(e) { return 'FLAT'; }
   }
