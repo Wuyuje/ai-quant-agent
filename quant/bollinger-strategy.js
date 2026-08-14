@@ -145,7 +145,8 @@ class BollingerStrategy {
     // 放量移动止盈模式
     const vs = this.volumeSpike(arr);
     if (vs.spike) pos._volMode = true;
-    if (pos._volMode) {
+    // ═══ 截图: 双模式止盈统一前提=浮盈≥2%；浮盈不足(尤其刚开仓)不启用ATR移动止盈, 避免秒平 ═══
+    if (pos._volMode && pnlPct >= this.tpTriggerPct) {
       const atr = this.fe.calcATR(toArray(arr));
       // 多单: 阶段最低点+0.3ATR止盈线, 跌破全平
       if (pos.side === 'LONG') {
