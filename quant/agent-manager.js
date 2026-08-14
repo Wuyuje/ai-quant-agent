@@ -178,8 +178,9 @@ class QuantAgent {
             sig = this.trendV4.entrySignal(dObj);
           }
         } else {
-          // MA7 池币: 只按 MA7(15m) 大道至简低买高卖
-          sig = this.trend.entrySignal(kl, decision.market.trendDir);
+          // ═══ 选币用5m(最优方案): EMA(7,25,99) 5m找入场信号 ═══
+          const kl5 = await this.api.getKlines(symbol, '5m', 200).catch(() => null);
+          sig = this.trend.entrySignal(kl5 || kl, decision.market.trendDir);
         }
         if (!sig || sig.signal === 'NONE') { this._log(`🔍 ${symbol} ${stg}信号NONE(${(sig&&sig.reason)||'无'})`); continue; }
         this._log(`🔍 ${symbol} ${stg}信号=${sig.signal} 准备开仓`);
@@ -242,14 +243,17 @@ class QuantAgent {
           }
         }
         if (pos.strategy === 'ma7') {
-          // MA7 大道至简: 用15m/5m K线, MA7低买高卖止盈(到顶/到底拐头) + 硬止损
+          // EMA(7,25,99) 最优方案: 管理用15m, ATR移动止盈 + 硬止损
           const mkl = await this.api.getKlines(symbol, '15m', 120).catch(() => null);
           if (mkl && mkl.length >= 40) {
-            const mObj = toArray(mkl).map(k => +k[3]);
-            const price = mObj[mObj.length - 1];
-            const ts = this.trend.takeProfit(pos, price, mObj);
-            if (ts.action === 'CLOSE') closeReason = ts.reason;
-            else { const sl = this.trend.stopLoss(pos, price, mObj); if (sl.action === 'CLOSE') closeReason = sl.reason; }
+            const d15 = toArray(mkl);
+            const closes = d15.map(k => +k[3]);
+            const highs = d15.map(k => +k[2]);
+            const lows = d15.map(k => +k[3]);
+            const price = closes[closes.length - 1];
+            const at = this.trend.takeProfitATR(pos, price, closes, highs, lows);
+            if (at.action === 'CLOSE') closeReason = at.reason;
+            else { const sl = this.trend.stopLoss(pos, price, closes); if (sl.action === 'CLOSE') closeReason = sl.reason; }
           }
         }
         if (pos.strategy === 'bollinger') {

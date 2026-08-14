@@ -110,6 +110,23 @@ class TrendStrategy {
   }
 
   // 仓位: 8x杠杆(图2)
+  // ═══ 止盈(ATR移动, 最优方案): 盈利后ATR回撤追踪, 让利润跑 ═══
+  takeProfitATR(pos, price, closes, highs, lows) {
+    if (!pos) return { action: 'HOLD' };
+    const atr = this._atrVal(highs, lows, closes);
+    if (pos.side === 'LONG') {
+      pos._hp = pos._hp == null ? price : Math.max(pos._hp, price);
+      const line = pos._hp - atr * 1.5;
+      if (pos._hp > (pos.entry || price) * 1.05 && price < line) return { action: 'CLOSE', reason: `ATR移动止盈(高点${pos._hp.toFixed(4)}回撤${atr.toFixed(4)}×1.5)` };
+    } else {
+      pos._lp = pos._lp == null ? price : Math.min(pos._lp, price);
+      const line = pos._lp + atr * 1.5;
+      if (pos._lp < (pos.entry || price) * 0.95 && price > line) return { action: 'CLOSE', reason: `ATR移动止盈(低点${pos._lp.toFixed(4)}反弹${atr.toFixed(4)}×1.5)` };
+    }
+    return { action: 'HOLD' };
+  }
+  _atrVal(h, l, c) { if (!h || h.length < 15) return 0; let trs=[]; for(let i=h.length-14;i<h.length;i++){if(i<1)continue;trs.push(Math.max(h[i]-l[i],Math.abs(h[i]-c[i-1]),Math.abs(l[i]-c[i-1])));} return trs.length?trs.reduce((a,b)=>a+b,0)/trs.length:0; }
+
   positionSize(balance, side, nRatio = 0.15) {
     const lev = 3;   // 3x(EMA回测亏损, 从8x降3x控风险)
     return { notional: Math.max(20, balance * nRatio * lev), margin: Math.max(20, balance * nRatio * lev) / lev, leverage: lev };
