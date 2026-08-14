@@ -450,6 +450,13 @@ class QuantAgent {
       if (strat === 'trend') {
         if (adx < 15) return `市场闸门: ADX=${adx.toFixed(1)}<15无趋势禁开`;
         if (atrPct < 0.08) return `市场闸门: ATR波动${atrPct.toFixed(2)}%太低(死水)禁开`;
+        // ═══ 均线排列真顺畅检查: 要求EMA7与EMA25有明显距离(>0.15%), 挡住真正缠绕/死水, 但不过度拦有方向的币(0.25%实测几乎全拦, 放宽到0.15%) ═══
+        const e7 = this.trend._ema(closes, this.trend.fast);
+        const e25 = this.trend._ema(closes, this.trend.mid);
+        if (e7 != null && e25 != null) {
+          const spread = Math.abs(e7 - e25) / (e25 || 1) * 100;
+          if (spread < 0.15) return `市场闸门: 均线缠绕(EMA7=${e7.toFixed(4)} EMA25=${e25.toFixed(4)}, 差${spread.toFixed(2)}%<0.15%)无顺畅趋势禁开`;
+        }
         return null;
       }
       if (adx >= 25) return `市场闸门: ADX=${adx.toFixed(1)}≥25单边非震荡禁开`;
