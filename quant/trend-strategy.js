@@ -57,18 +57,21 @@ class TrendStrategy {
     const e99 = this._ema(closes, this.slow);
     const dir = this._arrange(e7, e25, e99);
     const pv = this._pivots(closes, 30);   // 近30根高低点
+    // 宽松方向(放宽): EMA7>EMA25 视为偏多(不等EMA99完全参与), EMA7<EMA25 视为偏空
+    const looseUp = e7 != null && e25 != null && e7 > e25;
+    const looseDn = e7 != null && e25 != null && e7 < e25;
     // 多头排列(EMA7>25>99): 只做多——突破前期高点 或 回踩EMA25不破
-    if (dir === 'UP') {
+    if (dir === 'UP' || (looseUp && e99 != null)) {
       const breakout = price > pv.hi;                       // 突破近期高点
       const pullbackHold = price >= e25 * 0.998;            // EMA25支撑不破
-      if (breakout) return { signal: 'LONG', reason: `多头排列(EMA7>25>99)突破前高${pv.hi.toFixed(4)}`, entry: price };
+      if (breakout) return { signal: 'LONG', reason: `多头排列(EMA7>25${dir==='UP'?'>99':''})突破前高${pv.hi.toFixed(4)}`, entry: price };
       if (pullbackHold) return { signal: 'LONG', reason: `多头排列回踩EMA25(${e25.toFixed(4)})不破顺势做多`, entry: price };
     }
     // 空头排列: 只做空——跌破前低 或 反弹EMA25受阻
-    if (dir === 'DOWN') {
+    if (dir === 'DOWN' || (looseDn && e99 != null)) {
       const breakdown = price < pv.lo;
       const reboundReject = price <= e25 * 1.002;
-      if (breakdown) return { signal: 'SHORT', reason: `空头排列(EMA7<25<99)跌破前低${pv.lo.toFixed(4)}`, entry: price };
+      if (breakdown) return { signal: 'SHORT', reason: `空头排列(EMA7<25${dir==='DOWN'?'>99':''})跌破前低${pv.lo.toFixed(4)}`, entry: price };
       if (reboundReject) return { signal: 'SHORT', reason: `空头排列反弹EMA25受阻顺势做空`, entry: price };
     }
     return { signal: 'NONE', reason: `EMA排列=${dir} 价${price.toFixed(4)}` };

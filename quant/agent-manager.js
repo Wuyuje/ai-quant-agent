@@ -134,6 +134,7 @@ class QuantAgent {
 
     // ② 逐币分析: 分类市场 → 选策略 → 信号
     for (const symbol of pool) {
+      try {   // ═══ 逐币容错: 一个币处理出错不中断整轮scan ═══
       // ═══ 黑名单: 排除禁区币(如ATOMUSDT高频秒仓连亏) ═══
       if (this.BLACKLIST && this.BLACKLIST.includes(symbol)) continue;
       // 已有仓位 → 交给平仓管理(趋势移动止损/网格离场)
@@ -173,6 +174,7 @@ class QuantAgent {
         if (this.positions[symbol]) continue;   // 同币已持单, 不再开
         // ═══ 分开选池: 币在MA7池只跑MA7(15m), 在V4池只跑V4(日线) ═══
         let sig = null, stg = strat === 'trend_v4' ? 'v4' : 'ma7', stf = strat === 'trend_v4' ? '1d' : '15m';
+        let kl5 = null;   // 提前声明, 供下方闸门/贴线判断统一使用(修复kl5块级作用域丢失bug)
         if (strat === 'trend_v4') {
           // V4 池币: 只按 V4(日线) 信号
           const kld = await this.api.getKlines(symbol, '1d', 120).catch(()=>null);
@@ -182,7 +184,7 @@ class QuantAgent {
           }
         } else {
           // ═══ 选币用5m(最优方案): EMA(7,25,99) 5m找入场信号 ═══
-          const kl5 = await this.api.getKlines(symbol, '5m', 200).catch(() => null);
+          kl5 = await this.api.getKlines(symbol, '5m', 200).catch(() => null);
           sig = this.trend.entrySignal(kl5 || kl, decision.market.trendDir);
         }
         if (!sig || sig.signal === 'NONE') { this._log(`🔍 ${symbol} ${stg}信号NONE(${(sig&&sig.reason)||'无'})`); continue; }
@@ -227,6 +229,7 @@ class QuantAgent {
           if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; }
         }
       }
+      } catch(e) { if (this.isAdmin) this._log(`⚠️ ${symbol} 扫描出错(跳过): ${e.message}`); }
     }
     this._manageOnly();
   }
@@ -406,6 +409,53 @@ class QuantAgent {
       closedTrades: this.closedHistory.slice(0, 100),
     };
   }
+
+  // ═══ ADX 计算(本地, 供市场闸门) ═══
+  _adxLocal(raw, period=14) {
+    const arr = toArray(raw);
+    if (!Array.isArray(arr) || arr.length < period * 2) return 0;
+    let plusDM=0, minusDM=0, tr=0;
+    const start = arr.length - period;
+    for (let i=start; i<arr.length; i++) {
+      const up = +arr[i][1] - +arr[i-1][1];
+      const down = +arr[i-1][2] - +arr[i][2];
+      const h=+arr[i][1], l=+arr[i][2], pc=+arr[i-1][3];
+      tr += Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc));
+      if (up>down && up>0) plusDM += up;
+      else if (down>up && down>0) minusDM += down;
+    }
+    if (tr===0) return 0;
+    const pdi = plusDM/tr*100, mdi = minusDM/tr*100;
+    return Math.abs(pdi-mdi) / Math.max(pdi+mdi, 0.001) * 100;
+  }
+
+  // ═══ 实时市场健康闸门: 开仓前校验该币当下适不适合策略(根治假波动币) ═══
+  // strat: 'trend'|'boll'; kl: K线(对象/原始数组均可)
+  // 返回 null=通过可开; 返回字符串=不通过原因(禁开)
+  _marketGate(strat, kl) {
+    try {
+      if (!kl || kl.length < 40) return null;
+      const arr = toArray(kl);
+      const closes = arr.map(k => +k[3]);
+      const price = closes[closes.length-1];
+      const adx = this._adxLocal(arr, 14) || 0;
+      let atr = 0, n = 0;
+      for (let i = arr.length - 14; i < arr.length; i++) {
+        const h = +arr[i][2], l = +arr[i][3];
+        if (i > 0) { const pc = +closes[i-1]; n++; atr += Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc)); }
+      }
+      const atrPct = n ? (atr / n) / (price || 1) * 100 : 0;
+      if (strat === 'trend') {
+        if (adx < 15) return `市场闸门: ADX=${adx.toFixed(1)}<15无趋势禁开`;
+        if (atrPct < 0.08) return `市场闸门: ATR波动${atrPct.toFixed(2)}%太低(死水)禁开`;
+        return null;
+      }
+      if (adx >= 25) return `市场闸门: ADX=${adx.toFixed(1)}≥25单边非震荡禁开`;
+      if (atrPct < 0.5) return `市场闸门: ATR波动${atrPct.toFixed(2)}%<0.5%太窄(没来回)禁开`;
+      if (atrPct > 6) return `市场闸门: ATR波动${atrPct.toFixed(2)}%>6%太剧烈禁开`;
+      return null;
+    } catch (e) { return null; }
+  }
 }
 
 class QuantAgentManager {
@@ -557,8 +607,9 @@ class QuantAgentManager {
           const amp = (Math.max(...win) - Math.min(...win)) / (Math.min(...win) || 1) * 100;  // 40日振幅%
           let up = 0; for (let i = 1; i < win.length; i++) if (win[i] > win[i-1]) up++;
           const ratio = up / (win.length - 1);
-          // 低波动(振幅<12%) 且 无方向(占比38-62%) = 横盘恶币 → 自动踢出
-          if (amp < 12 && ratio >= 0.38 && ratio <= 0.62) {
+          // 低波动(振幅<8%) 且 无方向(占比42-58%) = 极窄死水横盘 → 自动踢出
+          // (放宽: 原<12%+38-62%误杀BTC/AVAX等能走趋势的低波动大币, 收窄只剔真正死水)
+          if (amp < 8 && ratio >= 0.42 && ratio <= 0.58) {
             // 加自动黑名单, 之后scan也跳过
             if (this.BLACKLIST && !this.BLACKLIST.includes(sym)) this.BLACKLIST.push(sym);
             this._log(`🚽 自动识别低波动横盘币踢出: ${sym} (40日振幅${amp.toFixed(0)}%, 方向${(ratio*100).toFixed(0)}%)`);
@@ -608,13 +659,15 @@ class QuantAgentManager {
       const ma7Sym = trendC.map(x=>x.sym);       // MA7池 = 15m回测盈利币
       const v4Sym  = (this.TREND_V4_POOL && this.TREND_V4_POOL.length) ? this.TREND_V4_POOL : [];   // V4池 = 日线回测盈利币
       const newMA7 = ma7Sym.slice(0,25);
-      const newV4  = v4Sym.slice(0,25);
+      // 放宽: V4为空时回退到MA7池, 保证趋势池活跃(不因V4日线无候选而僵死)
+      let newV4 = v4Sym.slice(0,25);
+      if (newV4.length === 0) newV4 = newMA7.slice(0,25);
       // 震荡池: 从布林盈利候选剔除进入任一趋势池的币(共同合)
       const allTrend = new Set([...newMA7, ...newV4]);
       const bollAll = bollPool.slice(0,50).filter(x=>!allTrend.has(x.sym)).map(x=>x.sym);
       const newBoll = bollAll.slice(0,25);
-      // 只要选出新版就更新池
-      if (newMA7.length>=1 && newV4.length>=1 && newBoll.length>=1) {
+      // 放宽: 只要趋势池或布林池任一有候选就更新(m原先要求三者全非空)
+      if ((newMA7.length>=1 && newBoll.length>=1) || (newV4.length>=1 && newBoll.length>=1)) {
         this.MA7_POOL = newMA7;
         this.V4_POOL = newV4;
         this.TREND_POOL = [...new Set([...newMA7, ...newV4])];   // 趋势总池(兼容)
@@ -670,55 +723,6 @@ class QuantAgentManager {
       // 震荡: 箱体稳定, 波动小
       return {ret: rangePct<20?30:(rangePct<35?15:5), n:1, rate: rangePct<25?80:(rangePct<40?65:45)};
     }catch(e){return {ret:-99,n:0,rate:0};}
-  }
-
-  // ═══ 实时市场健康闸门: 开仓前校验该币当下适不适合策略(根治假波动币) ═══
-  // strat: 'trend'|'boll'; kl: 5m原始K线数组 [open,high,low,close,...]
-  // 返回 null=通过可开; 返回字符串=不通过原因(禁开)
-  _adxLocal(raw, period=14) {
-    const arr = toArray(raw);
-    if (!Array.isArray(arr) || arr.length < period * 2) return 0;
-    let plusDM=0, minusDM=0, tr=0;
-    const start = arr.length - period;
-    for (let i=start; i<arr.length; i++) {
-      const up = +arr[i][1] - +arr[i-1][1];
-      const down = +arr[i-1][2] - +arr[i][2];
-      const h=+arr[i][1], l=+arr[i][2], pc=+arr[i-1][3];
-      tr += Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc));
-      if (up>down && up>0) plusDM += up;
-      else if (down>up && down>0) minusDM += down;
-    }
-    if (tr===0) return 0;
-    const pdi = plusDM/tr*100, mdi = minusDM/tr*100;
-    return Math.abs(pdi-mdi) / Math.max(pdi+mdi, 0.001) * 100;
-  }
-  _marketGate(strat, kl) {
-    try {
-      if (!kl || kl.length < 40) return null;
-      const arr = toArray(kl);
-      const closes = arr.map(k => +k[3]);
-      const price = closes[closes.length-1];
-      // ADX 趋势强度
-      const adx = this._adxLocal(arr, 14) || 0;
-      // ATR14 归一化波动(相对价格%)
-      let atr = 0, n = 0;
-      for (let i = arr.length - 14; i < arr.length; i++) {
-        const h = +arr[i][2], l = +arr[i][3];
-        if (i > 0) { const pc = +closes[i-1]; n++; atr += Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc)); }
-      }
-      const atrPct = n ? (atr / n) / (price || 1) * 100 : 0;
-      if (strat === 'trend') {
-        // 趋势: 需 ADX≥20 有真单边 + ATR 波动别死水(>0.10%): 否则止损会扫死
-        if (adx < 20) return `市场闸门: ADX=${adx.toFixed(1)}<20无趋势禁开`;
-        if (atrPct < 0.10) return `市场闸门: ATR波动${atrPct.toFixed(2)}%太低(死水)禁开`;
-        return null;
-      }
-      // 震荡: 需 ADX<25(非单边) + 波动有来回空间(ATR 0.5%~6%): 否则无振幅可做
-      if (adx >= 25) return `市场闸门: ADX=${adx.toFixed(1)}≥25单边非震荡禁开`;
-      if (atrPct < 0.5) return `市场闸门: ATR波动${atrPct.toFixed(2)}%<0.5%太窄(没来回)禁开`;
-      if (atrPct > 6) return `市场闸门: ATR波动${atrPct.toFixed(2)}%>6%太剧烈禁开`;
-      return null;
-    } catch (e) { return null; }
   }
 
   // (保留原回测方法名兼容, 但用新评估)
