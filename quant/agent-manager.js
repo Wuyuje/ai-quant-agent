@@ -42,6 +42,7 @@ class QuantAgent {
     this.closedHistory = [];
     this._stratLock = {};      // symbol → 锁定的策略(trend/bollinger), 防双引擎互博
     this.pauseOpen = false;
+    this.BLACKLIST = ['ATOMUSDT'];   // ═══ 黑名单(禁区币): ATOM高频秒仓连亏, 禁交易 ═══
     this._runCount = 0;
     this._logTag = wallet.slice(0,10);
     // 状态文件路径: 每个用户独立持久化(closedHistory/balance), 重启不丢
@@ -133,6 +134,8 @@ class QuantAgent {
 
     // ② 逐币分析: 分类市场 → 选策略 → 信号
     for (const symbol of pool) {
+      // ═══ 黑名单: 排除禁区币(如ATOMUSDT高频秒仓连亏) ═══
+      if (this.BLACKLIST && this.BLACKLIST.includes(symbol)) continue;
       // 已有仓位 → 交给平仓管理(趋势移动止损/网格离场)
       if (this.positions[symbol]) continue;
 
