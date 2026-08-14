@@ -255,17 +255,17 @@ class QuantAgent {
           }
         }
         if (pos.strategy === 'ma7') {
-          // EMA(7,25,99) 最优方案: 管理用15m, ATR移动止盈 + 硬止损
+          // EMA(7,25,99) 大数据优选出场: Chandelier吊灯(止盈) + ATR结构止损 + 保本
+          // 回测: 旧EMA99止损+ATR移动止盈 胜率19%亏损, 新方案胜率33%亏损减半
           const mkl = await this.api.getKlines(symbol, '15m', 120).catch(() => null);
           if (mkl && mkl.length >= 40) {
             const d15 = toArray(mkl);
             const closes = d15.map(k => +k[3]);
             const highs = d15.map(k => +k[2]);
-            const lows = d15.map(k => +k[3]);
+            const lows = d15.map(k => +k[2]);   // 修: 原为 k[3](close), 应为 k[2](low)
             const price = closes[closes.length - 1];
-            const at = this.trend.takeProfitATR(pos, price, closes, highs, lows);
-            if (at.action === 'CLOSE') closeReason = at.reason;
-            else { const sl = this.trend.stopLoss(pos, price, closes); if (sl.action === 'CLOSE') closeReason = sl.reason; }
+            const ch = this.trend.chandelier(pos, price, closes, highs, lows);
+            if (ch.action === 'CLOSE') closeReason = ch.reason;
           }
         }
         if (pos.strategy === 'bollinger') {

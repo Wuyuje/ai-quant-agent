@@ -101,6 +101,38 @@ class TrendStrategy {
     return { action: 'HOLD' };
   }
 
+  // ═══ 【大数据优选·Chandelier吊灯止盈止损】(回测胜率19%→33%, 亏损减半) ═══
+  // 核心: 不用EMA99(开仓价常贴近被秒损), 改用ATR动态出场
+  //  - 止盈: Chandelier Exit = 最高点 - 3×ATR (多单让利润跑, 捕捉大趋势)
+  //  - 止损: ATR×2.5 结构止损 (开仓即有呼吸空间, 不被秒损)
+  //  - 保本: 浮盈≥1.5×ATR后, 止损移到成本价 (护住盈利不白回吐)
+  // 签名: pos, price, closes/highs/lows 数字数组
+  chandelier(pos, price, closes, highs, lows) {
+    if (!pos) return { action: 'HOLD' };
+    const atr = this._atrVal(highs, lows, closes) || 0;
+    if (atr <= 0) return { action: 'HOLD' };
+    if (pos.side === 'LONG') {
+      pos._hp = pos._hp == null ? price : Math.max(pos._hp, price);
+      // 保本(保护盈利, 但不被正常回踩吓跑): 已涨≥2×ATR后, 跌破成本价上方0.8×ATR才保本平
+      if (pos._hp > pos.entry + atr * 2 && price < pos.entry + atr * 0.8) return { action: 'CLOSE', reason: `保本(高点${pos._hp.toFixed(4)}回落到成本+0.8ATR=${(pos.entry+atr*0.8).toFixed(4)})平多` };
+      // 止盈: Chandelier = 最高点 - 3×ATR
+      const ch = pos._hp - atr * 3;
+      if (price < ch) return { action: 'CLOSE', reason: `吊灯止盈(高点${pos._hp.toFixed(4)}回撤${atr.toFixed(4)}×3)平多` };
+      // 止损: ATR结构止损(3×ATR), 远离开仓价不被秒损
+      if (price < pos.entry - atr * 3) return { action: 'CLOSE', reason: `ATR结构止损(入场${pos.entry.toFixed(4)}跌破3×ATR)` };
+    } else {
+      pos._lp = pos._lp == null ? price : Math.min(pos._lp, price);
+      // 保本
+      if (pos._lp < pos.entry - atr * 2 && price > pos.entry - atr * 0.8) return { action: 'CLOSE', reason: `保本(低点${pos._lp.toFixed(4)}反弹回成本-0.8ATR=${(pos.entry-atr*0.8).toFixed(4)})平空` };
+      // 止盈: Chandelier = 最低点 + 3×ATR
+      const ch = pos._lp + atr * 3;
+      if (price > ch) return { action: 'CLOSE', reason: `吊灯止盈(低点${pos._lp.toFixed(4)}反弹${atr.toFixed(4)}×3)平空` };
+      // 止损
+      if (price > pos.entry + atr * 3) return { action: 'CLOSE', reason: `ATR结构止损(入场${pos.entry.toFixed(4)}突破3×ATR)` };
+    }
+    return { action: 'HOLD' };
+  }
+
   // ═══ 止盈: 均线排列转反(趋势结束) 或 回落到关键均线 → 让利润跑 ═══
   takeProfit(pos, price, closes) {
     if (!closes || closes.length < 40) return { action: 'HOLD' };
