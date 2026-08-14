@@ -186,6 +186,9 @@ class QuantAgent {
           sig = this.trend.entrySignal(kl5 || kl, decision.market.trendDir);
         }
         if (!sig || sig.signal === 'NONE') { this._log(`🔍 ${symbol} ${stg}信号NONE(${(sig&&sig.reason)||'无'})`); continue; }
+        // ═══ 实时市场健康闸门: 当下ADX/ATR校验(根治假波动币, 趋势只碰真单边) ═══
+        const gate = this._marketGate('trend', kl5 || kl);
+        if (gate) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}禁开: ${gate}`); continue; }
         // ═══ 贴EMA99禁开仓: 价格距EMA99太近(悬崖边)不开, 避免开仓即被破EMA99秒止损 ═══
         const nearLine = this.trend.nearEMA99(kl5 || kl, price, 0.5);
         if (nearLine) { this._log(`🚫 ${symbol} ${stg}禁开: ${nearLine}`); continue; }
@@ -214,6 +217,9 @@ class QuantAgent {
         if (!guard.allowed) continue;
         const openGate = this.boll.canOpen(bkl);
         if (!openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
+        // ═══ 实时市场健康闸门: 当下ADX/ATR校验(震荡只碰真震荡, 非单边) ═══
+        const bgate = this._marketGate('boll', bkl);
+        if (bgate) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林禁开: ${bgate}`); continue; }
         const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
         if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
           const bs = { notional: Math.max(20, this.balance*0.15*3), margin: Math.max(20,this.balance*0.15*3)/3, leverage: 3 };
@@ -663,6 +669,56 @@ class QuantAgentManager {
       return {ret: rangePct<20?30:(rangePct<35?15:5), n:1, rate: rangePct<25?80:(rangePct<40?65:45)};
     }catch(e){return {ret:-99,n:0,rate:0};}
   }
+
+  // ═══ 实时市场健康闸门: 开仓前校验该币当下适不适合策略(根治假波动币) ═══
+  // strat: 'trend'|'boll'; kl: 5m原始K线数组 [open,high,low,close,...]
+  // 返回 null=通过可开; 返回字符串=不通过原因(禁开)
+  _adxLocal(raw, period=14) {
+    const arr = toArray(raw);
+    if (!Array.isArray(arr) || arr.length < period * 2) return 0;
+    let plusDM=0, minusDM=0, tr=0;
+    const start = arr.length - period;
+    for (let i=start; i<arr.length; i++) {
+      const up = +arr[i][1] - +arr[i-1][1];
+      const down = +arr[i-1][2] - +arr[i][2];
+      const h=+arr[i][1], l=+arr[i][2], pc=+arr[i-1][3];
+      tr += Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc));
+      if (up>down && up>0) plusDM += up;
+      else if (down>up && down>0) minusDM += down;
+    }
+    if (tr===0) return 0;
+    const pdi = plusDM/tr*100, mdi = minusDM/tr*100;
+    return Math.abs(pdi-mdi) / Math.max(pdi+mdi, 0.001) * 100;
+  }
+  _marketGate(strat, kl) {
+    try {
+      if (!kl || kl.length < 40) return null;
+      const arr = toArray(kl);
+      const closes = arr.map(k => +k[3]);
+      const price = closes[closes.length-1];
+      // ADX 趋势强度
+      const adx = this._adxLocal(arr, 14) || 0;
+      // ATR14 归一化波动(相对价格%)
+      let atr = 0, n = 0;
+      for (let i = arr.length - 14; i < arr.length; i++) {
+        const h = +arr[i][2], l = +arr[i][3];
+        if (i > 0) { const pc = +closes[i-1]; n++; atr += Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc)); }
+      }
+      const atrPct = n ? (atr / n) / (price || 1) * 100 : 0;
+      if (strat === 'trend') {
+        // 趋势: 需 ADX≥20 有真单边 + ATR 波动别死水(>0.10%): 否则止损会扫死
+        if (adx < 20) return `市场闸门: ADX=${adx.toFixed(1)}<20无趋势禁开`;
+        if (atrPct < 0.10) return `市场闸门: ATR波动${atrPct.toFixed(2)}%太低(死水)禁开`;
+        return null;
+      }
+      // 震荡: 需 ADX<25(非单边) + 波动有来回空间(ATR 0.5%~6%): 否则无振幅可做
+      if (adx >= 25) return `市场闸门: ADX=${adx.toFixed(1)}≥25单边非震荡禁开`;
+      if (atrPct < 0.5) return `市场闸门: ATR波动${atrPct.toFixed(2)}%<0.5%太窄(没来回)禁开`;
+      if (atrPct > 6) return `市场闸门: ATR波动${atrPct.toFixed(2)}%>6%太剧烈禁开`;
+      return null;
+    } catch (e) { return null; }
+  }
+
   // (保留原回测方法名兼容, 但用新评估)
   _btTrend(kl){
     try{
