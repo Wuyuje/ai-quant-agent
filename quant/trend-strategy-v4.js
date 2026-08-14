@@ -14,7 +14,7 @@ const { FeatureEngineer, toArray } = require('./featurer');
 class TrendStrategyV4 {
   constructor(opts = {}) {
     this.swingLen = opts.swingLen || 3;       // swing高低点窗(3根)
-    this.confirmLows = opts.confirmLows || 3; // 趋势确认需3个抬高低点(截图: 第三点确认)
+    this.confirmLows = opts.confirmLows || 2; // 趋势确认需2个抬高低点(用户B: 3→2降门槛促开仓)
     this.volMult = opts.volMult || 1.3;       // 突破放量阈值(>20均量×1.3)
     this.atrMult = opts.atrMult || 2.0;       // 止损ATR倍数(2倍, 大周期防扫)
     this.minBars = opts.minBars || 80;        // 最少K线(1h需80根≈80h)
@@ -91,7 +91,7 @@ class TrendStrategyV4 {
     const seg = win.slice(-30);
     let up = 0; for (let i = 1; i < seg.length; i++) if (seg[i] > seg[i - 1]) up++;
     const ratio = up / (seg.length - 1);
-    if (ratio >= 0.42 && ratio <= 0.58) return true;   // 来回震荡=横盘拒
+    if (ratio >= 0.38 && ratio <= 0.62) return true;   // 放宽: 38~62%才判来回震荡=横盘(原42-58)
     return false;
   }
 
@@ -152,7 +152,7 @@ class TrendStrategyV4 {
       const res = d.resistance > 0 ? d.resistance : (kl.resistance || 0);
       const sup = d.support > 0 ? d.support : (kl.support || 0);
       // ═══ 胜率提升过滤: 趋势强度够强 + 大级别方向一致 + 无顶背离 ═══
-      if (this._trendStrength(closes) < 55) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做多` };
+      if (this._trendStrength(closes) < 48) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做多` };
       if (this._higherDir(closes) === 'DOWN') return { signal: 'NONE', reason: '大级别向下,禁追多(顺势大级别)' };
       if (this._rsiDivergence(closes, true)) return { signal: 'NONE', reason: '顶背离,禁追多' };
       // A. 放量突破关键阻力(真突破): 收盘站稳+放量, 且非缩量(缩量不追=假突破)
@@ -168,7 +168,7 @@ class TrendStrategyV4 {
       const sup = d.support > 0 ? d.support : (kl.support || 0);
       const res = d.resistance > 0 ? d.resistance : (kl.resistance || 0);
       // ═══ 胜率提升过滤: 趋势强度够强 + 大级别方向一致 + 无底背离 ═══
-      if (this._trendStrength(closes) > 45) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做空` };
+      if (this._trendStrength(closes) > 52) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做空` };
       if (this._higherDir(closes) === 'UP') return { signal: 'NONE', reason: '大级别向上,禁追空(顺势大级别)' };
       if (this._rsiDivergence(closes, false)) return { signal: 'NONE', reason: '底背离,禁追空' };
       if (sup > 0 && price < sup && prev >= sup && v.up && !v.shrinkRising) {

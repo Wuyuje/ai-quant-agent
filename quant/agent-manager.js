@@ -554,7 +554,15 @@ class QuantAgentManager {
           // 当前趋势检测: 最近K线V4信号非'横盘/FLAT'(当前正在走单边), 确保选出的币现在可交易
           const nowObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
           const curSig = this._trendV4Now(kld);   // 'UP'有上行趋势/'DOWN'下行/'FLAT'横盘
-          if (v4 && v4.n > 0 && v4.ret > 0 && curSig !== 'FLAT') trendV4Pool.push({sym, ret: v4.ret, n: v4.n, rate: v4.rate, cur: curSig});
+          // ═══ 只放'当前日线真能开仓'的趋势币: V4 entrySignal当前出信号(突破/回踩)才进池 ═══
+          let curCan = false;
+          try {
+            const v4e = new TrendStrategyV4({ minBars: 60 });
+            const nowObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
+            const cur = v4e.entrySignal(nowObj);
+            curCan = cur.signal === 'LONG' || cur.signal === 'SHORT';
+          } catch(e){}
+          if (v4 && v4.n > 0 && v4.ret > 0 && curSig !== 'FLAT' && curCan) trendV4Pool.push({sym, ret: v4.ret, n: v4.n, rate: v4.rate, cur: curSig});
         }
         const bo = this._btBoll(kl);   // 用最新截图版振荡(BollingerStrategy)真实回测
         if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret, boRet: bo.ret});   // 优胜劣汰: 回测盈利才进震荡池, 亏损剔除
