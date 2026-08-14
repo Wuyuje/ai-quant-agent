@@ -14,5 +14,9 @@ backup/
 logs/
 *.log
 
+# ── 临时SSH连接测试工具(含敏感服务器连接逻辑, 不入库) ──
+_sshtest*.js
+secure-conn.js
+
 # Supervisor chat inbox (运行时数据)
 supervisor/
