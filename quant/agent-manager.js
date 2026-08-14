@@ -147,16 +147,14 @@ class QuantAgent {
       let fr = 0; try { const f = await this.api.getFundingRate(symbol); fr = Array.isArray(f)&&f[0] ? +f[0].fundingRate : 0; } catch(e){}
       // ═══ 大脑中枢: 提供市场分类/方向(不再用它的'none'拦截池内币) ═══
       const decision = this.brain.decide(symbol, kl);
-      // ═══ 分池决定策略: 币在MA7池→ma7, 在V4池→v4, 在震荡池→bollinger ═══
+      // ═══ 分池决定策略: 币在趋势池→趋势; 否则一律尝试布林带(不再受限布林选币池, 全市场触轨才开) ═══
       const inMA7 = this.MA7_POOL && this.MA7_POOL.includes(symbol);
       const inV4  = this.V4_POOL && this.V4_POOL.includes(symbol);
-      const inBollP = this.BOLLINGER_POOL && this.BOLLINGER_POOL.includes(symbol);
       let strat;
       if (inMA7) strat = 'trend_ma7';
       else if (inV4) strat = 'trend_v4';
-      else if (inBollP) strat = 'bollinger';
-      else continue;   // 不在任何池 → 跳过
-      if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} V4池${inV4?'✓':'✗'} 震荡${inBollP?'✓':'✗'} → ${strat}`);
+      else strat = 'bollinger';   // 布林带: 清除限定选币池, 凡不在趋势池的币全走布林, 靠带宽门禁+触轨信号控制开仓
+      if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} V4池${inV4?'✓':'✗'} → ${strat}`);
       // ═══ 各引擎独立仓位配额: 趋势≤3 / 震荡≤5 (互不干涉) ═══
       const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend' && !p._managed).length;
       const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger' && !p._managed).length;
@@ -680,7 +678,8 @@ class QuantAgentManager {
         this.V4_POOL = newV4;
         this.TREND_POOL = [...new Set([...newMA7, ...newV4])];   // 趋势总池(兼容)
         this.BOLLINGER_POOL = newBoll;
-        this.COIN_POOL = [...new Set([...newMA7, ...newV4, ...newBoll])];
+        // 布林带覆盖全市场: COIN_POOL = 所有候选币(布林不再受限选币池, 全市场扫触轨机会)
+        this.COIN_POOL = [...CANDIDATES];
         // 排名靠前子集(开仓限): 各前5只(按回测性能), 池内排名靠后才开仓
         this.trendTop = [...new Set([...newMA7, ...newV4])].slice(0,5);
         this.bollTop = newBoll.slice(0,5);
