@@ -311,15 +311,17 @@ class QuantAgent {
         }
 
         if (pos.strategy === 'trend' || (pos.strategy === 'ma7' && pos._managed)) {
-          // 接管仓(旧trend/ma7存量): 只用硬止损兜底防极端亏损, 不适用EMA止盈平多(避免5m短期震荡误杀中长线趋势仓)
+          // 接管/存量仓: 用ATR结构止损(不用EMA99), 避免EMA99距开仓价太近被秒损(布林仓被接管时也不误杀)
           const mkl = await this.api.getKlines(symbol, '15m', 150).catch(() => null);
           if (mkl && mkl.length >= 40) {
-            const mObj = toArray(mkl).map(k => +k[3]);
-            const price = mObj[mObj.length - 1];
-            // 仅硬止损(价格跌超阈值才平), 不因EMA排列转空误杀
-            const sl = this.trend.stopLoss(pos, price, mObj);
-            if (sl.action === 'CLOSE') closeReason = sl.reason;
-            // 不做EMA takeProfit(避免短期均线翻转平掉中长线仓)
+            const mObj = toArray(mkl);
+            const closes = mObj.map(k => +k[3]);
+            const highs = mObj.map(k => +k[2]);
+            const lows = mObj.map(k => +k[2]);
+            const price = closes[closes.length - 1];
+            // chandelier(ATR结构止损+吊灯止盈+保本): 有合理止损距离, 不被EMA99近线秒损; 接管仓保守用宽止损
+            const ch = this.trend.chandelier(pos, price, closes, highs, lows);
+            if (ch.action === 'CLOSE') closeReason = ch.reason;
           }
         }
 
