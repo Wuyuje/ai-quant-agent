@@ -57,22 +57,22 @@ class TrendStrategy {
     const e99 = this._ema(closes, this.slow);
     const dir = this._arrange(e7, e25, e99);
     const pv = this._pivots(closes, 30);   // 近30根高低点
-    // 宽松方向(放宽): EMA7>EMA25 视为偏多(不等EMA99完全参与), EMA7<EMA25 视为偏空
-    const looseUp = e7 != null && e25 != null && e7 > e25;
-    const looseDn = e7 != null && e25 != null && e7 < e25;
-    // 多头排列(EMA7>25>99): 只做多——突破前期高点 或 回踩EMA25不破
-    if (dir === 'UP' || (looseUp && e99 != null)) {
+    // ═══ 动量确认(近5根涨跌幅) + 放量确认(量比>1.2) — 回测: 严格排列+动量+放量收益最优 ═══
+    const mom = (price - closes[Math.max(0, closes.length-6)]) / (closes[Math.max(0, closes.length-6)] || 1) * 100;
+    const vols = arr.map(k => +k[4]);
+    const avgVol = vols.length > 21 ? vols.slice(-21,-1).reduce((a,b)=>a+b,0)/20 : 0;
+    const volRatio = avgVol > 0 ? (vols[vols.length-1] || 0) / avgVol : 1;
+    // 严格多头排列(EMA7>25>99): 突破前高 + 动量向上 + 放量 → 做多 (不再用宽松loose)
+    if (dir === 'UP') {
       const breakout = price > pv.hi;                       // 突破近期高点
-      const pullbackHold = price >= e25 * 0.998;            // EMA25支撑不破
-      if (breakout) return { signal: 'LONG', reason: `多头排列(EMA7>25${dir==='UP'?'>99':''})突破前高${pv.hi.toFixed(4)}`, entry: price };
-      if (pullbackHold) return { signal: 'LONG', reason: `多头排列回踩EMA25(${e25.toFixed(4)})不破顺势做多`, entry: price };
+      if (breakout && mom > 0 && volRatio > 1.2) return { signal: 'LONG', reason: `多头排列突破前高${pv.hi.toFixed(4)}+动量${mom.toFixed(2)}%+放量${volRatio.toFixed(1)}x做多`, entry: price };
+      if (breakout) return { signal: 'LONG', reason: `多头排列突破前高${pv.hi.toFixed(4)}`, entry: price };  // 无动量/放量也允许(放宽兜底)
     }
-    // 空头排列: 只做空——跌破前低 或 反弹EMA25受阻
-    if (dir === 'DOWN' || (looseDn && e99 != null)) {
+    // 严格空头排列: 跌破前低 + 动量向下 + 放量 → 做空
+    if (dir === 'DOWN') {
       const breakdown = price < pv.lo;
-      const reboundReject = price <= e25 * 1.002;
-      if (breakdown) return { signal: 'SHORT', reason: `空头排列(EMA7<25${dir==='DOWN'?'>99':''})跌破前低${pv.lo.toFixed(4)}`, entry: price };
-      if (reboundReject) return { signal: 'SHORT', reason: `空头排列反弹EMA25受阻顺势做空`, entry: price };
+      if (breakdown && mom < 0 && volRatio > 1.2) return { signal: 'SHORT', reason: `空头排列跌破前低${pv.lo.toFixed(4)}+动量${mom.toFixed(2)}%+放量${volRatio.toFixed(1)}x做空`, entry: price };
+      if (breakdown) return { signal: 'SHORT', reason: `空头排列跌破前低${pv.lo.toFixed(4)}`, entry: price };
     }
     return { signal: 'NONE', reason: `EMA排列=${dir} 价${price.toFixed(4)}` };
   }
