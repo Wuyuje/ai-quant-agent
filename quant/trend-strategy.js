@@ -114,26 +114,26 @@ class TrendStrategy {
     if (!pos) return { action: 'HOLD' };
     const atr = this._atrVal(highs, lows, closes) || 0;
     if (atr <= 0) return { action: 'HOLD' };
-    const tpMult = 2.0;        // 止盈回撤倍数(调小=更敏感早落袋)
+    const tpMult = 3.0;        // 止盈回撤倍数(3ATR, 避免0.5-0.9%小回撤就秒平, 让利润跑)
     const slMult = 3.0;        // 结构止损倍数(别太紧, 防秒损)
-    const beAct = 2.0;         // 保本激活浮盈倍数
+    const beAct = 1.5;         // 保本激活浮盈倍数(涨过1.5ATR即保护)
     const beOff = 0.6;         // 保本回落线(成本±0.6ATR)
     if (pos.side === 'LONG') {
       pos._hp = pos._hp == null ? price : Math.max(pos._hp, price);
-      // 保本(保护盈利, 敏感): 已涨≥2×ATR后, 跌破成本价上方0.6×ATR才保本平
+      // 保本(保护盈利): 已涨≥1.5×ATR后, 跌破成本价上方0.6×ATR才保本平
       if (pos._hp > pos.entry + atr * beAct && price < pos.entry + atr * beOff) return { action: 'CLOSE', reason: `保本(高点${pos._hp.toFixed(4)}回落到成本+${beOff}ATR=${(pos.entry+atr*beOff).toFixed(4)})平多` };
-      // 止盈: Chandelier = 最高点 - tpMult×ATR
+      // 吊灯止盈: 仅当有盈利时触发(最高点>成本价), 避免浮亏时被吊灯误平
       const ch = pos._hp - atr * tpMult;
-      if (price < ch) return { action: 'CLOSE', reason: `吊灯止盈(高点${pos._hp.toFixed(4)}回撤${atr.toFixed(4)}×${tpMult})平多` };
+      if (pos._hp > pos.entry && price < ch) return { action: 'CLOSE', reason: `吊灯止盈(高点${pos._hp.toFixed(4)}回撤${atr.toFixed(4)}×${tpMult})平多` };
       // 止损: ATR结构止损(slMult×ATR), 远离开仓价不被秒损
       if (price < pos.entry - atr * slMult) return { action: 'CLOSE', reason: `ATR结构止损(入场${pos.entry.toFixed(4)}跌破${slMult}×ATR)` };
     } else {
       pos._lp = pos._lp == null ? price : Math.min(pos._lp, price);
       // 保本
       if (pos._lp < pos.entry - atr * beAct && price > pos.entry - atr * beOff) return { action: 'CLOSE', reason: `保本(低点${pos._lp.toFixed(4)}反弹回成本-${beOff}ATR=${(pos.entry-atr*beOff).toFixed(4)})平空` };
-      // 止盈: Chandelier = 最低点 + tpMult×ATR
+      // 吊灯止盈: 仅当有盈利时触发(最低点<成本价)
       const ch = pos._lp + atr * tpMult;
-      if (price > ch) return { action: 'CLOSE', reason: `吊灯止盈(低点${pos._lp.toFixed(4)}反弹${atr.toFixed(4)}×${tpMult})平空` };
+      if (pos._lp < pos.entry && price > ch) return { action: 'CLOSE', reason: `吊灯止盈(低点${pos._lp.toFixed(4)}反弹${atr.toFixed(4)}×${tpMult})平空` };
       // 止损
       if (price > pos.entry + atr * slMult) return { action: 'CLOSE', reason: `ATR结构止损(入场${pos.entry.toFixed(4)}突破${slMult}×ATR)` };
     }
