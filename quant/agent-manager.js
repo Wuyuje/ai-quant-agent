@@ -496,8 +496,10 @@ class QuantAgentManager {
     this.TREND_POOL = ['AVAXUSDT','KASUSDT','TIAUSDT','ADAUSDT','BTCUSDT'];
     this.MA7_POOL = this.TREND_POOL;   // MA7趋势池(15m大道至简)
     this.V4_POOL = this.TREND_POOL;    // V4趋势池(日线阿奇)
-    // 合并扫描池
-    this.COIN_POOL = [...new Set([...this.BOLLINGER_POOL, ...this.TREND_POOL])];
+    // 合并扫描池: 全市场主流候选币(布林带全市场扫触轨, 趋势池专用币) — 覆盖高流动性主流币
+    this.COIN_POOL = [
+      'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT','HYPEUSDT','TAOUSDT','BCHUSDT','ENAUSDT','1000SHIBUSDT','AAVEUSDT','ONDOUSDT','TRUMPUSDT','XLMUSDT','1000BONKUSDT','LITUSDT'
+    ];
   }
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[Quant] ${ts} ${m}`); }
   _isAdmin(w) { return this.ADMIN_WALLETS.some(a => a.toLowerCase() === (w||'').toLowerCase()); }
@@ -602,7 +604,7 @@ class QuantAgentManager {
     try {
       this._log('🧠 动态选币开始...');
       const apiInst = new BinanceAPI(this.adminApiKey, this.adminApiSecret);
-      const CANDIDATES = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT'];
+      const CANDIDATES = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT','HYPEUSDT','TAOUSDT','BCHUSDT','ENAUSDT','1000SHIBUSDT','AAVEUSDT','ONDOUSDT','TRUMPUSDT','XLMUSDT','1000BONKUSDT','LITUSDT'];   // 补充适合布林带的主流流动性币(波动适中+流动性好)
       const trendPool=[], bollPool=[], trendV4Pool=[];
       for (const sym of CANDIDATES) {
         // ═══ 自动识别低波动横盘币并踢出(不手动拉黑) ═══
