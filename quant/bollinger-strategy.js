@@ -73,8 +73,8 @@ class BollingerStrategy {
   }
 
   // ═══ 特殊时间禁交易: 返回是否能开/补仓 ═══
-  // 截图: 资金费率结算前15min/B0交割前1h/布林开口期 → 禁新开+禁补仓, 仅止盈止损
-  tradingGuardAllowed() {
+  // 截图: 资金费率结算前15min/交割前1h/布林开口期 → 禁新开+禁补仓, 仅止盈止损
+  tradingGuardAllowed(arr) {
     const now = new Date();
     const minutes = now.getUTCHours()*60 + now.getUTCMinutes();
     // 资金费率结算: 每8小时结算(UTC 0/8/16), 前15分钟禁
@@ -82,6 +82,44 @@ class BollingerStrategy {
       const settleMin = h*60;
       if (minutes > settleMin - this.feeSettleGuardMin && minutes <= settleMin) {
         return { allowed: false, reason: `资金费率结算前${this.feeSettleGuardMin}分钟禁开补`, type: 'feeSettle' };
+      }
+    }
+    // 季度交割: 每季度第三个月(3/6/9/12)第三个周五 UTC 20:00 交割, 前1h禁(简化: 检查交割日当天)
+    // 币安季度交割通常是当季第三个月的最后一个周五; 这里按 UTC 每月交割日判断, 前端近交割且时间接近则禁
+    const day = now.getUTCDate();
+    const month = now.getUTCMonth()+1;
+    const isDeliveryMonth = [3,6,9,12].includes(month);  // 季度月(3/6/9/12月是当季最后一个交割月)
+    // 找一个近似: 若在交割月且距交割日(该月第三个周五)<=1天或当天临近20点, 则禁
+    if (isDeliveryMonth) {
+      // 简化: 使用当前月第三个周五作为交割日近似
+      const firstDay = new Date(Date.UTC(now.getUTCFullYear(), month-1, 1));
+      let fridayCount = 0, deliveryDay = 0;
+      for (let d=1; d<=7; d++) {
+        const dt = new Date(Date.UTC(now.getUTCFullYear(), month-1, d));
+        if (dt.getUTCDay()===5) { deliveryDay = 1 + 14 + d - 1; break; }  // 第一个周五偏移
+      }
+      const thirdFriday = new Date(Date.UTC(now.getUTCFullYear(), month-1, 1));
+      let count=0;
+      for (let d=1; d<=31; d++) {
+        const dt = new Date(Date.UTC(now.getUTCFullYear(), month-1, d));
+        if (dt.getUTCMonth()!==month-1) break;
+        if (dt.getUTCDay()===5) { count++; if(count===3){ thirdFriday.setUTCDate(d); break; } }
+      }
+      const nowDay = now.getUTCDate(), nowMin = now.getUTCHours()*60+now.getUTCMinutes();
+      // 交割日当天 19:00 UTC 起至当天 20:00 禁(前1h)
+      if (nowDay === thirdFriday.getUTCDate() && nowMin > 19*60 && nowMin <= 20*60) {
+        return { allowed: false, reason: `季度交割前${this.deliveryGuardMin}分钟禁开补(交割日UTC20:00)`, type: 'delivery' };
+      }
+      // 交割前一两天(隔夜风险大)也可加防
+      if (nowDay === thirdFriday.getUTCDate()-1) {
+        return { allowed: true, reason: '临近交割日(次日交割)', type: 'approaching' };
+      }
+    }
+    // 布林开口期禁交易（分离带宽扩张时的开仓）
+    if (arr) {
+      const b = this.calcBands(arr);
+      if (b && b.widthPct > 0.9) {
+        return { allowed: false, reason: `布林开口期(带宽分位${(b.widthPct*100).toFixed(0)}%>90%)禁开补`, type: 'openPeriod' };
       }
     }
     return { allowed: true };
@@ -142,6 +180,10 @@ class BollingerStrategy {
     if (!b) return { action: 'HOLD' };
     const entry = pos.entryPrice;
     const pnlPct = pos.side === 'LONG' ? (price-entry)/entry*100 : (entry-price)/entry*100;
+    // ═══ 布林收口 → 关闭放量ATR移动止盈, 切回常态轨道止盈(截图: 收口后自动切回) ═══
+    if (pos._volMode && b.shrinking) {
+      pos._volMode = false;
+    }
     // 放量移动止盈模式
     const vs = this.volumeSpike(arr);
     if (vs.spike) pos._volMode = true;

@@ -92,11 +92,14 @@ class QuantAgent {
         // 币安有仓但引擎没记录 → 载入(接管)
         if (!this.positions[sym]) {
           const lev = parseInt(p.leverage) || 5;
+          // ═══ 接管仓归属判定: 币在趋势池→trend; 否则→bollinger(布林仓不再错归趋势, 保证趋势/震荡管理独立) ═══
+          const inTrend = (this.MA7_POOL && this.MA7_POOL.includes(sym)) || (this.V4_POOL && this.V4_POOL.includes(sym));
+          const strat = inTrend ? 'trend' : 'bollinger';
           this.positions[sym] = {
             symbol: sym, side, qty: Math.abs(amt), entryPrice: +p.entryPrice,
             currentPrice: +p.markPrice, margin: Math.abs(+p.entryPrice)*(+p.markPrice)/lev,
             leverage: lev, _peak: +p.entryPrice, openTime: Date.now(),
-            strategy: this._stratLock[sym] || 'trend',   // 接管仓用trend逻辑管理(现有仓多为趋势开)
+            strategy: strat,
             _managed: true                                // 标记为接管仓, 开仓配额判断时排除
           };
         } else {
@@ -213,7 +216,7 @@ class QuantAgent {
         // 截图: 单K±3%毛刺信号作废
         if (this.boll.isSpikeBar(bkl)) continue;
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
-        const guard = this.boll.tradingGuardAllowed();
+        const guard = this.boll.tradingGuardAllowed(bkl);
         if (!guard.allowed) continue;
         const openGate = this.boll.canOpen(bkl);
         if (!openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
