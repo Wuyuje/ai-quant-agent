@@ -159,13 +159,14 @@ class QuantAgent {
       else strat = 'bollinger';   // 布林带: 清除限定选币池, 凡不在趋势池的币全走布林, 靠带宽门禁+触轨信号控制开仓
       if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} V4池${inV4?'✓':'✗'} → ${strat}`);
       // ═══ 各引擎独立仓位配额 + 总持仓硬上限(防超限堆积) ═══
-      const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend' && !p._managed).length;
-      const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger' && !p._managed).length;
+      // ═══ 每种策略最大持仓3个(含接管仓), 严格执行, 防超限 ═══
+      const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend' || (p.strategy==='ma7' && p._managed)).length;
+      const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger').length;
       const totalCount = Object.keys(this.positions).length;    // 总持仓(含接管)
-      const TREND_MAX = 5, BOLL_MAX = 5, MAX_TOTAL = 12;         // 总持仓上限12, 防无限堆积
+      const TREND_MAX = 3, BOLL_MAX = 3, MAX_TOTAL = 9;         // 每策略≤3 + 总持仓≤9, 严格防超限
       if (totalCount >= MAX_TOTAL) { if (this.isAdmin) this._log(`⏸️ 总持仓已达上限${MAX_TOTAL}, 不再开新仓`); continue; }
-      if (strat === 'trend' && trendCount >= TREND_MAX) continue;      // 趋势仓满5→不开
-      if (strat === 'bollinger' && bollCount >= BOLL_MAX) continue;    // 震荡仓满5→不开
+      if (strat === 'trend' && (trendCount >= TREND_MAX || (bollCount+trendCount) >= MAX_TOTAL)) { if (this.isAdmin) this._log(`⏸️ 趋势仓已达上限${TREND_MAX}, 不再开趋势`); continue; }
+      if (strat === 'bollinger' && (bollCount >= BOLL_MAX || (bollCount+trendCount) >= MAX_TOTAL)) { if (this.isAdmin) this._log(`⏸️ 布林仓已达上限${BOLL_MAX}, 不再开布林`); continue; }
       // 每币单一策略锁: 已锁定则强制一致
       if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
 
@@ -586,7 +587,7 @@ class QuantAgentManager {
         const boll = pos.filter(p=>p.strategy==='bollinger').length;
         const ma7 = pos.filter(p=>p.strategy==='ma7').length;
         const managed = pos.filter(p=>p._managed).length;
-        this._log(`📊 持仓检查[管理员]: 总${pos.length} (趋势${trend}/布林${boll}/MA7${ma7}/接管${managed})${pos.length>12?' ⚠️超12上限':''}`);
+        this._log(`📊 持仓检查[管理员]: 总${pos.length} (趋势${trend}/布林${boll}/MA7${ma7}/接管${managed})${pos.length>12?' ⚠️超9上限':''}`);
         for (const p of pos) this._log(`   ${p.symbol} ${p.side} ${p.strategy}${p._managed?'[接管]':''} 入@${p.entryPrice}`);
       }
     } catch(e) { this._log(`❌ 循环异常: ${e.message}`); }
