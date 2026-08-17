@@ -158,10 +158,12 @@ class QuantAgent {
       else if (inV4) strat = 'trend_v4';
       else strat = 'bollinger';   // 布林带: 清除限定选币池, 凡不在趋势池的币全走布林, 靠带宽门禁+触轨信号控制开仓
       if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} V4池${inV4?'✓':'✗'} → ${strat}`);
-      // ═══ 各引擎独立仓位配额: 趋势≤3 / 震荡≤5 (互不干涉) ═══
+      // ═══ 各引擎独立仓位配额 + 总持仓硬上限(防超限堆积) ═══
       const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend' && !p._managed).length;
       const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger' && !p._managed).length;
-      const TREND_MAX = 5, BOLL_MAX = 5;
+      const totalCount = Object.keys(this.positions).length;    // 总持仓(含接管)
+      const TREND_MAX = 5, BOLL_MAX = 5, MAX_TOTAL = 12;         // 总持仓上限12, 防无限堆积
+      if (totalCount >= MAX_TOTAL) { if (this.isAdmin) this._log(`⏸️ 总持仓已达上限${MAX_TOTAL}, 不再开新仓`); continue; }
       if (strat === 'trend' && trendCount >= TREND_MAX) continue;      // 趋势仓满5→不开
       if (strat === 'bollinger' && bollCount >= BOLL_MAX) continue;    // 震荡仓满5→不开
       // 每币单一策略锁: 已锁定则强制一致
@@ -576,6 +578,17 @@ class QuantAgentManager {
         a.MA7_POOL = this.MA7_POOL; a.V4_POOL = this.V4_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL; }
       await Promise.all(agents.map(a => a.scan(this.COIN_POOL).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
+      // ═══ 持仓状况检查: 打印管理员各策略/接管仓分布(启动后可见) ═══
+      for (const a of Object.values(this._agents)) {
+        if (!a.isAdmin) continue;
+        const pos = Object.values(a.positions || {});
+        const trend = pos.filter(p=>p.strategy==='trend').length;
+        const boll = pos.filter(p=>p.strategy==='bollinger').length;
+        const ma7 = pos.filter(p=>p.strategy==='ma7').length;
+        const managed = pos.filter(p=>p._managed).length;
+        this._log(`📊 持仓检查[管理员]: 总${pos.length} (趋势${trend}/布林${boll}/MA7${ma7}/接管${managed})${pos.length>12?' ⚠️超12上限':''}`);
+        for (const p of pos) this._log(`   ${p.symbol} ${p.side} ${p.strategy}${p._managed?'[接管]':''} 入@${p.entryPrice}`);
+      }
     } catch(e) { this._log(`❌ 循环异常: ${e.message}`); }
 
     if (this.running) this._timer = setTimeout(() => this._loop(), this.intervalMs);
