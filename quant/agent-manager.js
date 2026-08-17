@@ -159,14 +159,18 @@ class QuantAgent {
       else strat = 'bollinger';   // 布林带: 清除限定选币池, 凡不在趋势池的币全走布林, 靠带宽门禁+触轨信号控制开仓
       if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} V4池${inV4?'✓':'✗'} → ${strat}`);
       // ═══ 各引擎独立仓位配额 + 总持仓硬上限(防超限堆积) ═══
-      // ═══ 每种策略最大持仓3个(含接管仓), 严格执行, 防超限 ═══
-      const trendCount = Object.values(this.positions).filter(p=>p.strategy==='trend' || (p.strategy==='ma7' && p._managed)).length;
-      const bollCount  = Object.values(this.positions).filter(p=>p.strategy==='bollinger').length;
-      const totalCount = Object.keys(this.positions).length;    // 总持仓(含接管)
-      const TREND_MAX = 3, BOLL_MAX = 3, MAX_TOTAL = 9;         // 每策略≤3 + 总持仓≤9, 严格防超限
+      // ═══ 三策略独立配额, 每策略≤3, 未平仓严禁再开, 平后补到3 ═══
+      // EMA(ma7)/V4(v4)/布林(bollinger) 各计数(含接管仓计为该策略)
+      const countM = Object.values(this.positions).filter(p => p.strategy === 'ma7' || (p._managed && p.strategy === 'trend')).length;   // EMA
+      const countV = Object.values(this.positions).filter(p => p.strategy === 'v4').length;                                              // V4
+      const countB = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;                                        // 布林
+      const totalCount = Object.keys(this.positions).length;
+      const STRAT_MAX = 3, MAX_TOTAL = 9;    // 每策略≤3, 总≤9
       if (totalCount >= MAX_TOTAL) { if (this.isAdmin) this._log(`⏸️ 总持仓已达上限${MAX_TOTAL}, 不再开新仓`); continue; }
-      if (strat === 'trend' && (trendCount >= TREND_MAX || (bollCount+trendCount) >= MAX_TOTAL)) { if (this.isAdmin) this._log(`⏸️ 趋势仓已达上限${TREND_MAX}, 不再开趋势`); continue; }
-      if (strat === 'bollinger' && (bollCount >= BOLL_MAX || (bollCount+trendCount) >= MAX_TOTAL)) { if (this.isAdmin) this._log(`⏸️ 布林仓已达上限${BOLL_MAX}, 不再开布林`); continue; }
+      // 按目标策略各自限3
+      if (strat === 'trend_ma7' && countM >= STRAT_MAX) { if (this.isAdmin) this._log(`⏸️ EMA趋势仓已达${countM}/${STRAT_MAX}, 未平仓不补`); continue; }
+      if (strat === 'trend_v4' && countV >= STRAT_MAX) { if (this.isAdmin) this._log(`⏸️ V4趋势仓已达${countV}/${STRAT_MAX}, 未平仓不补`); continue; }
+      if (strat === 'bollinger' && countB >= STRAT_MAX) { if (this.isAdmin) this._log(`⏸️ 布林仓已达${countB}/${STRAT_MAX}, 未平仓不补`); continue; }
       // 每币单一策略锁: 已锁定则强制一致
       if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
 
@@ -205,7 +209,7 @@ class QuantAgent {
         const bs = eng.positionSize(this.balance, sig.signal, posPct);
         if ((this.balance || 0) < 100) continue;
         const stgHeld = Object.values(this.positions).filter(p=>p.strategy===stg).length;
-        const maxPerStg = stg === 'v4' ? 3 : 4;
+        const maxPerStg = 3;  // 三策略统一每策略≤3
         if (stgHeld >= maxPerStg) continue;
         const lev = stg === 'v4' ? 5 : 3;
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: lev, precisionMap: pm, price, balance: this.balance });
