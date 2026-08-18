@@ -179,6 +179,30 @@ class TrendStrategy {
   }
   _atrVal(h, l, c) { if (!h || h.length < 15) return 0; let trs=[]; for(let i=h.length-14;i<h.length;i++){if(i<1)continue;trs.push(Math.max(h[i]-l[i],Math.abs(h[i]-c[i-1]),Math.abs(l[i]-c[i-1])));} return trs.length?trs.reduce((a,b)=>a+b,0)/trs.length:0; }
 
+
+  // ═══ 趋势出场(无吊灯): EMA均线反转止盈 + EMA99/固定%止损 ═══
+  // 用户要求去掉吊灯止盈止损(高频小亏), 改用EMA方向反转止盈 + 止损
+  emaExit(pos, price, closes) {
+    if (!pos) return { action: 'HOLD' };
+    const e7 = this._ema(closes, this.fast);
+    const e25 = this._ema(closes, this.mid);
+    const e99 = this._ema(closes, this.slow);
+    if (pos.side === 'LONG') {
+      // 止盈: EMA7跌破EMA25 = 多头趋势转弱 → 平多(让利润跑,但趋势破坏就走)
+      if (e7 != null && e25 != null && e7 < e25) return { action: 'CLOSE', reason: `EMA转弱(EMA7=${e7.toFixed(4)}<EMA25=${e25.toFixed(4)})平多` };
+      // 止损: 跌破EMA99(逻辑失效) 或 固定-6%
+      if (e99 != null && price < e99) return { action: 'CLOSE', reason: `跌破EMA99(${e99.toFixed(4)})止损平多` };
+      if (pos.entry && (pos.entry - price) / pos.entry * 100 >= 6) return { action:'CLOSE', reason:`硬止损${(((pos.entry-price)/pos.entry)*100).toFixed(1)}%平多` };
+    } else {
+      // 止盈: EMA7突破EMA25 = 空头趋势转弱 → 平空
+      if (e7 != null && e25 != null && e7 > e25) return { action: 'CLOSE', reason: `EMA转强(EMA7=${e7.toFixed(4)}>EMA25=${e25.toFixed(4)})平空` };
+      // 止损: 突破EMA99 或 固定+6%
+      if (e99 != null && price > e99) return { action: 'CLOSE', reason: `突破EMA99(${e99.toFixed(4)})止损平空` };
+      if (pos.entry && (price - pos.entry) / pos.entry * 100 >= 6) return { action:'CLOSE', reason:`硬止损${(((price-pos.entry)/pos.entry)*100).toFixed(1)}%平空` };
+    }
+    return { action: 'HOLD' };
+  }
+
   positionSize(balance, side, nRatio = 0.15) {
     const lev = 3;   // 3x(EMA回测亏损, 从8x降3x控风险)
     return { notional: Math.max(20, balance * nRatio * lev), margin: Math.max(20, balance * nRatio * lev) / lev, leverage: lev };

@@ -270,11 +270,10 @@ class QuantAgent {
           if (mkl && mkl.length >= 40) {
             const d15 = toArray(mkl);
             const closes = d15.map(k => +k[3]);
-            const highs = d15.map(k => +k[2]);
-            const lows = d15.map(k => +k[2]);   // 修: 原为 k[3](close), 应为 k[2](low)
             const price = closes[closes.length - 1];
-            const ch = this.trend.chandelier(pos, price, closes, highs, lows);
-            if (ch.action === 'CLOSE') closeReason = ch.reason;
+            // 去掉吊灯: 改用EMA均线反转止盈 + EMA99/固定%止损
+            const em = this.trend.emaExit(pos, price, closes);
+            if (em.action === 'CLOSE') closeReason = em.reason;
           }
         }
         if (pos.strategy === 'bollinger') {
@@ -322,12 +321,10 @@ class QuantAgent {
           if (mkl && mkl.length >= 40) {
             const mObj = toArray(mkl);
             const closes = mObj.map(k => +k[3]);
-            const highs = mObj.map(k => +k[2]);
-            const lows = mObj.map(k => +k[2]);
             const price = closes[closes.length - 1];
-            // chandelier(ATR结构止损+吊灯止盈+保本): 有合理止损距离, 不被EMA99近线秒损; 接管仓保守用宽止损
-            const ch = this.trend.chandelier(pos, price, closes, highs, lows);
-            if (ch.action === 'CLOSE') closeReason = ch.reason;
+            // 去掉吊灯: 改用EMA均线反转止盈 + EMA99/固定%止损
+            const em = this.trend.emaExit(pos, price, closes);
+            if (em.action === 'CLOSE') closeReason = em.reason;
           }
         }
 
