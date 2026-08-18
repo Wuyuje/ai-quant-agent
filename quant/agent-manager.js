@@ -181,12 +181,12 @@ class QuantAgent {
         if (this.pauseTrend) continue;   // 趋势引擎暂停开仓
         if (this.positions[symbol]) continue;   // 同币已持单, 不再开
         // ═══ 分开选池: 币在MA7池只跑MA7(15m), 在V4池只跑V4(日线) ═══
-        let sig = null, stg = strat === 'trend_v4' ? 'v4' : 'ma7', stf = strat === 'trend_v4' ? '1d' : '15m';
+        let sig = null, stg = strat === 'trend_v4' ? 'v4' : 'ma7', stf = strat === 'trend_v4' ? '15m' : '15m';
         let kl5 = null;   // 提前声明, 供下方闸门/贴线判断统一使用(修复kl5块级作用域丢失bug)
         if (strat === 'trend_v4') {
-          // V4 池币: 只按 V4(日线) 信号
-          const kld = await this.api.getKlines(symbol, '1d', 120).catch(()=>null);
-          if (kld && kld.length >= 60) {
+          // V4 池币: 只按 V4(15m) 信号
+          const kld = await this.api.getKlines(symbol, '15m', 300).catch(()=>null);
+          if (kld && kld.length >= 120) {
             const dObj = toArray(kld).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
             sig = this.trendV4.entrySignal(dObj);
           }
@@ -200,8 +200,8 @@ class QuantAgent {
           let v4sig=null;
           if (countV < STRAT_MAX) {
             try {
-              const kld = await this.api.getKlines(symbol, '1d', 120).catch(()=>null);
-              if (kld && kld.length>=60) {
+              const kld = await this.api.getKlines(symbol, '15m', 300).catch(()=>null);
+              if (kld && kld.length>=120) {
                 const dObj = toArray(kld).map(k => ({ open:k[1],high:k[2],low:k[3],close:k[4],volume:k[5] }));
                 v4sig = this.trendV4.entrySignal(dObj);
               }
@@ -294,7 +294,7 @@ class QuantAgent {
 
         if (pos.strategy === 'v4') {
           // V4 阿奇日线趋势: 按周期(tf)拉K线, V4逻辑止损/结构破坏止盈
-          const tf = pos._t || '1d';
+          const tf = pos._t || '15m';
           const klast = await this.api.getKlines(symbol, tf, 150).catch(() => null);
           if (klast && klast.length >= 40) {
             const dObj = toArray(klast).map(k => ({ open: k[1], high: k[2], low: k[3], close: k[4], volume: k[5] }));
