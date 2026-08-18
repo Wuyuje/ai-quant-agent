@@ -196,7 +196,27 @@ class QuantAgent {
           sig = this.trend.entrySignal(kl5 || kl, decision.market.trendDir);
         }
         if (!sig || sig.signal === 'NONE') {
-          // ═══ 完全去池: 趋势无信号则fallback试布林(每币实时判断, 先趋势后布林) ═══
+          // ═══ 完全去池: 趋势5m无信号 → 试V4日线 → 再无则试布林(每币实时判断) ═══
+          let v4sig=null;
+          if (countV < STRAT_MAX) {
+            try {
+              const kld = await this.api.getKlines(symbol, '1d', 120).catch(()=>null);
+              if (kld && kld.length>=60) {
+                const dObj = toArray(kld).map(k => ({ open:k[1],high:k[2],low:k[3],close:k[4],volume:k[5] }));
+                v4sig = this.trendV4.entrySignal(dObj);
+              }
+            } catch(e){}
+          }
+          if (v4sig && (v4sig.signal==='LONG'||v4sig.signal==='SHORT')) {
+            const v4price = +toArray(kl)[kl.length-1][3];
+            const v4gate = this._marketGate('trend', kl);
+            if (!v4gate) {
+              const v4bs = this.trendV4.positionSize(this.balance, v4sig.signal, 0.2);
+              const v4r = await this.executor.executeOrder(v4sig, { symbol, side:v4sig.signal, notional:v4bs.notional, leverage:5, precisionMap:pm, price:v4price, balance:this.balance });
+              if (v4r.success) { this.positions[symbol] = { side:v4sig.signal, qty:v4r.qty, entryPrice:v4price, leverage:5, strategy:'v4', _peak:v4price, openTime:Date.now() }; this._stratLock[symbol]='v4'; this._log(`🔥 ${symbol} V4日线${v4sig.signal}开仓(v4)`); }
+              continue;
+            }
+          }
           this._log(`🔍 ${symbol} ${stg}信号NONE,试布林`);
           if (countB < STRAT_MAX) {
             try {

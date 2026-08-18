@@ -86,12 +86,12 @@ class TrendStrategyV4 {
     const hi = Math.max(...win), lo = Math.min(...win);
     const rangePct = hi > 0 ? (hi - lo) / lo * 100 : 0;
     // 真横盘: 振幅太窄(<5%日线) 才拒; 波动够大(=有机会) 不算横盘
-    if (rangePct < 5) return true;
-    // 方向性: 近30根上涨占比<42% 且 >58% 都算有方向(非横盘); 42~58%=来回震荡拒
+    if (rangePct < 3) return true;
+    // 方向性: 近30根上涨占比 35~65% 才算来回震荡=横盘(更宽才拒, 少拒错杀)
     const seg = win.slice(-30);
     let up = 0; for (let i = 1; i < seg.length; i++) if (seg[i] > seg[i - 1]) up++;
     const ratio = up / (seg.length - 1);
-    if (ratio >= 0.38 && ratio <= 0.62) return true;   // 放宽: 38~62%才判来回震荡=横盘(原42-58)
+    if (ratio >= 0.35 && ratio <= 0.65) return true;
     return false;
   }
 
@@ -151,30 +151,28 @@ class TrendStrategyV4 {
     if (effDir === 'UP') {
       const res = d.resistance > 0 ? d.resistance : (kl.resistance || 0);
       const sup = d.support > 0 ? d.support : (kl.support || 0);
-      // ═══ 胜率提升过滤: 趋势强度够强 + 大级别方向一致 + 无顶背离 ═══
-      if (this._trendStrength(closes) < 48) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做多` };
-      if (this._higherDir(closes) === 'DOWN') return { signal: 'NONE', reason: '大级别向下,禁追多(顺势大级别)' };
-      if (this._rsiDivergence(closes, true)) return { signal: 'NONE', reason: '顶背离,禁追多' };
+      // ═══ 放宽过滤(让V4能开仓): 趋势强度下调, 大级别/RSI仅极强时才拦 ═══
+      if (this._trendStrength(closes) < 40) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做多` };
+      if (this._higherDir(closes) === 'DOWN' && this._trendStrength(closes) < 45) return { signal: 'NONE', reason: '大级别向下且趋势弱,禁追多' };
       // A. 放量突破关键阻力(真突破): 收盘站稳+放量, 且非缩量(缩量不追=假突破)
-      if (res > 0 && price > res && prev <= res && v.up && !v.shrinkRising) {
+      if (res > 0 && price > res && prev <= res && v.ratio > 0.8 && !v.shrinkRising) {
         return { signal: 'LONG', reason: `放量突破关键阻力${(res).toFixed(4)}+量${v.ratio.toFixed(1)}x`, supportLevel: sup, resistanceLevel: res };
       }
       // B. 突破后回踩确认(角色互换, 最经典): 价格回踩到原阻力/抬高低点, 不破+放量企稳
-      if (sup > 0 && price >= sup * 0.998 && v.up && !v.shrinkRising) {
+      if (sup > 0 && price >= sup * 0.995 && v.ratio > 0.8 && !v.shrinkRising) {
         return { signal: 'LONG', reason: `回踩关键支撑${(sup).toFixed(4)}不破+量${v.ratio.toFixed(1)}x`, supportLevel: sup, resistanceLevel: res };
       }
     }
     if (effDir === 'DOWN') {
       const sup = d.support > 0 ? d.support : (kl.support || 0);
       const res = d.resistance > 0 ? d.resistance : (kl.resistance || 0);
-      // ═══ 胜率提升过滤: 趋势强度够强 + 大级别方向一致 + 无底背离 ═══
-      if (this._trendStrength(closes) > 52) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做空` };
-      if (this._higherDir(closes) === 'UP') return { signal: 'NONE', reason: '大级别向上,禁追空(顺势大级别)' };
-      if (this._rsiDivergence(closes, false)) return { signal: 'NONE', reason: '底背离,禁追空' };
-      if (sup > 0 && price < sup && prev >= sup && v.up && !v.shrinkRising) {
+      // ═══ 放宽过滤(让V4能开仓): 趋势强度/大级别放宽 ═══
+      if (this._trendStrength(closes) > 60) return { signal: 'NONE', reason: `趋势强度弱(${this._trendStrength(closes)}%)不做空` };
+      if (this._higherDir(closes) === 'UP' && this._trendStrength(closes) > 55) return { signal: 'NONE', reason: '大级别向上且趋势强,禁追空' };
+      if (sup > 0 && price < sup && prev >= sup && v.ratio > 0.8 && !v.shrinkRising) {
         return { signal: 'SHORT', reason: `放量跌破关键支撑${(sup).toFixed(4)}+量${v.ratio.toFixed(1)}x`, supportLevel: sup, resistanceLevel: res };
       }
-      if (res > 0 && price <= res * 1.002 && v.up && !v.shrinkRising) {
+      if (res > 0 && price <= res * 1.005 && v.ratio > 0.8 && !v.shrinkRising) {
         return { signal: 'SHORT', reason: `反弹关键阻力${(res).toFixed(4)}受阻+量${v.ratio.toFixed(1)}x`, supportLevel: sup, resistanceLevel: res };
       }
     }
