@@ -195,7 +195,27 @@ class QuantAgent {
           kl5 = await this.api.getKlines(symbol, '5m', 200).catch(() => null);
           sig = this.trend.entrySignal(kl5 || kl, decision.market.trendDir);
         }
-        if (!sig || sig.signal === 'NONE') { this._log(`🔍 ${symbol} ${stg}信号NONE(${(sig&&sig.reason)||'无'})`); continue; }
+        if (!sig || sig.signal === 'NONE') {
+          // ═══ 完全去池: 趋势无信号则fallback试布林(每币实时判断, 先趋势后布林) ═══
+          this._log(`🔍 ${symbol} ${stg}信号NONE,试布林`);
+          if (countB < STRAT_MAX) {
+            try {
+              const bkl = await this.api.getKlines(symbol, '5m', 120).catch(()=>null);
+              if (bkl && bkl.length>=40 && !this.boll.isSpikeBar(bkl) && this.boll.tradingGuardAllowed().allowed) {
+                const og = this.boll.canOpen(bkl);
+                if (og.allowed) {
+                  const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
+                  if (esig.signal==='LONG'||esig.signal==='SHORT') {
+                    const bnotional = Math.max(20, this.balance*0.15*3);
+                    const rr = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bnotional, leverage: 3, precisionMap: pm, price, balance: this.balance });
+                    if (rr.success) { this.positions[symbol] = { side: esig.signal, qty: rr.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: -1, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._log(`🔥 ${symbol} 趋势NONE→布林触轨${esig.signal}开仓`); }
+                  }
+                }
+              }
+            } catch(e){}
+          }
+          continue;
+        }
         // ═══ 实时市场健康闸门: 当下ADX/ATR校验(根治假波动币, 趋势只碰真单边) ═══
         const gate = this._marketGate('trend', kl5 || kl);
         if (gate) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}禁开: ${gate}`); continue; }
@@ -501,12 +521,14 @@ class QuantAgentManager {
     // 趋势行情交易池(给趋势引擎调用) — v6摆动结构90天回测精选(胜率≥50%+正回报)
     // 趋势池(v7大道至简MA7·30天回测正期望精选): AVAX+5%/KAS+2.9%/TIA+1.5%/ADA+0.5%/BTC+0.4%
     this.TREND_POOL = ['AVAXUSDT','KASUSDT','TIAUSDT','ADAUSDT','BTCUSDT'];
-    this.MA7_POOL = this.TREND_POOL;   // MA7趋势池(15m大道至简)
-    this.V4_POOL = this.TREND_POOL;    // V4趋势池(日线阿奇)
-    // 合并扫描池: 全市场主流候选币(布林带全市场扫触轨, 趋势池专用币) — 覆盖高流动性主流币
+    // ═══ 完全去池: 全市场每个币都实时尝试趋势信号(不再限定固定趋势池), 无信号才走布林 ═══
     this.COIN_POOL = [
       'BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT','HYPEUSDT','TAOUSDT','BCHUSDT','ENAUSDT','1000SHIBUSDT','AAVEUSDT','ONDOUSDT','TRUMPUSDT','XLMUSDT','1000BONKUSDT','LITUSDT'
     ];
+    // ═══ 完全去池: 趋势池=全市场候选, 每个币都实时尝试趋势信号(不再限定固定趋势池) ═══
+    this.TREND_POOL = [...this.COIN_POOL];
+    this.MA7_POOL = [...this.COIN_POOL];   // MA7趋势池=全市场(每币实时判断)
+    this.V4_POOL = [...this.COIN_POOL];    // V4趋势池=全市场(每币实时判断)
   }
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[Quant] ${ts} ${m}`); }
   _isAdmin(w) { return this.ADMIN_WALLETS.some(a => a.toLowerCase() === (w||'').toLowerCase()); }
@@ -669,7 +691,8 @@ class QuantAgentManager {
             const cur = v4e.entrySignal(nowObj);
             curCan = cur.signal === 'LONG' || cur.signal === 'SHORT';
           } catch(e){}
-          if (v4 && v4.n > 0 && v4.ret > 0 && curSig !== 'FLAT' && curCan) trendV4Pool.push({sym, ret: v4.ret, n: v4.n, rate: v4.rate, cur: curSig});
+          // ═══ 放宽V4进池: 日线回测有样本即可(不要求严格盈利/当前出震荡信号), 让V4能选出币开仓 ═══
+          if (v4 && v4.n >= 2 && curSig !== 'FLAT') trendV4Pool.push({sym, ret: Math.max(v4.ret, -1), n: v4.n, rate: v4.rate, cur: curSig});
         }
         const bo = this._btBoll(kl);   // 用最新截图版振荡(BollingerStrategy)真实回测
         if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret, boRet: bo.ret});   // 优胜劣汰: 回测盈利才进震荡池, 亏损剔除
@@ -694,12 +717,12 @@ class QuantAgentManager {
       const newBoll = bollAll.slice(0,25);
       // 放宽: 只要趋势池或布林池任一有候选就更新(m原先要求三者全非空)
       if ((newMA7.length>=1 && newBoll.length>=1) || (newV4.length>=1 && newBoll.length>=1)) {
-        this.MA7_POOL = newMA7;
-        this.V4_POOL = newV4;
-        this.TREND_POOL = [...new Set([...newMA7, ...newV4])];   // 趋势总池(兼容)
-        this.BOLLINGER_POOL = newBoll;
-        // 布林带覆盖全市场: COIN_POOL = 所有候选币(布林不再受限选币池, 全市场扫触轨机会)
+        // ═══ 完全去池: 趋势/布林都=全市场候选, 每个币实时判断策略(不再缩成小池) ═══
         this.COIN_POOL = [...CANDIDATES];
+        this.TREND_POOL = [...this.COIN_POOL];
+        this.MA7_POOL = [...this.COIN_POOL];
+        this.V4_POOL = [...this.COIN_POOL];
+        this.BOLLINGER_POOL = [...this.COIN_POOL];
         // 排名靠前子集(开仓限): 各前5只(按回测性能), 池内排名靠后才开仓
         this.trendTop = [...new Set([...newMA7, ...newV4])].slice(0,5);
         this.bollTop = newBoll.slice(0,5);
