@@ -11,6 +11,7 @@ const { decrypt } = require('../core/crypto-utils');
 const { FeatureEngineer, toArray } = require('./featurer');
 const { MarketClassifier } = require('./market-classifier');
 const { TrendStrategy } = require('./trend-strategy');  // MA趋势引擎(规格版)
+const { TrendBandStrategy } = require('./trend-band-strategy'); // ✱真趋势波段引擎(4h, 已验证胜率48%/每笔+2.8%)
 const { TradeExecutionCore } = require('./execution-core');
 const { TrendStrategyV4 } = require('./trend-strategy-v4'); // 阿奇日线大周期独立趋势引擎
 const { BollingerStrategy } = require('./bollinger-strategy');
@@ -31,6 +32,7 @@ class QuantAgent {
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
     this.trend = new TrendStrategy();  // MA多空排列趋势引擎(纯MA7, 回测一致无DIF)
+    this.trendBand = new TrendBandStrategy({ period: '4h' });  // ✱真趋势波段引擎(4h, 主策略)
     this.trendV4 = new TrendStrategyV4({ minBars: 60 });  // 阿奇日线大周期趋势引擎(实盘测试用)
     this.boll = new BollingerStrategy();      // 新震荡·布林带策略
     this.brain = new BrainCore();             // 大脑中枢(切换+自学习+NN)
@@ -39,6 +41,7 @@ class QuantAgent {
     this.balance = 0;
     this.totalWalletBalance = 0;   // 币安合约账户总余额(合约总资金)
     this.positions = {};       // symbol → {side, qty, entryPrice, leverage, _peak, strategy}
+    this._posStrategy = {};    // symbol → 持久化开仓策略映射(重启恢复用, 防误判接管)
     this.closedHistory = [];
     this._stratLock = {};      // symbol → 锁定的策略(trend/bollinger), 防双引擎互博
     this.pauseOpen = false;
@@ -47,12 +50,15 @@ class QuantAgent {
     this._logTag = wallet.slice(0,10);
     // 状态文件路径: 每个用户独立持久化(closedHistory/balance), 重启不丢
     try { this._stateFile = path.join(__dirname, '..', 'data', 'users', wallet, 'quant-state.json'); fs.mkdirSync(path.dirname(this._stateFile), { recursive: true }); } catch(e){ this._stateFile = null; }
+    this._loadPosStrategy();   // ═══ 重启后恢复各持仓原本的开仓策略(防布林仓被误判为trend用EMA砍掉) ═══
     this._loadState();
   }
 
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
-  // 状态持久化: closedHistory/balance 保存到文件, 重启不丢失(交易/胜率/已实现盈亏)
-  _saveState() { try { fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance }, null, 1)); } catch(e){} }
+  // ═══ 持仓策略持久化: symbol → 开仓策略(ma7/v4/bollinger). 重启后由原策略继续管理, 不再靠inTrend误判接管 ═══
+  _saveState() { try { const posMap = {}; for (const [sym, p] of Object.entries(this.positions)) { if (p && p.strategy) posMap[sym] = { strategy: p.strategy, side: p.side, qty: p.qty, entryPrice: p.entryPrice, leverage: p.leverage }; } fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance, positions: posMap }, null, 1)); } catch(e){} }
+  // 重启后恢复持仓策略归属(只存策略映射, 不直接重建持仓, 真正head由币安同步)
+  _loadPosStrategy() { try { if (fs.existsSync(this._stateFile)) { const st = JSON.parse(fs.readFileSync(this._stateFile,'utf8')); if (st && st.positions) this._posStrategy = st.positions; } } catch(e){} this._posStrategy = this._posStrategy || {}; }
   _loadState() { try { if (fs.existsSync(this._stateFile)) { const st = JSON.parse(fs.readFileSync(this._stateFile,'utf8')); if (Array.isArray(st.closedHistory)) {
     // 合理性过滤: 单笔|pnl|超本金1.5倍(物理不可能, 旧_estimatePnl公式污染) → 丢弃
     const bal = typeof st.balance==='number' && st.balance>0 ? st.balance : this.balance;
@@ -92,9 +98,18 @@ class QuantAgent {
         // 币安有仓但引擎没记录 → 载入(接管)
         if (!this.positions[sym]) {
           const lev = parseInt(p.leverage) || 5;
-          // ═══ 接管仓归属判定: 币在趋势池→trend; 否则→bollinger(布林仓不再错归趋势, 保证趋势/震荡管理独立) ═══
+          // ═══ 接管仓归属判定: 优先用持久化的开仓策略(布林仓永远是布林), 防重启后布林仓被误判为trend而被EMA砍掉 ═══
+          // 持久化映射来自 _posStrategy (开仓时写入, 重启从quant-state.json加载)
+          const persisted = this._posStrategy[sym];
           const inTrend = (this.MA7_POOL && this.MA7_POOL.includes(sym)) || (this.V4_POOL && this.V4_POOL.includes(sym));
-          const strat = inTrend ? 'trend' : 'bollinger';
+          let strat;
+          if (persisted && persisted.strategy) {
+            strat = persisted.strategy;                                // 原策略继续管理(ma7/v4/bollinger)
+          } else {
+            strat = inTrend ? 'trend' : 'bollinger';                   // 无记录才兜底猜(历史存量仓)
+          }
+          // 将兜底'trend'归一: 趋势接管统一为ma7(管理分支一致), 且仅当确无持久化记录才允许
+          if (strat === 'trend' && !persisted) strat = 'ma7';
           this.positions[sym] = {
             symbol: sym, side, qty: Math.abs(amt), entryPrice: +p.entryPrice,
             currentPrice: +p.markPrice, margin: Math.abs(+p.entryPrice)*(+p.markPrice)/lev,
@@ -102,6 +117,9 @@ class QuantAgent {
             strategy: strat,
             _managed: true                                // 标记为接管仓, 开仓配额判断时排除
           };
+          // 同步回持久化, 防止重复误判
+          this._posStrategy[sym] = { strategy: strat, side, qty: Math.abs(amt), entryPrice: +p.entryPrice, leverage: lev };
+          this._saveState();
         } else {
           // 已有记录, 更新价格/数量
           this.positions[sym].currentPrice = +p.markPrice;
@@ -191,9 +209,9 @@ class QuantAgent {
             sig = this.trendV4.entrySignal(dObj);
           }
         } else {
-          // ═══ 选币用5m(最优方案): EMA(7,25,99) 5m找入场信号 ═══
-          kl5 = await this.api.getKlines(symbol, '5m', 200).catch(() => null);
-          sig = this.trend.entrySignal(kl5 || kl, decision.market.trendDir);
+          // ═══ 真趋势波段(4h): EMA排列+破60前高低+动量确认, 宽止损/高止盈 ═══
+          kl5 = await this.api.getKlines(symbol, '4h', 300).catch(() => null);
+          sig = this.trendBand.entrySignal(kl5 || kl);
         }
         if (!sig || sig.signal === 'NONE') {
           // ═══ 完全去池: 趋势5m无信号 → 试V4日线 → 再无则试布林(每币实时判断) ═══
@@ -210,14 +228,19 @@ class QuantAgent {
           if (v4sig && (v4sig.signal==='LONG'||v4sig.signal==='SHORT')) {
             const v4price = +toArray(kl)[kl.length-1][3];
             const v4gate = this._marketGate('trend', kl);
-            if (!v4gate) {
+            // ═══ V4也加大级别方向闸门(防开反) ═══
+            const v4align = await this._trendAlignGate(symbol, v4sig.signal, kl).catch(() => null);
+            if (!v4gate && !v4align) {
               const v4bs = this.trendV4.positionSize(this.balance, v4sig.signal, 0.2);
               const v4r = await this.executor.executeOrder(v4sig, { symbol, side:v4sig.signal, notional:v4bs.notional, leverage:5, precisionMap:pm, price:v4price, balance:this.balance });
-              if (v4r.success) { this.positions[symbol] = { side:v4sig.signal, qty:v4r.qty, entryPrice:v4price, leverage:5, strategy:'v4', _peak:v4price, openTime:Date.now() }; this._stratLock[symbol]='v4'; this._log(`🔥 ${symbol} V4日线${v4sig.signal}开仓(v4)`); }
+              if (v4r.success) { this.positions[symbol] = { side:v4sig.signal, qty:v4r.qty, entryPrice:v4price, leverage:5, strategy:'v4', _peak:v4price, openTime:Date.now() }; this._stratLock[symbol]='v4'; this._saveState(); this._log(`🔥 ${symbol} V4日线${v4sig.signal}开仓(v4)`); }
               continue;
             }
+            if (this.isAdmin && v4align) this._log(`🚫 ${symbol} V4反大趋势禁开: ${v4align}`);
           }
-          this._log(`🔍 ${symbol} ${stg}信号NONE,试布林`);
+          this._log(`🔍 ${symbol} ${stg}信号NONE,试布林(布林已停用, 跳过)`);
+          /// ⛔ 布林已停用(用户决定只开新趋势策略): 不再开布林仓
+          if (false) {
           if (countB < STRAT_MAX) {
             try {
               const bkl = await this.api.getKlines(symbol, '5m', 120).catch(()=>null);
@@ -228,32 +251,57 @@ class QuantAgent {
                   if (esig.signal==='LONG'||esig.signal==='SHORT') {
                     const bnotional = Math.max(20, this.balance*0.15*3);
                     const rr = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bnotional, leverage: 3, precisionMap: pm, price, balance: this.balance });
-                    if (rr.success) { this.positions[symbol] = { side: esig.signal, qty: rr.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: -1, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._log(`🔥 ${symbol} 趋势NONE→布林触轨${esig.signal}开仓`); }
+                    if (rr.success) { this.positions[symbol] = { side: esig.signal, qty: rr.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: -1, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 趋势NONE→布林触轨${esig.signal}开仓`); }
                   }
                 }
               }
             } catch(e){}
+          }
           }
           continue;
         }
         // ═══ 实时市场健康闸门: 当下ADX/ATR校验(根治假波动币, 趋势只碰真单边) ═══
         const gate = this._marketGate('trend', kl5 || kl);
         if (gate) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}禁开: ${gate}`); continue; }
-        // ═══ 贴EMA99禁开仓: 价格距EMA99太近(悬崖边)不开, 避免开仓即被破EMA99秒止损 ═══
-        const nearLine = this.trend.nearEMA99(kl5 || kl, price, 0.5);
-        if (nearLine) { this._log(`🚫 ${symbol} ${stg}禁开: ${nearLine}`); continue; }
+        // ═══ 大级别方向闸门(EMA200同向): 防EMA及V4把趋势开反(方案2只留EMA200, 保留更多开仓且防逆势) ═══
+        if ((stg === 'ma7' || stg === 'v4') && sig && (sig.signal === 'LONG' || sig.signal === 'SHORT')) {
+          const alignBlock = await this._trendAlignGate(symbol, sig.signal, stg === 'ma7' ? (kl5 || kl) : kl).catch(() => null);
+          if (alignBlock) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}反大趋势禁开: ${alignBlock}`); continue; }
+        }
+        // ═══ 贴EMA99禁开仓: 仅旧EMA策略(V4)用; 真趋势波段(mast)用ATR宽止损不用贴线 ═══
+        if (stg === 'v4') {
+          const nearLine = this.trend.nearEMA99(kl5 || kl, price, 0.5);
+          if (nearLine) { this._log(`🚫 ${symbol} ${stg}禁开: ${nearLine}`); continue; }
+        }
         this._log(`🔍 ${symbol} ${stg}信号=${sig.signal} 准备开仓`);
-        // 仓位: V4日线30%/MA7 20%
+        // 仓位: V4日线30% / 真趋势波段(4h) 用波动率目标(单笔风险≈2%本金)
         const posPct = stg === 'v4' ? 0.30 : 0.20;
-        const eng = stg === 'v4' ? this.trendV4 : this.trend;
-        const bs = eng.positionSize(this.balance, sig.signal, posPct);
+        // ── 真趋势波段/MA7: 用 ATR 波动率目标仓位(单笔风险固定占本金2%) ──
+        let bs, lev;
+        if (stg === 'v4') {
+          const eng = this.trendV4;
+          bs = eng.positionSize(this.balance, sig.signal, posPct);
+          lev = 5;
+        } else {
+          // 真趋势波段: risk = 2%本金 / (2.5ATR作为止损距离), 再定投入本金
+          const atr = sig.atr;
+          let notional;
+          if (atr && atr > 0) {
+            const risk = this.balance * 0.02;            // 单笔风险=2%本金
+            const stopDist = this.trendBand.stopMul * atr; // 止损距离USD
+            notional = Math.max(this.balance * 0.2, Math.min(this.balance * 0.5, risk / (stopDist / (price || 1)) ));
+          } else {
+            notional = this.balance * 0.2;
+          }
+          bs = { notional };
+          lev = 3;
+        }
         if ((this.balance || 0) < 100) continue;
         const stgHeld = Object.values(this.positions).filter(p=>p.strategy===stg).length;
         const maxPerStg = 3;  // 三策略统一每策略≤3
         if (stgHeld >= maxPerStg) continue;
-        const lev = stg === 'v4' ? 5 : 3;
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: lev, precisionMap: pm, price, balance: this.balance });
-        if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: lev, strategy: stg, _t: stf, _peak: price, openTime: Date.now() }; this._stratLock[symbol]=stg; }
+        if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: lev, strategy: stg, _t: '4h', _peak: price, _best: price, openTime: Date.now() }; this._stratLock[symbol]=stg; this._saveState(); }
       } else if (strat === 'bollinger') {
         // 多币并仓: 震荡池全部币可开(不限bollTop前5, 提高资金使用)
         if (this.pauseBoll) continue;   // 暂停震荡(布林)策略开仓
@@ -272,7 +320,7 @@ class QuantAgent {
         if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
           const bs = { notional: Math.max(20, this.balance*0.15*3), margin: Math.max(20,this.balance*0.15*3)/3, leverage: 3 };
           const r = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bs.notional, leverage: 3, precisionMap: pm, price, balance: this.balance });
-          if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; }
+          if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); }
         }
       }
       } catch(e) { if (this.isAdmin) this._log(`⚠️ ${symbol} 扫描出错(跳过): ${e.message}`); }
@@ -304,16 +352,16 @@ class QuantAgent {
           }
         }
         if (pos.strategy === 'ma7') {
-          // EMA(7,25,99) 大数据优选出场: Chandelier吊灯(止盈) + ATR结构止损 + 保本
-          // 回测: 旧EMA99止损+ATR移动止盈 胜率19%亏损, 新方案胜率33%亏损减半
-          const mkl = await this.api.getKlines(symbol, '15m', 120).catch(() => null);
+          // ✱真趋势波段(4h): 宽止损(2.5ATR) + 高止盈(5ATR) + 移动止盈锁盈
+          const mkl = await this.api.getKlines(symbol, pos._t || '4h', 200).catch(() => null);
           if (mkl && mkl.length >= 40) {
-            const d15 = toArray(mkl);
-            const closes = d15.map(k => +k[3]);
+            const mArr = mkl.map(k => ({ open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: k[5] }));
+            const closes = mArr.map(k => +k.close);
             const price = closes[closes.length - 1];
-            // 去掉吊灯: 改用EMA均线反转止盈 + EMA99/固定%止损
-            const em = this.trend.emaExit(pos, price, closes);
-            if (em.action === 'CLOSE') closeReason = em.reason;
+            const highs = mArr.map(k => +k.high);
+            const lows = mArr.map(k => +k.low);
+            const mg = this.trendBand.manage(pos, price, closes, highs, lows);
+            if (mg.action === 'CLOSE') closeReason = mg.reason;
           }
         }
         if (pos.strategy === 'bollinger') {
@@ -507,6 +555,27 @@ class QuantAgent {
       if (atrPct < 0.05) return `市场闸门: ATR波动${atrPct.toFixed(2)}%<0.05%太窄(没来回)禁开`;
       if (atrPct > 0.8) return `市场闸门: ATR波动${atrPct.toFixed(2)}%>0.8%太剧烈禁开`;
       return null;
+    } catch (e) { return null; }
+  }
+
+  // ═══ 大级别方向闸门(只留 EMA200 同向, 方案2: 保留更多开仓+防逆势): 返回禁开原因字符串(有值=禁开), null=通过 ═══
+  // 回测: 只EMA200 开仓-12%(983→863)亏损-15%；双闸门砍38%(983→612)但亏损更多。用户选方案2只EMA200。
+  async _trendAlignGate(symbol, sigSignal, klSmall) {
+    try {
+      // ── EMA200 同向闸门: LONG需价>=EMA200, SHORT需价<=EMA200 ──
+      if (klSmall && klSmall.length >= 210) {
+        const arr = toArray(klSmall);
+        const closes = arr.map(k => +k[3]);
+        const price = closes[closes.length - 1];
+        const e200 = this.trend._ema(closes, 200);
+        if (e200 != null) {
+          const wantsLong = sigSignal === 'LONG';
+          const above200 = price >= e200;
+          if (wantsLong && !above200) return `逆EMA200(价${price.toFixed(4)}<EMA200 ${e200.toFixed(4)})禁多`;
+          if (!wantsLong && above200) return `逆EMA200(价${price.toFixed(4)}>EMA200 ${e200.toFixed(4)})禁空`;
+        }
+      }
+      return null;   // 通过
     } catch (e) { return null; }
   }
 }

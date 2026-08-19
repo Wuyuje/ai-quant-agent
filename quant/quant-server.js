@@ -137,12 +137,12 @@ class QuantServer {
     // 绑定多用户智能体管理器(只展示状态, 默认停开仓, 不实盘)
     try {
       const mgr = new QuantAgentManager({ apiKey: APIKEY, apiSecret: APISECRET });
-      mgr.pauseOpen = false;            // 恢复开仓(用户要求继续开仓测试)
-      mgr.pauseTrend = false;           // 放开趋势/EMA开仓
-      mgr.pauseBoll = false;            // 放开震荡开仓
+      mgr.pauseOpen = false;            // ✅ 放开开仓(用户要求新策略实盘)
+      mgr.pauseTrend = false;           // ✅ 放开趋势/真趋势波段开仓
+      mgr.pauseBoll = true;             // ⛔ 布林保持停用(负期望, 用户决定不用)
       mgr.start();
       global.__quantAgents = mgr;
-      console.log('[QuantServer] 🤖 多用户智能体管理器已挂载(展示状态, 停开仓)');
+      console.log('[QuantServer] 🤖 多用户管理器已挂载(真趋势波段实盘, 布林停用)');
     } catch(e){ console.log('[QuantServer] ⚠️ 智能体管理器挂载失败:', e.message); }
     // 等待首次市场轮询填缓存, 然后再listen(确保页面首次打开就有数据)
     await this._pollMarket().catch(()=>{});

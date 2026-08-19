@@ -23,8 +23,8 @@ class BollingerStrategy {
     this.tpTriggerPct = 2.0;          // 止盈前提: 浮盈≥2%持仓资金
     this.volSpikeRatio = 1.8;         // 放量: 成交量>20周期均量×1.8
     this.atrTrail = 0.3;              // 放量ATR跟踪止盈倍数(0.3ATR)
-    this.lossKillPct = 20;            // 前置风控(截图): 单K浮亏≥单笔本金20%全平
-    this.finalLossPct = 70;           // 终极风控(截图): 总浮亏≥持仓金额70%全平
+    this.lossKillPct = 8;             // D方案前置风控: 单K浮亏≥8%本金全平(原20%) — 斩断INJ式单K暴跌大亏
+    this.finalLossPct = 40;           // D方案终极风控: 总浮亏≥40%本金全平(原70%) — 收紧尾部风险
     this.maxAddRounds = 3;            // 补仓3次
     this.addPcts = [0.50, 0.30, 0.20]; // 补仓比例 50%/30%/20%
     this.addGapBars = 3;              // 补仓: 布林收口后间隔3根K线
