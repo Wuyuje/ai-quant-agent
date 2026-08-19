@@ -404,15 +404,18 @@ class QuantAgent {
         }
 
         if (pos.strategy === 'trend' || (pos.strategy === 'ma7' && pos._managed)) {
-          // 接管/存量仓: 用ATR结构止损(不用EMA99), 避免EMA99距开仓价太近被秒损(布林仓被接管时也不误杀)
-          const mkl = await this.api.getKlines(symbol, '15m', 150).catch(() => null);
+          // ✱接管/存量仓: 用真趋势波段(4h) 宽ATR止损/高止盈/移动止盈 统一管理,
+          // 不再用旧EMA7/25即时反转(那会一秒砍掉刚接管的仓). 布林接管仓也不误杀。
+          const tf = pos._t || '4h';
+          const mkl = await this.api.getKlines(symbol, tf, 200).catch(() => null);
           if (mkl && mkl.length >= 40) {
-            const mObj = toArray(mkl);
-            const closes = mObj.map(k => +k[3]);
+            const mArr = mkl.map(k => ({ open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: k[5] }));
+            const closes = mArr.map(k => +k.close);
             const price = closes[closes.length - 1];
-            // 去掉吊灯: 改用EMA均线反转止盈 + EMA99/固定%止损
-            const em = this.trend.emaExit(pos, price, closes);
-            if (em.action === 'CLOSE') closeReason = em.reason;
+            const highs = mArr.map(k => +k.high);
+            const lows = mArr.map(k => +k.low);
+            const mg = this.trendBand.manage(pos, price, closes, highs, lows);
+            if (mg.action === 'CLOSE') closeReason = mg.reason;
           }
         }
 
