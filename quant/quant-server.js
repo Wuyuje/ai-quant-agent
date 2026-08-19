@@ -137,8 +137,8 @@ class QuantServer {
     // 绑定多用户智能体管理器(只展示状态, 默认停开仓, 不实盘)
     try {
       const mgr = new QuantAgentManager({ apiKey: APIKEY, apiSecret: APISECRET });
-      mgr.pauseOpen = false;            // ✅ 放开开仓(用户要求新策略实盘)
-      mgr.pauseTrend = false;           // ✅ 放开趋势/真趋势波段开仓
+      mgr.pauseOpen = false;            // ✅ 放开开仓(真趋势波段实盘, 所有用户正常使用)
+      mgr.pauseTrend = false;           // ✅ 放开真趋势波段开仓
       mgr.pauseBoll = true;             // ⛔ 布林保持停用(负期望, 用户决定不用)
       mgr.start();
       global.__quantAgents = mgr;
