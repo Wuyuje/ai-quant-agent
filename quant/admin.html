@@ -76,8 +76,8 @@ button.ghost{background:#21262d}
    <table><thead><tr><th>用户</th><th>类型</th><th>资金</th><th>总资金</th><th>持仓</th><th>交易</th><th>胜率</th><th>已实现盈亏</th></tr></thead>
    <tbody id="agentRows"><tr><td colspan="8" class="muted">加载中...</td></tr></tbody></table>
   </div>
-  <div class="card" style="margin-top:14px"><h3>📊 三策略独立统计（MA7大道至简 · V4阿奇日线 · 布林震荡）</h3>
-   <table><thead><tr><th>用户</th><th colspan="3">🔵 MA7趋势</th><th colspan="3">🟣 V4日线趋势</th><th colspan="3">🟢 布林震荡</th><th>平仓次</th></tr><tr><th></th><th>交易</th><th>胜率</th><th>已实现</th><th>交易</th><th>胜率</th><th>已实现</th><th>交易</th><th>胜率</th><th>已实现</th><th></th></tr></thead>
+  <div class="card" style="margin-top:14px"><h3>📊 策略独立统计（真趋势波段MA7 · 布林震荡）</h3>
+   <table><thead><tr><th>用户</th><th colspan="3">🔵 真趋势波段(MA7)</th><th colspan="3">🟢 布林震荡</th><th>平仓次</th></tr><tr><th></th><th>交易</th><th>胜率</th><th>已实现</th><th>交易</th><th>胜率</th><th>已实现</th><th></th></tr></thead>
    <tbody id="strategyPnlRows"><tr><td colspan="11" class="muted">加载中...</td></tr></tbody></table>
   </div>
   <div class="card" style="margin-top:14px"><h3>🕐 每次平仓记录（永久保存，两策略明细中继）</h3>
@@ -127,7 +127,7 @@ async function loadAgents(){const d=await api('/api/quant/agents');const rows=$(
 rows.innerHTML=h||'<tr><td colspan="8">智能体管理器未运行（仅看盘模式）</td></tr>';
   // 三策略独立统计 + 每次平仓记录表
   const spEl=document.getElementById('strategyPnlRows');
-  if(spEl){let sh='';for(const u of (d.agents||[])){const sp=u.strategyPnl||{};const M=sp.ma7||{},V=sp.v4||{},B=sp.bollinger||{};const role=u.isAdmin?'管理员':(u.isWhitelist?'白名单':'普通');sh+='<tr><td>'+u.wallet.slice(0,12)+'·'+role+'</td>'+'<td class="b">'+M.trades+'</td><td>'+M.winRate+'%</td><td class="'+((M.realizedPnl||0)>=0?'g':'r')+'">$'+(M.realizedPnl||0).toFixed(2)+'</td>'+'<td class="b">'+V.trades+'</td><td>'+V.winRate+'%</td><td class="'+((V.realizedPnl||0)>=0?'g':'r')+'">$'+(V.realizedPnl||0).toFixed(2)+'</td>'+'<td class="b">'+B.trades+'</td><td>'+B.winRate+'%</td><td class="'+((B.realizedPnl||0)>=0?'g':'r')+'">$'+(B.realizedPnl||0).toFixed(2)+'</td>'+'<td>'+((u.closedTrades||[]).length)+'</td></tr>';}spEl.innerHTML=sh||'<tr><td colspan="11" class="muted">暂无平仓记录</td></tr>';}
+  if(spEl){let sh='';for(const u of (d.agents||[])){const sp=u.strategyPnl||{};const M=sp.ma7||{},B=sp.bollinger||{};const role=u.isAdmin?'管理员':(u.isWhitelist?'白名单':'普通');sh+='<tr><td>'+u.wallet.slice(0,12)+'·'+role+'</td>'+'<td class="b">'+M.trades+'</td><td>'+M.winRate+'%</td><td class="'+((M.realizedPnl||0)>=0?'g':'r')+'">$'+(M.realizedPnl||0).toFixed(2)+'</td>'+'<td class="b">'+B.trades+'</td><td>'+B.winRate+'%</td><td class="'+((B.realizedPnl||0)>=0?'g':'r')+'">$'+(B.realizedPnl||0).toFixed(2)+'</td>'+'<td>'+((u.closedTrades||[]).length)+'</td></tr>';}spEl.innerHTML=sh||'<tr><td colspan="7" class="muted">暂无平仓记录</td></tr>';}
   // 每次平仓明细表-按用户分组(下拉), 管理员/白名单在上, 每用户最近10只币
   const ctEl=document.getElementById('closedTradeRows');
   if(ctEl){
@@ -145,7 +145,7 @@ rows.innerHTML=h||'<tr><td colspan="8">智能体管理器未运行（仅看盘�
       ch+='<td colspan="7">▸ '+(role==='normal'?'':'🟢 ')+u.wallet.slice(0,14)+' · '+roleName+' （点开查看最近'+trades.length+'笔平仓）</td></tr>';
       // 该用户的平仓明细(默认收起)
       ch+='<tbody id="'+uid+'" style="display:none">';
-      for(const c of trades){const cc=(c.pnl||0)>=0?'g':'r';const sname={'ma7':'MA7','v4':'V4','bollinger':'布林','trend':'趋势'}[c.strat]||(c.strat||'?');ch+='<tr><td>'+u.wallet.slice(0,10)+'</td><td>'+sname+'</td><td>'+c.symbol+'</td><td>'+(c.side==='LONG'?'多':'空')+'</td><td class="'+cc+'">$'+(c.pnl||0).toFixed(2)+'</td><td>'+(c.reason||'').split('(')[0]+'</td><td>'+new Date(c.ts).toLocaleString('zh-CN')+'</td></tr>';}
+      for(const c of trades){const cc=(c.pnl||0)>=0?'g':'r';const sname={'ma7':'真趋势波段','bollinger':'布林','trend':'趋势'}[c.strat]||(c.strat||'?');ch+='<tr><td>'+u.wallet.slice(0,10)+'</td><td>'+sname+'</td><td>'+c.symbol+'</td><td>'+(c.side==='LONG'?'多':'空')+'</td><td class="'+cc+'">$'+(c.pnl||0).toFixed(2)+'</td><td>'+(c.reason||'').split('(')[0]+'</td><td>'+new Date(c.ts).toLocaleString('zh-CN')+'</td></tr>';}
       ch+='</tbody>';
     }
     ctEl.innerHTML=ch||'<tr><td colspan="7" class="muted">暂无平仓记录</td></tr>';
