@@ -31,9 +31,9 @@ class TrendBandStrategy {
     this.ema50N = opts.ema50N || 50;
     this.momentumPct = opts.momentumPct || 0.01;   // 1%
     // 出场
-    this.stopMul = opts.stopMul || 1.0;   // 止损1.0ATR(调紧: 从2.5收紧到1.0)
-    this.tpMul = opts.tpMul || 5.0;       // 止盈5ATR
-    this.trailMul = opts.trailMul || 2.0; // 移动止盈回撤2ATR锁盈
+    this.stopMul = opts.stopMul || 0.8;   // 止损0.8ATR(尽快止损保护本金)
+    this.tpMul = opts.tpMul || 3.0;       // 止盈3ATR(尽快锁利,不再等5ATR)
+    this.trailMul = opts.trailMul || 1.0; // 移动止盈回撤1ATR锁盈(核心: 最小化利润回吐)
     this.maxBars = opts.maxBars || 400;   // 单笔最大持仓bar
     this.minBars = opts.minBars || 200;
   }
