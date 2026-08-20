@@ -53,6 +53,33 @@ class QuantAgent {
     this._loadState();
   }
 
+  // ═══ 自适应资金/杠杆/持仓配置器: 按用户余额自动计算, 不硬编码 ═══
+  // 所有用户(普通/白名单/管理员)统一由引擎自动算, 不需要人工配置
+  // 设计原则: 小余额高杠杆少仓位盘活资金+防爆, 大余额低杠杆多仓位稳收益
+  _riskProfile(balance) {
+    const bal = balance || this.balance || 0;
+    // ═══ 余额分级 ═══
+    // 极小户(<$50): 不交易(最低门槛, 手续费就吃光)
+    // 小户($50~$200): 2仓/5x杠杆/每仓20%本金 — 高杠杆盘活, 少仓位集中
+    // 中户($200~$500): 3仓/4x杠杆/每仓15%本金 — 均衡
+    // 大户($500~$2000): 4仓/3x杠杆/每仓12%本金 — 稳健
+    // 超大户(>$2000): 5仓/2x杠杆/每仓10%本金 — 资金充裕, 低杠杆控风险
+    let maxPositions, maxPerStrategy, leverage, posPct, riskPct;
+    if (bal < 50) {
+      maxPositions = 0; maxPerStrategy = 0; leverage = 1; posPct = 0; riskPct = 0;
+    } else if (bal < 200) {
+      maxPositions = 2; maxPerStrategy = 2; leverage = 5; posPct = 0.20; riskPct = 0.02;
+    } else if (bal < 500) {
+      maxPositions = 3; maxPerStrategy = 3; leverage = 4; posPct = 0.15; riskPct = 0.02;
+    } else if (bal < 2000) {
+      maxPositions = 4; maxPerStrategy = 4; leverage = 3; posPct = 0.12; riskPct = 0.02;
+    } else {
+      maxPositions = 5; maxPerStrategy = 5; leverage = 2; posPct = 0.10; riskPct = 0.015;
+    }
+    this._log(`📊 风控画像: 余额$${bal.toFixed(0)} → ${maxPositions}仓/${leverage}x杠杆/每仓${(posPct*100).toFixed(0)}%本金/风险${(riskPct*100).toFixed(1)}%`);
+    return { maxPositions, maxPerStrategy, leverage, posPct, riskPct, balance: bal };
+  }
+
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
   // ═══ 持仓策略持久化: symbol → 开仓策略(ma7/v4/bollinger). 重启后由原策略继续管理, 不再靠inTrend误判接管 ═══
   _saveState() { try { const posMap = {}; for (const [sym, p] of Object.entries(this.positions)) { if (p && p.strategy) posMap[sym] = { strategy: p.strategy, side: p.side, qty: p.qty, entryPrice: p.entryPrice, leverage: p.leverage }; } fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance, positions: posMap }, null, 1)); } catch(e){} }
@@ -131,6 +158,23 @@ class QuantAgent {
       for (const sym of Object.keys(this.positions)) {
         if (!realSyms.has(sym)) { delete this.positions[sym]; delete this._stratLock[sym]; }
       }
+
+      // ═══ 币安真实已实现盈亏(30天): 缓存每5分钟拉一次, 避免频繁命中币安限速 ═══
+      // 仪表盘显示这个值, 与币安App实时同步(不会被引擎内部closedHistory遗漏) ═══
+      if (!this._pnlCache || Date.now() - this._pnlCache.t > 300000) {
+        try {
+          const start = Date.now() - 30 * 86400000;
+          const inc = await this.api.getIncome(start, Date.now(), 'REALIZED_PNL').catch(() => null);
+          const arr = Array.isArray(inc) ? inc : [];
+          const total = arr.reduce((s, i) => s + (+i.income || 0), 0);
+          // 也统计交易手续费(COMMISSION)做综合成本参考
+          const comm = await this.api.getIncome(start, Date.now(), 'COMMISSION').catch(() => null);
+          const commArr = Array.isArray(comm) ? comm : [];
+          const fee = commArr.reduce((s, i) => s + (+i.income || 0), 0);
+          this._realizedPnl30d = { total: +total.toFixed(2), trades: arr.length, commission: +fee.toFixed(2), t: Date.now() };
+          this._pnlCache = { t: Date.now() };
+        } catch (e) { }
+      }
     } catch(e){}
   }
 
@@ -182,7 +226,10 @@ class QuantAgent {
       const countV = Object.values(this.positions).filter(p => p.strategy === 'v4').length;                                              // V4
       const countB = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;                                        // 布林
       const totalCount = Object.keys(this.positions).length;
-      const STRAT_MAX = 3, MAX_TOTAL = 9;    // 每策略≤3, 总≤9
+      // ═══ 自适应仓位配额(按用户余额自动计算, 不硬编码) ═══
+      const rp = this._riskProfile(this.balance);
+      const STRAT_MAX = rp.maxPerStrategy, MAX_TOTAL = rp.maxPositions;    // 小户2仓/5x, 中户3仓/4x, 大户4仓/3x, 超大户5仓/2x
+      if (MAX_TOTAL === 0) { if (this.isAdmin) this._log(`⏸️ 余额不足$50, 不开仓`); continue; }
       if (totalCount >= MAX_TOTAL) { if (this.isAdmin) this._log(`⏸️ 总持仓已达上限${MAX_TOTAL}, 不再开新仓`); continue; }
       // 按目标策略各自限3
       if (strat === 'trend_ma7' && countM >= STRAT_MAX) { if (this.isAdmin) this._log(`⏸️ EMA趋势仓已达${countM}/${STRAT_MAX}, 未平仓不补`); continue; }
@@ -223,9 +270,9 @@ class QuantAgent {
                 if (og.allowed) {
                   const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
                   if (esig.signal==='LONG'||esig.signal==='SHORT') {
-                    const bnotional = Math.max(20, this.balance*0.15*3);
-                    const rr = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bnotional, leverage: 3, precisionMap: pm, price, balance: this.balance });
-                    if (rr.success) { this.positions[symbol] = { side: esig.signal, qty: rr.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: -1, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 趋势NONE→布林触轨${esig.signal}开仓`); }
+                    const bnotional = Math.max(20, this.balance*rp.posPct*3);
+                    const rr = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bnotional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
+                    if (rr.success) { this.positions[symbol] = { side: esig.signal, qty: rr.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: -1, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 趋势NONE→布林触轨${esig.signal}开仓`); }
                   }
                 }
               }
@@ -244,27 +291,26 @@ class QuantAgent {
         }
         // ═══ 贴EMA99禁开仓: 真趋势波段用ATR宽止损不用贴线; V4已删除 ═══
         this._log(`🔍 ${symbol} ${stg}信号=${sig.signal} 准备开仓`);
-        // 仓位: 真趋势波段(4h) 用波动率目标(单笔风险≈2%本金) — V4已删除
-        const posPct = 0.20;
-        // ── 真趋势波段(MA7): ATR 波动率目标仓位(单笔风险固定占本金2%) ──
-        let bs, lev;
+        // ═══ 仓位: 真趋势波段(4h) 用波动率目标 + 自适应资金配置(按余额算posPct/riskPct/leverage) ═══
+        const posPct = rp.posPct;
+        const lev = rp.leverage;                      // 自适应杠杆(小户5x/中户4x/大户3x/超大户2x)
+        const riskPct = rp.riskPct;                   // 单笔风险占本金比(小/中/大户2%, 超大户1.5%)
+        let bs;
         {
-          // 真趋势波段: risk = 2%本金 / (2.5ATR作为止损距离), 再定投入本金
           const atr = sig.atr;
           let notional;
           if (atr && atr > 0) {
-            const risk = this.balance * 0.02;            // 单笔风险=2%本金
-            const stopDist = this.trendBand.stopMul * atr; // 止损距离USD
-            notional = Math.max(this.balance * 0.2, Math.min(this.balance * 0.5, risk / (stopDist / (price || 1)) ));
+            const risk = this.balance * riskPct;             // 单笔风险=riskPct%本金
+            const stopDist = this.trendBand.stopMul * atr;  // 止损距离USD
+            notional = Math.max(this.balance * posPct, Math.min(this.balance * (posPct*4), risk / (stopDist / (price || 1)) ));
           } else {
-            notional = this.balance * 0.2;
+            notional = this.balance * posPct;
           }
           bs = { notional };
-          lev = 3;
         }
-        if ((this.balance || 0) < 100) continue;
+        if ((this.balance || 0) < 50) continue;
         const stgHeld = Object.values(this.positions).filter(p=>p.strategy===stg).length;
-        const maxPerStg = 3;  // 三策略统一每策略≤3
+        const maxPerStg = rp.maxPerStrategy;  // 自适应每策略上限
         if (stgHeld >= maxPerStg) continue;
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: lev, precisionMap: pm, price, balance: this.balance });
         if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: lev, strategy: stg, _t: '4h', _peak: price, _best: price, openTime: Date.now() }; this._stratLock[symbol]=stg; this._saveState(); }
@@ -284,9 +330,9 @@ class QuantAgent {
         /* 严格按用户截图规格: 不额外加 ADX/ATR 外部过滤, 布林自身带宽门禁+触轨信号+双模式止盈已够 */
         const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
         if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
-          const bs = { notional: Math.max(20, this.balance*0.15*3), margin: Math.max(20,this.balance*0.15*3)/3, leverage: 3 };
-          const r = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bs.notional, leverage: 3, precisionMap: pm, price, balance: this.balance });
-          if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: 3, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); }
+          const bs = { notional: Math.max(20, this.balance*rp.posPct*3), margin: Math.max(20,this.balance*rp.posPct*3)/rp.leverage, leverage: rp.leverage };
+          const r = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bs.notional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
+          if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); }
         }
       }
       } catch(e) { if (this.isAdmin) this._log(`⚠️ ${symbol} 扫描出错(跳过): ${e.message}`); }
@@ -459,6 +505,9 @@ class QuantAgent {
       positions: Object.entries(this.positions).map(([s,p]) => ({ symbol: s, side: p.side, strategy: p.strategy, entryPrice: p.entryPrice, currentPrice: p.currentPrice, leverage: p.leverage })),
       trades: this.closedHistory.length, wins, losses: this.closedHistory.length - wins,
       realizedPnl: this.closedHistory.reduce((a,c) => a + (c.pnl||0), 0),
+      // ═══ 币安真实30天已实现盈亏(与币安App实时同步) ═══
+      realizedPnl30d: this._realizedPnl30d ? this._realizedPnl30d.total : null,
+      pnl30dSource: 'binance-income',
       // 双策略独立统计 + 每次平仓记录
       strategyPnl: { ma7: stratStat(ma7T), v4: stratStat(v4T), bollinger: stratStat(bollT) },
       closedTrades: this.closedHistory.slice(0, 100),

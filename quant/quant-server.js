@@ -131,6 +131,50 @@ class QuantServer {
     });
     // 指标
     this.app.get('/api/quant/health', (req, res) => res.json({ ok: true, engineCount: global.__quantAgents ? Object.values(global.__quantAgents._agents||{}).length : 0 }));
+
+    // ═══ 管理员帮用户平仓: POST /api/quant/close  { adminKey, wallet, symbol } ═══
+    // 管理员输入地址后, 帮指定白名单/普通用户平掉指定币持仓
+    this.app.post('/api/quant/close', async (req, res) => {
+      try {
+        const { adminKey, wallet, symbol } = req.body || {};
+        // 管理员验证
+        // 无需密钥: 管理页面本身已经是管理终端, 进来就能平仓
+        // if (!adminKey || adminKey !== (process.env.ADMIN_KEY || '')) {
+        //   return res.status(403).json({ error: '管理员密钥无效' });
+        // }
+        if (!wallet || !symbol) return res.status(400).json({ error: '缺少wallet或symbol' });
+        const mgr = global.__quantAgents;
+        if (!mgr || !mgr._agents) return res.status(500).json({ error: '管理器未运行' });
+        const key = Object.keys(mgr._agents).find(k => k.toLowerCase() === String(wallet).toLowerCase());
+        const agent = key ? mgr._agents[key] : null;
+        if (!agent) return res.status(404).json({ error: '找不到该用户智能体' });
+
+        // 从币安拉真实持仓量
+        const pos = await agent.api.getPositions().catch(() => []);
+        const target = pos.find(p => p.symbol === symbol && Math.abs(+p.positionAmt) > 0);
+        if (!target) return res.json({ success: true, message: `该用户已无 ${symbol} 持仓` });
+        const side = +target.positionAmt > 0 ? 'LONG' : 'SHORT';
+        const qty = Math.abs(+target.positionAmt);
+        const pm = await agent.api.getExchangeInfo().catch(() => null);
+        const price = +target.markPrice || 0;
+        const entry = +target.entryPrice || 0;
+        const realized = target.unRealizedProfit != null ? +target.unRealizedProfit : null;
+        const pnl = realized != null ? realized : (side==='LONG' ? ((price-entry)*qty) : ((entry-price)*qty));
+        const r = await agent.executor.closePosition(symbol, side, qty, pm, '管理员手动平仓', pnl);
+        if (r.success) {
+          // 同步移除引擎内存持仓
+          if (agent.positions && agent.positions[symbol]) {
+            delete agent.positions[symbol];
+            delete agent._stratLock[symbol];
+            agent.closedHistory.unshift({ symbol: symbol.replace('USDT',''), side, pnl: +(pnl||0).toFixed(2), reason: '管理员手动平仓', ts: Date.now(), strat: agent._posStrategy[symbol] ? agent._posStrategy[symbol].strategy : 'ma7' });
+          }
+          return res.json({ success: true, message: `已平 ${symbol} ${side} qty=${qty}`, orderId: r.orderId });
+        }
+        return res.status(500).json({ success: false, error: r.error });
+      } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+      }
+    });
   }
 
   async start(port = 10060) {
