@@ -45,6 +45,10 @@ class QuantAgent {
     this._stratLock = {};      // symbol → 锁定的策略(trend/bollinger), 防双引擎互博
     this.pauseOpen = false;
     this.BLACKLIST = ['ATOMUSDT', 'STXUSDT'];   // ═══ 黑名单(禁区币): ATOM高频秒仓连亏; STX贴EMA99横盘被秒止损, 禁交易 ═══
+    // ═══ 震荡策略风控: 单日熔断 + 单币连续亏损禁开 ═══
+    this._dailyLossTotal = 0;      // 当日已实现盈亏累计(用于熔断)
+    this._dailyLossDate = null;    // 当前累计日期(重置用)
+    this._bollCooldowns = {};      // symbol → 解禁时间戳(单币连续亏3次禁3天)
     this._runCount = 0;
     this._logTag = wallet.slice(0,10);
     // 状态文件路径: 每个用户独立持久化(closedHistory/balance), 重启不丢
@@ -317,11 +321,26 @@ class QuantAgent {
       } else if (strat === 'bollinger') {
         // 多币并仓: 震荡池全部币可开(不限bollTop前5, 提高资金使用)
         if (this.pauseBoll) continue;   // 暂停震荡(布林)策略开仓
+        // ═══ 单日亏损熔断: 当日累计亏损≥5%本金 → 全面暂停开仓, 防极端行情累积 ═══
+        { const today = new Date().toISOString().slice(0,10);
+          if (this._dailyLossDate !== today) { this._dailyLossDate = today; this._dailyLossTotal = 0; }
+          if (Math.abs(this._dailyLossTotal) >= this.balance * 0.05 && this._dailyLossTotal < 0) {
+            if (this.isAdmin) this._log(`⛔ 布林日亏损熔断: 累计$${this._dailyLossTotal.toFixed(2)}≥5%本金$${(this.balance*0.05).toFixed(2)}, 暂停开仓`);
+            continue;
+          }
+        }
+        // ═══ 单币冷却禁开: 近3次亏损则禁开3天 ═══
+        if (this._bollCooldowns[symbol] && Date.now() < this._bollCooldowns[symbol]) {
+          if (this.isAdmin) this._log(`⏸️ ${symbol} 冷却禁开(连续亏损, 解禁时间${new Date(this._bollCooldowns[symbol]).toLocaleTimeString('zh-CN')})`);
+          continue;
+        }
         // 布林带策略(规格): 5分钟K线决策
         const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
         // 截图: 单K±3%毛刺信号作废
         if (this.boll.isSpikeBar(bkl)) continue;
+        // ═══ 流动性枯竭检测: 单K成交量骤降≥50%禁开(防无流动性极端滑点) ═══
+        if (this.boll.isLiquidityDry(bkl)) { if (this.isAdmin) this._log(`🚫 ${symbol} 流动性枯竭禁开`); continue; }
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
         const guard = this.boll.tradingGuardAllowed(bkl);
         if (!guard.allowed) continue;
@@ -430,6 +449,18 @@ class QuantAgent {
           if (r.success) {
             this._settleServiceFee(symbol, pnlToCount);
             this.closedHistory.unshift({ symbol: symbol.replace('USDT',''), side: pos.side, pnl: pnlToCount, reason: closeReason, ts: Date.now(), strat: pos.strategy });
+            // ═══ 单日亏损累计 + 单币连续亏损追踪(布林策略专用) ═══
+            if (pos.strategy === 'bollinger' && pnlToCount < 0) {
+              this._dailyLossTotal = (this._dailyLossTotal || 0) + pnlToCount;
+              // 统计该币近3笔bollinger亏损次数
+              const recentBoll = this.closedHistory.filter(c => c.symbol === symbol.replace('USDT','') && c.strat === 'bollinger').slice(0, 3);
+              const consecutiveLoss = recentBoll.filter(c => c.pnl < 0).length;
+              if (consecutiveLoss >= 3) {
+                const cooldownEnd = Date.now() + 3 * 24 * 3600 * 1000;  // 禁开3天
+                this._bollCooldowns[symbol] = cooldownEnd;
+                this._log(`🚫 ${symbol} 布林连续${consecutiveLoss}次亏损, 禁开3天(至${new Date(cooldownEnd).toLocaleString('zh-CN')})`);
+              }
+            }
             // ═══ 大脑中枢自学习：每次平仓喂给神经网络+UCB绩效 ═══
             try {
               const notional = (pos.entryPrice || 0) * (pos.qty || 0);

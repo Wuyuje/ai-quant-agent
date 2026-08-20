@@ -20,12 +20,12 @@ class BollingerStrategy {
     this.openBandPct = 0.90;          // 禁开: 带宽分位>90% (恢复截图规范, 减频止血)
     this.releaseBandPct = 0.85;       // 解禁: <85% (恢复)
     this.shrinkBars = 3;              // 连续3根收窄 (恢复)
-    this.tpTriggerPct = 2.0;          // 止盈前提: 浮盈≥2%持仓资金
+    this.tpTriggerPct = 1.0;            // 止盈前提: 浮盈≥1%(从2%改1%, 及时锁利, 减少利润回吐)
     this.volSpikeRatio = 1.8;         // 放量: 成交量>20周期均量×1.8
     this.atrTrail = 0.3;              // 放量ATR跟踪止盈倍数(0.3ATR)
-    this.lossKillPct = 20;            // 前置风控(截图): 单K浮亏≥单笔本金20%全平 (已回退D方案, 回测D(8/40)劣于原(20/70))
+    this.lossKillPct = 20;            // 前置风控: 单K浮亏≥单笔本金20%全平(补仓后动态收紧)
     this.finalLossPct = 70;           // 终极风控(截图): 总浮亏≥持仓金额70%全平 (已回退D方案)
-    this.maxAddRounds = 3;            // 补仓3次
+    this.maxAddRounds = 1;            // 补仓1次(从3次改为1次, 减少极端行情补仓放大风险)
     this.addPcts = [0.50, 0.30, 0.20]; // 补仓比例 50%/30%/20%
     this.addGapBars = 3;              // 补仓: 布林收口后间隔3根K线
     this.feeSettleGuardMin = 15;      // 资金费率结算前15分钟禁交易
@@ -157,6 +157,17 @@ class BollingerStrategy {
     return false;
   }
 
+  // ═══ 流动性枯竭检测: 单K成交量骤降≥50%(相比20均量) → 禁开, 避免无流动性极端滑点 ═══
+  isLiquidityDry(arr) {
+    const a = toArray(arr);
+    if (a.length < 21) return false;
+    const vols = a.map(k => +k[4]);
+    const avg = vols.slice(-21, -1).reduce((x, y) => x + y, 0) / 20;
+    const last = vols[vols.length - 1];
+    if (avg > 0 && last < avg * 0.5) return true;   // 成交量<均量50% = 流动性枯竭
+    return false;
+  }
+
   // 放量检测: 成交量>20周期均量×1.8 + 带宽扩张(截图)
   volumeSpike(arr) {
     const a = toArray(arr);
@@ -230,6 +241,11 @@ class BollingerStrategy {
 
   // ═══ 前置风控(截图): 单K浮亏≥单笔本金20% → 全平, 不进入补仓 ═══
   // positionEquity = 该币单笔本金(保证金)
+  // ═══ 动态止损阈值: 补仓越多, 止损越紧, 防极端行情放大亏损 ═══
+  _dynamicLossKill(addRound) {
+    // 补仓0次=20%, 1次=15%, 2次=10%, 3次=8%
+    return Math.max(8, 20 - (addRound || 0) * 5);
+  }
   checkHardStop(pos, arr, positionEquity) {
     const price = +toArray(arr)[arr.length-1][3];
     const entry = pos.entryPrice;
@@ -237,7 +253,9 @@ class BollingerStrategy {
     // 相对单笔本金(保证金)的浮亏%: 价格变动×杠杆(全仓) → 用本金口径
     const leverage = pos.leverage || 3;
     const lossOnEquity = Math.abs(kPct) * leverage * 100;
-    if (lossOnEquity >= this.lossKillPct) return { stop: true, reason: `前置风控单K浮亏${lossOnEquity.toFixed(0)}%(本金)≥${this.lossKillPct}%全平` };
+    const addRound = pos._addRound || 0;
+    const dynThreshold = this._dynamicLossKill(addRound);
+    if (lossOnEquity >= dynThreshold) return { stop: true, reason: `前置风控补仓${addRound}次后动态止损浮亏${lossOnEquity.toFixed(0)}%(本金)≥${dynThreshold}%全平` };
     return { stop: false };
   }
 
