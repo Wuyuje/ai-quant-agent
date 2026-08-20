@@ -183,7 +183,7 @@ class QuantServer {
       const mgr = new QuantAgentManager({ apiKey: APIKEY, apiSecret: APISECRET });
       mgr.pauseOpen = false;            // ✅ 放开开仓(真趋势波段实盘, 所有用户正常使用)
       mgr.pauseTrend = false;           // ✅ 放开真趋势波段开仓
-      mgr.pauseBoll = true;             // ⛔ 布林保持停用(负期望, 用户决定不用)
+      mgr.pauseBoll = false;             // ✅ 放开震荡(布林)策略开仓(与趋势策略共存,各自管理)
       mgr.start();
       global.__quantAgents = mgr;
       console.log('[QuantServer] 🤖 多用户管理器已挂载(真趋势波段实盘, 布林停用)');

@@ -233,12 +233,17 @@ class QuantAgent {
       // ═══ 自适应仓位配额(按用户余额自动计算, 不硬编码) ═══
       const rp = this._riskProfile(this.balance);
       const STRAT_MAX = rp.maxPerStrategy, MAX_TOTAL = rp.maxPositions;    // 小户2仓/5x, 中户3仓/4x, 大户4仓/3x, 超大户5仓/2x
+      const BOLL_MAX = 5;  // 布林策略独立上限: 最多5仓(不与趋势策略共享自适应值)
+      // ═══ 各引擎独立仓位配额(防超限堆积) ═══
+      // 趋势策略: 用自适应MAX_TOTAL(含趋势仓); 布林策略: 独立BOLL_MAX, 不受MAX_TOTAL限制
+      // 两策略互不影响: 布林仓不计入趋势的totalCount, 趋势仓不计入布林的countB
+      const trendTotalCount = Object.keys(this.positions).filter(s => this.positions[s].strategy !== 'bollinger').length;  // 趋势仓总数
       if (MAX_TOTAL === 0) { if (this.isAdmin) this._log(`⏸️ 余额不足$50, 不开仓`); continue; }
-      if (totalCount >= MAX_TOTAL) { if (this.isAdmin) this._log(`⏸️ 总持仓已达上限${MAX_TOTAL}, 不再开新仓`); continue; }
-      // 按目标策略各自限3
+      if (strat !== 'bollinger' && trendTotalCount >= MAX_TOTAL) { if (this.isAdmin) this._log(`⏸️ 趋势总持仓已达${trendTotalCount}/${MAX_TOTAL}, 趋势不开新仓`); continue; }
+      // 按目标策略各自限仓(布林策略用独立固定上限5, 趋势策略用自适应上限)
       if (strat === 'trend_ma7' && countM >= STRAT_MAX) { if (this.isAdmin) this._log(`⏸️ EMA趋势仓已达${countM}/${STRAT_MAX}, 未平仓不补`); continue; }
       if (strat === 'trend_v4' && countV >= STRAT_MAX) { if (this.isAdmin) this._log(`⏸️ V4趋势仓已达${countV}/${STRAT_MAX}, 未平仓不补`); continue; }
-      if (strat === 'bollinger' && countB >= STRAT_MAX) { if (this.isAdmin) this._log(`⏸️ 布林仓已达${countB}/${STRAT_MAX}, 未平仓不补`); continue; }
+      if (strat === 'bollinger' && countB >= BOLL_MAX) { if (this.isAdmin) this._log(`⏸️ 布林仓已达${countB}/${BOLL_MAX}, 未平仓不补`); continue; }
       // 每币单一策略锁: 已锁定则强制一致
       if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
 
@@ -763,9 +768,37 @@ class QuantAgentManager {
         this._log(`📊 持仓检查[管理员]: 总${pos.length} (趋势${trend}/布林${boll}/MA7${ma7}/接管${managed})${pos.length>12?' ⚠️超9上限':''}`);
         for (const p of pos) this._log(`   ${p.symbol} ${p.side} ${p.strategy}${p._managed?'[接管]':''} 入@${p.entryPrice}`);
       }
+      // ═══ 趋势减弱提醒: 检测4h趋势从强变弱, 震荡策略可进场 ═══
+      this._checkTrendWeakening().catch(()=>{});
     } catch(e) { this._log(`❌ 循环异常: ${e.message}`); }
 
     if (this.running) this._timer = setTimeout(() => this._loop(), this.intervalMs);
+  }
+
+  // ═══ 趋势减弱提醒: 每轮检测前5个币的4h趋势, 从强变弱时打日志提醒 ═══
+  async _checkTrendWeakening() {
+    try {
+      const apiInst = new BinanceAPI(this.adminApiKey, this.adminApiSecret);
+      const checkSyms = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','DOGEUSDT'];
+      let weakCount = 0;
+      const ema = (list, n) => { const k = 2/(n+1); let e = list[0]; for(let i=1;i<list.length;i++) e=list[i]*k+e*(1-k); return e; };
+      for (const sym of checkSyms) {
+        const kl = await apiInst.getKlines(sym, '4h', 120).catch(()=>null);
+        if (!kl || kl.length < 30) continue;
+        const closes = kl.map(k => +k[4]);
+        const e7 = ema(closes, 7), e25 = ema(closes, 25);
+        const spread = Math.abs(e7 - e25) / (e25 || 1) * 100;
+        if (spread <= 1.5) weakCount++;
+      }
+      // 趋势减弱：前5个币里有>=3个EMA差<1.5% → 市场进入震荡，震荡策略可大量进场
+      if (weakCount >= 3 && this._lastTrendWeak !== true) {
+        this._log(`🔔 趋势减弱提醒: ${weakCount}/5个币4h EMA差<1.5%, 市场进入震荡, 震荡策略可进场!`);
+        this._lastTrendWeak = true;
+      } else if (weakCount < 2 && this._lastTrendWeak === true) {
+        this._log(`🔔 趋势恢复提醒: 只有${weakCount}/5个币趋势弱, 市场恢复单边趋势, 震荡策略谨慎!`);
+        this._lastTrendWeak = false;
+      }
+    } catch(e) {}
   }
 
   setPauseOpen(v) { this.pauseOpen = !!v; for (const a of Object.values(this._agents)) a.pauseOpen = this.pauseOpen; }
