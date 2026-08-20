@@ -484,11 +484,19 @@ class QuantAgent {
                 this._log(`🚫 ${symbol} 布林连续${consecutiveLoss}次亏损, 禁开3天(至${new Date(cooldownEnd).toLocaleString('zh-CN')})`);
               }
             }
-            // ═══ 大脑中枢自学习：每次平仓喂给神经网络+UCB绩效 ═══
+            // ═══ 大脑中枢自学习：每次平仓喂给神经网络+UCB绩效(用真实市场特征,不用随机数) ═══
             try {
               const notional = (pos.entryPrice || 0) * (pos.qty || 0);
               const pnlPct = notional > 0 ? (pnlToCount / notional) * 100 : 0;
-              this.brain.recordResult(symbol.replace('USDT',''), pos.strategy || 'ma7', pnlPct);
+              let marketFeat = null;
+              try {
+                const fkl = await this.api.getKlines(symbol, '15m', 60).catch(() => null);
+                if (fkl && fkl.length >= 30) {
+                  const j = this.classifier.judgeMarketState(fkl, 0);
+                  marketFeat = [ j.volatility*100, j.trendStrength/100, j.maConverge!=null?j.maConverge*5:0.5, j.fundingRate*1000, j.trendDir==='UP'?1:(j.trendDir==='DOWN'?-1:0) ];
+                }
+              } catch(e3){}
+              this.brain.recordResult(symbol.replace('USDT',''), pos.strategy || 'ma7', pnlPct, marketFeat);
             } catch(e2){}
             this._saveState();  // 平仓后持久化统计
             delete this.positions[symbol];

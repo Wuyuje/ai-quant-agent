@@ -14,9 +14,37 @@ class BrainCore {
     this.fe = new FeatureEngineer();
     this.cls = new MarketClassifier();
     this.nn = new NeuralNet({ inputSize: 5, layers: [12, 6], outputSize: 3, lr: 0.01 });
-    // 自学习绩效表: symbol → {trend:{n,w,ret}, bollinger:{n,w,ret}, ucb, picks}
-    this.perf = {};
-    this.picks = {};   // symbol → 当前选的策略
+    this.perf = {};   // symbol → {trend:{n,w,ret}, bollinger:{n,w,ret}, ucb, picks}
+    this.picks = {};  // symbol → 当前选的策略
+    // 持久化路径
+    this._stateFile = null;
+    try {
+      const dir = require('path').join(__dirname, '..', 'data');
+      require('fs').mkdirSync(dir, { recursive: true });
+      this._stateFile = require('path').join(dir, 'brain-state.json');
+      this._loadState();
+    } catch(e) {}
+    this._trainErrors = 0;  // 训练失败计数
+  }
+
+  _saveState() {
+    if (!this._stateFile) return;
+    try {
+      const state = { perf: this.perf, picks: this.picks, nnTrainCount: this.nn.trainCount || 0, savedAt: new Date().toISOString() };
+      require('fs').writeFileSync(this._stateFile, JSON.stringify(state, null, 1));
+    } catch(e) {}
+  }
+
+  _loadState() {
+    if (!this._stateFile) return;
+    try {
+      if (require('fs').existsSync(this._stateFile)) {
+        const state = JSON.parse(require('fs').readFileSync(this._stateFile, 'utf8'));
+        if (state.perf) this.perf = state.perf;
+        if (state.picks) this.picks = state.picks;
+        console.log('[Brain] ✅ 加载历史绩效: ' + Object.keys(this.perf).length + '个币种, nnTrain=' + (this.nn.trainCount||0));
+      }
+    } catch(e) {}
   }
 
   // UCB: 选择当前币最优策略(利用历史绩效 + 探索)
@@ -62,18 +90,24 @@ class BrainCore {
   }
 
   // 记录交易结果: 自学习优化
-  recordResult(symbol, strategy, pnlPct) {
+  recordResult(symbol, strategy, pnlPct, marketFeat) {
     this.perf[symbol] = this.perf[symbol] || { trend:{n:0,w:0,ret:0}, bollinger:{n:0,w:0,ret:0} };
     const s = this.perf[symbol][strategy] || (this.perf[symbol][strategy]={n:0,w:0,ret:0});
     s.n++; s.ret += pnlPct; if (pnlPct > 0) s.w++;
-    // 神经网络在线学习: 用特征逼近标签(1涨/-1跌)
+    // ═══ 神经网络在线学习: 用开仓时的真实市场特征(不decide()里一致), 不再用随机数 ═══
     try {
-      const feats = [ Math.random(), Math.random(), Math.random(), Math.random(), pnlPct>0?1:-1 ];
+      const feats = marketFeat || [0, 0, 0.5, 0, 0];  // 无特征时用中性默认值(不用随机数污染训练)
       this.nn.train(feats, pnlPct > 0 ? [1,0,0] : [0,0,1], 0.01);
-    } catch(e){}
+    } catch(e) {
+      this._trainErrors = (this._trainErrors||0) + 1;
+      if (this._trainErrors <= 5) console.log('[Brain] ⚠️ NN训练异常(' + this._trainErrors + '次): ' + e.message);
+    }
+    // 每10笔交易持久化一次(避免频繁写盘)
+    const totalTrades = Object.values(this.perf).reduce((sum,p) => sum + (p.trend?.n||0) + (p.bollinger?.n||0), 0);
+    if (totalTrades % 10 === 0) this._saveState();
   }
 
-  getState() { return { perf: this.perf, picks: this.picks, nnTrainCount: this.nn.trainCount || 0 }; }
+  getState() { return { perf: this.perf, picks: this.picks, nnTrainCount: this.nn.trainCount || 0, trainErrors: this._trainErrors||0 }; }
 }
 
 module.exports = { BrainCore };
