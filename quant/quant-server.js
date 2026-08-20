@@ -132,6 +132,33 @@ class QuantServer {
     // 指标
     this.app.get('/api/quant/health', (req, res) => res.json({ ok: true, engineCount: global.__quantAgents ? Object.values(global.__quantAgents._agents||{}).length : 0 }));
 
+    // ═══ 趋势预警API: 各币4h趋势状态 + 震荡策略可开仓提示 ═══
+    this.app.get('/api/quant/trend-alerts', async (req, res) => {
+      try {
+        const api = new BinanceAPI(APIKEY, APISECRET);
+        const COINS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','DOGEUSDT','LINKUSDT','OPUSDT','SUIUSDT','NEARUSDT','AVAXUSDT'];
+        const ema = (list, n) => { const k = 2/(n+1); let e = list[0]; for(let i=1;i<list.length;i++) e=list[i]*k+e*(1-k); return e; };
+        const results = [];
+        let weakCount = 0;
+        for (const sym of COINS) {
+          const kl = await api.getKlines(sym, '4h', 120).catch(()=>null);
+          if (!kl || kl.length < 30) continue;
+          const closes = kl.map(k => +k[4]);
+          const e7 = ema(closes, 7), e25 = ema(closes, 25), e99 = ema(closes, 99);
+          const spread = Math.abs(e7 - e25) / (e25 || 1) * 100;
+          const dir = (e7>e25 && e25>e99) ? 'UP' : (e7<e25 && e25<e99) ? 'DOWN' : 'FLAT';
+          const isWeak = spread <= 1.5;
+          if (isWeak) weakCount++;
+          results.push({ symbol: sym, dir, spread: +spread.toFixed(2), isWeak, price: +closes[closes.length-1].toFixed(4) });
+        }
+        const alert = weakCount >= 3 ? 'WEAK' : weakCount >= 2 ? 'NEAR_WEAK' : 'STRONG';
+        const msg = alert === 'WEAK' ? `${weakCount}/5个币趋势弱, 震荡策略可进场!` :
+                     alert === 'NEAR_WEAK' ? `${weakCount}/5个币趋势弱, 接近震荡切换!` :
+                     `趋势仍强, 震荡策略等待中`;
+        res.json({ alert, message: msg, weakCount, coins: results });
+      } catch(e) { res.json({ alert: 'ERROR', message: e.message, coins: [] }); }
+    });
+
     // ═══ 管理员帮用户平仓: POST /api/quant/close  { adminKey, wallet, symbol } ═══
     // 管理员输入地址后, 帮指定白名单/普通用户平掉指定币持仓
     this.app.post('/api/quant/close', async (req, res) => {
