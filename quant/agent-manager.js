@@ -341,6 +341,21 @@ class QuantAgent {
         if (this.boll.isSpikeBar(bkl)) continue;
         // ═══ 流动性枯竭检测: 单K成交量骤降≥50%禁开(防无流动性极端滑点) ═══
         if (this.boll.isLiquidityDry(bkl)) { if (this.isAdmin) this._log(`🚫 ${symbol} 流动性枯竭禁开`); continue; }
+        // ═══ 趋势过滤器: 4h大周期有明确单边趋势时不进场(震荡策略只在震荡市交易) ═══
+        // 避免单边行情里被反向扫止损(之前回测里20%亏损都是单边造成的)
+        {
+          const hkl = await this.api.getKlines(symbol, '4h', 120).catch(() => null);
+          if (hkl && hkl.length >= 30) {
+            const hCloses = hkl.map(k => k.close);
+            const hEma = (list, n) => { const k = 2/(n+1); let e = list[0]; for(let i=1;i<list.length;i++) e=list[i]*k+e*(1-k); return e; };
+            const he7 = hEma(hCloses, 7), he25 = hEma(hCloses, 25), he99 = hEma(hCloses, 99);
+            const hDir = (he7 > he25 && he25 > he99) ? 'UP' : (he7 < he25 && he25 < he99) ? 'DOWN' : 'FLAT';
+            if (hDir !== 'FLAT') {
+              if (this.isAdmin) this._log(`🚫 ${symbol} 4h趋势=${hDir} 禁震荡开仓(震荡策略只在FLAT时交易)`);
+              continue;
+            }
+          }
+        }
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
         const guard = this.boll.tradingGuardAllowed(bkl);
         if (!guard.allowed) continue;
