@@ -785,7 +785,7 @@ class QuantAgentManager {
       for (const sym of checkSyms) {
         const kl = await apiInst.getKlines(sym, '4h', 120).catch(()=>null);
         if (!kl || kl.length < 30) continue;
-        const closes = kl.map(k => +k[4]);
+        const closes = kl.map(k => k.close);
         const e7 = ema(closes, 7), e25 = ema(closes, 25);
         const spread = Math.abs(e7 - e25) / (e25 || 1) * 100;
         if (spread <= 1.5) weakCount++;

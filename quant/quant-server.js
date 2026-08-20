@@ -143,7 +143,7 @@ class QuantServer {
         for (const sym of COINS) {
           const kl = await api.getKlines(sym, '4h', 120).catch(()=>null);
           if (!kl || kl.length < 30) continue;
-          const closes = kl.map(k => +k[4]);
+          const closes = kl.map(k => k.close);
           const e7 = ema(closes, 7), e25 = ema(closes, 25), e99 = ema(closes, 99);
           const spread = Math.abs(e7 - e25) / (e25 || 1) * 100;
           const dir = (e7>e25 && e25>e99) ? 'UP' : (e7<e25 && e25<e99) ? 'DOWN' : 'FLAT';
