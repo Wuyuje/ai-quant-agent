@@ -350,8 +350,11 @@ class QuantAgent {
             const hEma = (list, n) => { const k = 2/(n+1); let e = list[0]; for(let i=1;i<list.length;i++) e=list[i]*k+e*(1-k); return e; };
             const he7 = hEma(hCloses, 7), he25 = hEma(hCloses, 25), he99 = hEma(hCloses, 99);
             const hDir = (he7 > he25 && he25 > he99) ? 'UP' : (he7 < he25 && he25 < he99) ? 'DOWN' : 'FLAT';
-            if (hDir !== 'FLAT') {
-              if (this.isAdmin) this._log(`🚫 ${symbol} 4h趋势=${hDir} 禁震荡开仓(震荡策略只在FLAT时交易)`);
+            // ═══ 宽松趋势过滤: 只在EMA7与EMA25距离>2%时禁开(强单边), 弱趋势/缠绕允许进场 ═══
+            const hEmaSpread = Math.abs(he7 - he25) / (he25 || 1) * 100;
+            const hTrendStrong = hDir !== 'FLAT' && hEmaSpread > 1.5;  // EMA差>1.5%才算强趋势(占75%+行情, 只过滤25%最强单边)
+            if (hTrendStrong) {
+              if (this.isAdmin) this._log(`🚫 ${symbol} 4h强趋势=${hDir}(EMA差${hEmaSpread.toFixed(1)}%>2%)禁震荡开仓`);
               continue;
             }
           }
