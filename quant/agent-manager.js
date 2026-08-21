@@ -540,9 +540,9 @@ class QuantAgent {
         require('fs').writeFileSync(userFile, JSON.stringify(all, null, 2));
       }
     } catch(e){}
-    this._log(`💰 ${symbol} 扣算力费$${feeTotal.toFixed(2)}(平台${platformFee.toFixed(2)}+生态${ecoFund.toFixed(2)}) → 管理员(普通用户)`);
-    // ═══ 触发链上自动转账检查(累计达阈值批量转账到管理员两个钱包) ═══
-    this._tryTransferFees().catch(()=>{});
+    this._log(`💰 ${symbol} 扣算力费$${feeTotal.toFixed(2)}(平台${platformFee.toFixed(2)}+生态${ecoFund.toFixed(2)}) 记账到管理员(待授权转账)`);
+    // ═══ 不再自动链上转账: 算力费累计记账到quant-fee-state.json, 由管理员用新钱包手动授权转账到PLATFORM/ECO ═══
+    // 管理员在仪表盘看到累计金额后, 用新钱包授权转账(见手动转账工具)
   }
 
   // ═══ 链上自动转账算力费(实时到账): 每次扣费后立即用Trader私钥转账到管理员两钱包 ═══

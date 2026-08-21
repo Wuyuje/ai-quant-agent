@@ -220,7 +220,13 @@ const c=$('#btChart').getContext('2d');c.clearRect(0,0,c.width,c.height);c.fillS
 $('#btTrades').innerHTML='<div class="muted">(累积: 胜'+r.nW+'-'+r.nL+'负)</div>';}
 async function loadFees(){const d=await api('/api/quant/fees');const rows=$('#feeRows');const sum=$('#feeSummary');
   if(!d||!d.users){if(rows)rows.innerHTML='<tr><td colspan="6" class="r">⚠️ 加载失败</td></tr>';return;}
-  const s=d.summary||{};if(sum)sum.innerHTML='待收欠费 <b class="r">$'+s.pendingFee+'</b> · 已收算力费 <b class="g">$'+s.collected+'</b> · 欠费用户 <b>'+s.unpaidUsers+'</b>';
+  const s=d.summary||{};if(sum){
+    sum.innerHTML='待收欠费 <b class="r">$'+s.pendingFee+'</b> · 已收算力费 <b class="g">$'+s.collected+'</b> · 欠费用户 <b>'+s.unpaidUsers+'</b>'
+      +'<div style="margin-top:8px;padding:8px;background:rgba(136,192,208,.1);border:1px solid rgba(136,192,208,.3);border-radius:6px;font-size:.85em">'
+      +'⛽ <b>待授权转出算力费:</b> 平台费 <b class="g">$'+(s.totalPlatform||0).toFixed(2)+'</b> + 生态费 <b class="g">$'+(s.totalEco||0).toFixed(2)+'</b> = <b>$'+(s.totalPendingTransfer||0).toFixed(2)+'</b>'
+      +'<br>🔑 充值钱包: <code>'+(s.rechargeWallet||'')+'</code>'
+      +'<br>💡 转账方式: 用充值钱包私钥运行工具 `node tools/manual-fee-transfer.js --key=<私钥>` 自动转出到平台/生态钱包'      +'</div>';
+  }
   let h='';for(const u of d.users){if(u.isAdmin)continue;
     const st=u.owing?'<span class="tag t-shock">欠费</span>':u.feeBalance<5?'<span class="tag" style="background:#888d22">余额低</span>':'<span class="tag t-rang">正常</span>';
     h+='<tr><td>'+u.wallet.slice(0,14)+'...</td><td>普通</td><td class="'+(u.feeBalance<0?'r':'g')+'">$'+u.feeBalance.toFixed(2)+'</td><td>$'+u.collected.toFixed(2)+'</td><td class="'+(u.unpaid>0?'r':'muted')+'">$'+u.unpaid+'</td><td>'+st+'</td></tr>';
