@@ -107,6 +107,7 @@ h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
       </div>
       <div id="gatesFeeInfo" style="padding:10px;background:#161b22;border:1px solid #2a3a5c;border-radius:6px">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>BSC钱包地址</span><span class="value" id="dGatesWallet">未绑定</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>累计充值</span><span class="value" id="dGatesRecharged">--</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>算力费余额</span><span class="value" id="dGatesBalance">--</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>链上授权</span><span class="value" id="dGatesApproved">--</span></div>
         <div style="display:flex;justify-content:space-between"><span>状态</span><span class="value" id="dGatesStatus">--</span></div>
@@ -273,6 +274,7 @@ function showDashboard(data){
   // 算力费状态显示
   if(u.bscWalletAddr){
     document.getElementById('dGatesWallet').textContent=u.bscWalletAddr.slice(0,10)+'...';
+    document.getElementById('dGatesRecharged').textContent='$'+((u.gatesFeeTotalRecharged||0).toFixed(2));
     document.getElementById('dGatesBalance').textContent='$'+((u.gatesFeeBalance||0).toFixed(2));
     document.getElementById('dGatesApproved').innerHTML=u.gatesFeeApproved?'<span style="color:#3fb950">✓ 已授权</span>':'<span style="color:#d29922">未授权</span>';
     var low=u.gatesFeeLow||parseFloat(u.gatesFeeBalance||0)<5;
@@ -342,6 +344,7 @@ function bindBscWallet(){
 // ═══ 算力费：更新显示 ═══
 function updateGatesFeeDisplay(d){
   if(d.bscWalletAddr)document.getElementById('dGatesWallet').textContent=d.bscWalletAddr+'...';
+  if(d.gatesFeeTotalRecharged!==undefined)document.getElementById('dGatesRecharged').textContent='$'+d.gatesFeeTotalRecharged;
   if(d.gatesFeeBalance!==undefined)document.getElementById('dGatesBalance').textContent='$'+d.gatesFeeBalance;
   if(d.gatesFeeApproved!==undefined)document.getElementById('dGatesApproved').innerHTML=d.gatesFeeApproved?'<span style="color:#3fb950">✓ 已授权</span>':'<span style="color:#d29922">未授权</span>';
   if(d.gatesFeeLow!==undefined||d.gatesFeeBalance!==undefined){

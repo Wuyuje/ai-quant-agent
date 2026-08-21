@@ -1653,16 +1653,18 @@ class SaasServer {
           const rechargeAmount = _pendingRecharge;
           const oldBalance = user.gatesFeeBalance || 0;
           const newBalance = oldBalance + rechargeAmount;
+          const oldTotalRecharged = user.gatesFeeTotalRecharged || 0;   // 历史累计充值
           this.userDB.set(walletAddr, {
             ...user,
             gatesFeeBalance: newBalance,
+            gatesFeeTotalRecharged: oldTotalRecharged + rechargeAmount,  // 累计充值累加
             gatesFeeLow: newBalance < 5,
             gatesFeeApproved: true,
           });
           _gatesFeeBalance = newBalance;
           _gatesFeeLow = newBalance < 5;
           _pendingRecharge = 0;
-          console.log(`[GatesFee] ✅ ${walletAddr.slice(0,10)}... 自动入账 $${rechargeAmount.toFixed(2)} → 余额: $${newBalance.toFixed(2)}`);
+          console.log(`[GatesFee] ✅ ${walletAddr.slice(0,10)}... 自动入账 $${rechargeAmount.toFixed(2)} → 余额: $${newBalance.toFixed(2)} 累计充值: $${(oldTotalRecharged + rechargeAmount).toFixed(2)}`);
         }
       } catch(e) {
         console.log('[GatesFee] 链上余额查询失败:', e.message);
@@ -1724,6 +1726,7 @@ class SaasServer {
           gatesFeeBalance: _gatesFeeBalance,
           gatesFeeLow: _gatesFeeLow,
           gatesFeeApproved: user?.gatesFeeApproved ?? false,
+          gatesFeeTotalRecharged: user?.gatesFeeTotalRecharged ?? 0,   // 累计充值
           gatesFeePending: user?.gatesFeePending ?? 0,
           gatesFeeCollected: user?.gatesFeeCollected ?? 0,
           bscWalletAddr: user?.bscWalletAddr || walletAddr,
