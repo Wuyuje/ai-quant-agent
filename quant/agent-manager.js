@@ -265,9 +265,8 @@ class QuantAgent {
           sig = this.trendBand.entrySignal(kl5 || kl);
         }
         if (!sig || sig.signal === 'NONE') {
-          // ═══ V4已物理删除: 趋势无信号直接试布林(布林也已停用) → 不开了 ═══
-          // 原 fallback 会试 V4 日线, 已彻底移除
-          this._log(`🔍 ${symbol} ${stg}信号NONE,试布林(布林已停用, 跳过)`);
+          // ═══ 趋势策略无信号时不fallback布林(布林已在独立strat=bollinger分支处理) ═══
+          this._log(`🔍 ${symbol} ${stg}信号NONE`);
           /// ⛔ 布林已停用(用户决定只开新趋势策略): 不再开布林仓
           if (false) {
           if (countB < STRAT_MAX) {
