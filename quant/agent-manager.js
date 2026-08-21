@@ -230,19 +230,18 @@ class QuantAgent {
       const countV = Object.values(this.positions).filter(p => p.strategy === 'v4').length;                                              // V4
       const countB = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;                                        // 布林
       const totalCount = Object.keys(this.positions).length;
-      // ═══ 自适应仓位配额(按用户余额自动计算, 不硬编码) ═══
-      const rp = this._riskProfile(this.balance);
-      const STRAT_MAX = rp.maxPerStrategy, MAX_TOTAL = rp.maxPositions;    // 小户2仓/5x, 中户3仓/4x, 大户4仓/3x, 超大户5仓/2x
-      const BOLL_MAX = 5;  // 布林策略独立上限: 最多5仓(不与趋势策略共享自适应值)
+      // ═══ 仓位配额: 趋势策略独立5仓, 布林策略独立5仓, 互不影响 ═══
+      const rp = this._riskProfile(this.balance);  // 杠杆/资金比例仍按余额自适应
+      const TREND_MAX = 5;  // 趋势策略独立上限: 固定5仓
+      const BOLL_MAX = 5;   // 布林策略独立上限: 固定5仓
+      const TREND_PER_STG = 5;  // 趋势每策略(ma7/v4)各自上限5
       // ═══ 各引擎独立仓位配额(防超限堆积) ═══
-      // 趋势策略: 用自适应MAX_TOTAL(含趋势仓); 布林策略: 独立BOLL_MAX, 不受MAX_TOTAL限制
-      // 两策略互不影响: 布林仓不计入趋势的totalCount, 趋势仓不计入布林的countB
+      // 两策略互不影响: 布林仓不计入趋势限额, 趋势仓不计入布林限额
       const trendTotalCount = Object.keys(this.positions).filter(s => this.positions[s].strategy !== 'bollinger').length;  // 趋势仓总数
-      if (MAX_TOTAL === 0) { if (this.isAdmin) this._log(`⏸️ 余额不足$50, 不开仓`); continue; }
-      if (strat !== 'bollinger' && trendTotalCount >= MAX_TOTAL) { if (this.isAdmin) this._log(`⏸️ 趋势总持仓已达${trendTotalCount}/${MAX_TOTAL}, 趋势不开新仓`); continue; }
-      // 按目标策略各自限仓(布林策略用独立固定上限5, 趋势策略用自适应上限)
-      if (strat === 'trend_ma7' && countM >= STRAT_MAX) { if (this.isAdmin) this._log(`⏸️ EMA趋势仓已达${countM}/${STRAT_MAX}, 未平仓不补`); continue; }
-      if (strat === 'trend_v4' && countV >= STRAT_MAX) { if (this.isAdmin) this._log(`⏸️ V4趋势仓已达${countV}/${STRAT_MAX}, 未平仓不补`); continue; }
+      if (strat !== 'bollinger' && trendTotalCount >= TREND_MAX) { if (this.isAdmin) this._log(`⏸️ 趋势总持仓已达${trendTotalCount}/${TREND_MAX}, 趋势不开新仓`); continue; }
+      // 按目标策略各自限仓(布林/趋势各独立5仓)
+      if (strat === 'trend_ma7' && countM >= TREND_PER_STG) { if (this.isAdmin) this._log(`⏸️ MA7趋势仓已达${countM}/${TREND_PER_STG}, 未平仓不补`); continue; }
+      if (strat === 'trend_v4' && countV >= TREND_PER_STG) { if (this.isAdmin) this._log(`⏸️ V4趋势仓已达${countV}/${TREND_PER_STG}, 未平仓不补`); continue; }
       if (strat === 'bollinger' && countB >= BOLL_MAX) { if (this.isAdmin) this._log(`⏸️ 布林仓已达${countB}/${BOLL_MAX}, 未平仓不补`); continue; }
       // 每币单一策略锁: 已锁定则强制一致
       if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
