@@ -10,21 +10,23 @@ const { FeatureEngineer, toArray } = require('./featurer');
 const { MarketClassifier } = require('./market-classifier');
 
 class BrainCore {
-  constructor() {
+  constructor(wallet) {
     this.fe = new FeatureEngineer();
     this.cls = new MarketClassifier();
     this.nn = new NeuralNet({ inputSize: 5, layers: [12, 6], outputSize: 3, lr: 0.01 });
     this.perf = {};   // symbol → {trend:{n,w,ret}, bollinger:{n,w,ret}, ucb, picks}
     this.picks = {};  // symbol → 当前选的策略
-    // 持久化路径
+    this.wallet = wallet || '';
+    // ═══ 每个用户独立的持久化文件(data/brain/<wallet>.json, 避免6个agent共享一个文件互相覆盖) ═══
     this._stateFile = null;
     try {
-      const dir = require('path').join(__dirname, '..', 'data');
-      require('fs').mkdirSync(dir, { recursive: true });
-      this._stateFile = require('path').join(dir, 'brain-state.json');
+      const path = require('path'), fs = require('fs');
+      const dir = path.join(__dirname, '..', 'data', 'brain');
+      fs.mkdirSync(dir, { recursive: true });
+      this._stateFile = path.join(dir, (wallet || 'default').slice(-20) + '.json');
       this._loadState();
     } catch(e) {}
-    this._trainErrors = 0;  // 训练失败计数
+    this._trainErrors = 0;
   }
 
   _saveState() {
@@ -42,6 +44,11 @@ class BrainCore {
         const state = JSON.parse(require('fs').readFileSync(this._stateFile, 'utf8'));
         if (state.perf) this.perf = state.perf;
         if (state.picks) this.picks = state.picks;
+        // 恢复神经网络训练进度(避免重启后trainCount归零损失学习进度)
+        const savedTrain = state.nnTrainCount || 0;
+        if (savedTrain > (this.nn.trainCount || 0) && this.nn.trainCount !== undefined && this.nn.trainCount !== null) {
+          this.nn.trainCount = savedTrain;
+        }
         console.log('[Brain] ✅ 加载历史绩效: ' + Object.keys(this.perf).length + '个币种, nnTrain=' + (this.nn.trainCount||0));
       }
     } catch(e) {}
@@ -102,9 +109,8 @@ class BrainCore {
       this._trainErrors = (this._trainErrors||0) + 1;
       if (this._trainErrors <= 5) console.log('[Brain] ⚠️ NN训练异常(' + this._trainErrors + '次): ' + e.message);
     }
-    // 每10笔交易持久化一次(避免频繁写盘)
-    const totalTrades = Object.values(this.perf).reduce((sum,p) => sum + (p.trend?.n||0) + (p.bollinger?.n||0), 0);
-    if (totalTrades % 10 === 0) this._saveState();
+    // 每笔交易都持久化(避免依赖%10倍数条件错过保存)
+    this._saveState();
   }
 
   getState() { return { perf: this.perf, picks: this.picks, nnTrainCount: this.nn.trainCount || 0, trainErrors: this._trainErrors||0 }; }

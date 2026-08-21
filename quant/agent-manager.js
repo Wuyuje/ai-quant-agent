@@ -34,7 +34,7 @@ class QuantAgent {
     this.trend = new TrendStrategy();  // MA多空排列趋势引擎(纯MA7, 回测一致无DIF)
     this.trendBand = new TrendBandStrategy({ period: '4h' });  // ✱真趋势波段引擎(4h, 主策略)
     this.boll = new BollingerStrategy();      // 新震荡·布林带策略
-    this.brain = new BrainCore();             // 大脑中枢(切换+自学习+NN)
+    this.brain = new BrainCore(wallet);       // 大脑中枢(切换+自学习+NN, 每用户独立持久化)
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
 
     this.balance = 0;
