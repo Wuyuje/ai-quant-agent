@@ -397,7 +397,7 @@ class QuantAgent {
 
         // V4策略已物理删除: v4持仓不再单独管理(不应存在v4仓; 若历史遗留则交由trendBand兜底不平)
         if (pos.strategy === 'ma7') {
-          // ✱真趋势波段(4h): 两阶段锁利(盈利0.5%后切换极紧锁利)
+          // ✱真趋势波段(4h): 0.6ATR止损 + 两阶段锁利
           const mkl = await this.api.getKlines(symbol, pos._t || '4h', 200).catch(() => null);
           if (mkl && mkl.length >= 40) {
             const mArr = mkl.map(k => ({ open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: k.volume }));

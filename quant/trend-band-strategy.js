@@ -31,7 +31,7 @@ class TrendBandStrategy {
     this.ema50N = opts.ema50N || 50;
     this.momentumPct = opts.momentumPct || 0.01;   // 1%
     // 出场(方案C: 两阶段锁利)
-    this.stopMul = opts.stopMul || 0.6;       // 止损0.6ATR
+    this.stopMul = opts.stopMul || 0.6;       // 止损0.6ATR(4h级别)
     this.tpMul = opts.tpMul || 2.0;           // 止盈2ATR
     this.trailMul = opts.trailMul || 0.7;     // 移动止盈回撤0.7ATR(未达盈利阈值时)
     this.lockProfitPct = opts.lockProfitPct || 0.5;  // 盈利达0.5%后切换锁利模式
