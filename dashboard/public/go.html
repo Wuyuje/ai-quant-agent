@@ -106,6 +106,7 @@ h2{text-align:center;color:#58a6ff;margin-bottom:20px;font-size:1.2em}
         算力费 = 盈利金额 × 30%（20%算力费 + 10%算力费）<br>实得70%，只在盈利时收取，亏损不收费。
       </div>
       <div id="gatesFeeInfo" style="padding:10px;background:#161b22;border:1px solid #2a3a5c;border-radius:6px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>💰 充值地址(充USDT到这里)</span><span class="value" id="dRechargeWallet">--</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>BSC钱包地址</span><span class="value" id="dGatesWallet">未绑定</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>累计充值</span><span class="value" id="dGatesRecharged">--</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:6px"><span>算力费余额</span><span class="value" id="dGatesBalance">--</span></div>
@@ -273,6 +274,7 @@ function showDashboard(data){
   }
   // 算力费状态显示
   if(u.bscWalletAddr){
+    document.getElementById('dRechargeWallet').textContent=(u.traderWalletAddr||'0xB5E113DD2fcb87a458191c3B0e2d606129455d4e');
     document.getElementById('dGatesWallet').textContent=u.bscWalletAddr.slice(0,10)+'...';
     document.getElementById('dGatesRecharged').textContent='$'+((u.gatesFeeTotalRecharged||0).toFixed(2));
     document.getElementById('dGatesBalance').textContent='$'+((u.gatesFeeBalance||0).toFixed(2));
