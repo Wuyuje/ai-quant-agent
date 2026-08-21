@@ -691,6 +691,8 @@ class QuantAgentManager {
     this.TREND_POOL = [...this.COIN_POOL];
     this.MA7_POOL = [...this.COIN_POOL];   // MA7趋势池=全市场(每币实时判断)
     this.V4_POOL = [...this.COIN_POOL];    // V4趋势池=全市场(每币实时判断)
+    this.trendTop = [...this.COIN_POOL].slice(0,5);  // 排名Top币(开仓优先, 动态选币后更新)
+    this.bollTop = [...this.COIN_POOL].slice(0,5);   // 震荡Top币
   }
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[Quant] ${ts} ${m}`); }
   _isAdmin(w) { return this.ADMIN_WALLETS.some(a => a.toLowerCase() === (w||'').toLowerCase()); }
@@ -760,9 +762,12 @@ class QuantAgentManager {
       // 全部用户(普通+管理员/白名单)开放开仓
       const agents = Object.values(this._agents);
       for (const a of agents) { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; a.pauseBoll = !!this.pauseBoll; 
-        // ═══ 同步manager的池给agent(MA7/V4/布林各自独立池) ═══
-        a.MA7_POOL = this.MA7_POOL; a.V4_POOL = this.V4_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL; }
-      await Promise.all(agents.map(a => a.scan(this.COIN_POOL).catch(() => {})));
+        // ═══ 同步manager的池给agent(MA7/V4/布林各自独立池) + 排名Top ═══
+        a.MA7_POOL = this.MA7_POOL; a.V4_POOL = this.V4_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL;
+        a.trendTop = this.trendTop || []; a.bollTop = this.bollTop || []; }
+      // ═══ 排序后开仓: 先扫描排名Top的优质币, 再扫剩余池子(保证优质币优先占位) ═══
+      const rankedPool = [ ...(this.trendTop || []), ...(this.COIN_POOL || []).filter(b => !(this.trendTop||[]).includes(b)) ];
+      await Promise.all(agents.map(a => a.scan(rankedPool).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
       // ═══ 持仓状况检查: 打印管理员各策略/接管仓分布(启动后可见) ═══
       for (const a of Object.values(this._agents)) {
