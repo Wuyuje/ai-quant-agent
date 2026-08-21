@@ -541,6 +541,47 @@ class QuantAgent {
       }
     } catch(e){}
     this._log(`💰 ${symbol} 扣算力费$${feeTotal.toFixed(2)}(平台${platformFee.toFixed(2)}+生态${ecoFund.toFixed(2)}) → 管理员(普通用户)`);
+    // ═══ 触发链上自动转账检查(累计达阈值批量转账到管理员两个钱包) ═══
+    this._tryTransferFees().catch(()=>{});
+  }
+
+  // ═══ 链上自动转账算力费: 累计平台费+生态费≥阈值(5USDT)时, 用Trader私钥转账到管理员两钱包 ═══
+  // PLATFORM_WALLET(平台费20%) + ECO_FUND_WALLET(生态费10%)
+  async _tryTransferFees() {
+    try {
+      const feeFile = path.join(__dirname, '..', 'data', 'quant-fee-state.json');
+      if (!require('fs').existsSync(feeFile)) return;
+      const st = JSON.parse(require('fs').readFileSync(feeFile,'utf8'));
+      const totalPlatform = +(st.totalPlatform||0);
+      const totalEco = +(st.totalEco||0);
+      const totalFee = totalPlatform + totalEco;
+      if (totalFee < 5) return;   // 累计<5USDT不转(避免高频小额+gas费过高)
+      // 用Trader私钥转账
+      const { ethers } = require('ethers');
+      const provider = new ethers.JsonRpcProvider('https://bsc-rpc.publicnode.com');
+      const wallet = new ethers.Wallet(process.env.TRADER_PRIVATE_KEY || '', provider);
+      const usdt = new ethers.Contract('0x55d398326f99059ff775485246999027b3197955', ['function transfer(address,uint256) returns (bool)','function balanceOf(address) view returns (uint256)'], wallet);
+      const traderBal = await usdt.balanceOf(await wallet.getAddress()).catch(()=>BigInt(0));
+      const needTotal = ethers.parseUnits(totalFee.toFixed(6), 18);
+      if (BigInt(traderBal) < needTotal) {
+        this._log(`⏸️ 算力费链上转账: Trader余额$${(Number(BigInt(traderBal))/1e18).toFixed(2)} 不足$1${totalFee.toFixed(2)}, 等充值后转`);
+        return;
+      }
+      const GAS = ethers.parseUnits('5','gwei');
+      if (totalPlatform > 0) {
+        const tx = await usdt.transfer('0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A', ethers.parseUnits(totalPlatform.toFixed(6),18), { gasPrice: GAS });
+        await tx.wait();
+        this._log(`✅ 平台费$${totalPlatform.toFixed(2)}已转账到管理员钱包 b6DEb...`);
+      }
+      if (totalEco > 0) {
+        const tx = await usdt.transfer('0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82', ethers.parseUnits(totalEco.toFixed(6),18), { gasPrice: GAS });
+        await tx.wait();
+        this._log(`✅ 生态费$${totalEco.toFixed(2)}已转账到管理员钱包 eF87e...`);
+      }
+      // 转账成功后清零累计
+      st.totalPlatform = 0; st.totalEco = 0;
+      require('fs').writeFileSync(feeFile, JSON.stringify(st, null, 2));
+    } catch(e) { this._log(`❌ 算力费链上转账异常: ${e.message.slice(0,80)}`); }
   }
 
   getSummary() {
