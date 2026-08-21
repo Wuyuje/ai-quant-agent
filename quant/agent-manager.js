@@ -318,7 +318,7 @@ class QuantAgent {
         }
         if ((this.balance || 0) < 50) continue;
         const stgHeld = Object.values(this.positions).filter(p=>p.strategy===stg).length;
-        const maxPerStg = rp.maxPerStrategy;  // 自适应每策略上限
+        const maxPerStg = 5;  // 趋势每策略固定5仓上限
         if (stgHeld >= maxPerStg) continue;
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: lev, precisionMap: pm, price, balance: this.balance });
         if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: lev, strategy: stg, _t: '4h', _peak: price, _best: price, openTime: Date.now() }; this._stratLock[symbol]=stg; this._saveState(); }
