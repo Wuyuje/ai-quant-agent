@@ -30,6 +30,8 @@ class TrendBandStrategy {
     // 强单边: 相对EMA50偏移阈值
     this.ema50N = opts.ema50N || 50;
     this.momentumPct = opts.momentumPct || 0.01;   // 1%
+    // ═══ 高位追高过滤: 近20根K线涨幅超过阈值(默认20%)不追多/不追空(避免买在短期顶部被套) ═══
+    this.gainFilterPct = opts.gainFilterPct || 20;   // 20%
     // 出场(方案C: 两阶段锁利)
     this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别)
     this.tpMul = opts.tpMul || 2.0;           // 止盈2ATR
@@ -89,16 +91,22 @@ class TrendBandStrategy {
     if (dir === 'FLAT') return { signal: 'NONE', reason: `${this.period} EMA无单边排列` };
 
     const look = Math.min(this.breakLookback, i);
+    // ═══ 高位追高过滤: 近20根K线涨幅超过阈值时不追(避免买在短期顶部) ═══
+    const gain20 = (price - closes[Math.max(0, i - 20)]) / (closes[Math.max(0, i - 20)] || 1) * 100;
+    const overheat = Math.abs(gain20) > this.gainFilterPct;
     if (dir === 'UP') {
       const hi = Math.max(...closes.slice(i - look, i));   // 近60根(不含当前)
       const mom = (price - e50) / (e50 || 1);
       if (price > hi && mom > this.momentumPct) {
+        // 近20根涨幅过大(追高过热) → 不开多, 等回调
+        if (overheat) return { signal: 'NONE', reason: `${this.period}多头排列但近20根涨幅${gain20.toFixed(1)}%过热, 不追高` };
         return { signal: 'LONG', reason: `${this.period}多头排列破${look}前高${hi.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     } else if (dir === 'DOWN') {
       const lo = Math.min(...closes.slice(i - look, i));
       const mom = (price - e50) / (e50 || 1);
       if (price < lo && mom < -this.momentumPct) {
+        if (overheat) return { signal: 'NONE', reason: `${this.period}空头排列但近20根跌幅${gain20.toFixed(1)}%过热, 不追空` };
         return { signal: 'SHORT', reason: `${this.period}空头排列破${look}前低${lo.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     }
