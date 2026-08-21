@@ -1625,9 +1625,13 @@ class SaasServer {
       let _traderOnchainBalance = 0;
       let _dbTotal = 0;
 
-      // 计算数据库总额
+      // 计算数据库总额(只算普通用户的真实算力费记账, 排除白名单/管理员的虚拟999标记)
       for (const [, _u] of Object.entries(this.userDB.users || {})) {
-        if (_u && typeof _u.gatesFeeBalance === 'number') _dbTotal += _u.gatesFeeBalance;
+        if (_u && typeof _u.gatesFeeBalance === 'number') {
+          // 白名单(virtual 999)或管理员不参与共享钱包差额计算(它们不是普通用户充值的)
+          const isVIP = _u.gatesFeeBalance >= 900 || _u.isAdmin || (_u.wallet && this.cexUserTrader?._isWhitelist?.(_u.wallet));
+          if (!isVIP) _dbTotal += _u.gatesFeeBalance;
+        }
       }
 
       // 查 Trader 钱包链上 USDT 余额 + 自动入账
