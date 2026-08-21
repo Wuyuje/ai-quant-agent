@@ -158,6 +158,9 @@ const VAULT_FACTORY = process.env.VAULT_FACTORY_ADDRESS || '0x2A38B82Dd59cBDF8DE
 const REVENUE_DISTRIBUTION = process.env.REVENUE_DISTRIBUTION_ADDRESS || '';
 // 生态基金钱包(直接转管理员钱包)
 const ECO_FUND_WALLET = '0xeF87e7fD5f0ADC5de82e84Dc9300002D9aC8bD82';  // 生态费钱包
+// ═══ 用户充值地址(算力费充值池)= 新钱包, 用户充值USDT到这里 ═══
+// 用户充值到该地址, 系统记账, 累计达到阈值后由管理员授权转账到PLATFORM/ECO
+const RECHARGE_WALLET = '0xB5E113DD2fcb87a458191c3B0e2d606129455d4e';  // 新充值钱包(用户充值收款地址)
 // 平台执行器私钥(用于签名交易,存在环境变量里)
 // [SECURITY#1-HIGH] 私钥不应硬编码在源码中,生产环境必须通过环境变量注入
 const TRADER_PRIVATE_KEY = process.env.TRADER_PRIVATE_KEY;
@@ -1035,7 +1038,7 @@ class SaasServer {
             'getTrader', []
           );
           const { ethers } = require('ethers');
-          const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+          const traderAddr = RECHARGE_WALLET;  // Vault trader=新充值钱包
           const vaultTrader = result[0];
           if (vaultTrader.toLowerCase() !== traderAddr.toLowerCase()) {
             // 自动调用 setTrader 授权
@@ -1634,9 +1637,9 @@ class SaasServer {
         }
       }
 
-      // 查 Trader 钱包链上 USDT 余额 + 自动入账
+      // 查 充值钱包(RECHARGE_WALLET) 链上 USDT 余额 + 自动入账
       try {
-        const traderAddr = TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
+        const traderAddr = RECHARGE_WALLET;  // 用户充值钱包(新钱包)
         const _data = '0x70a08231' + '000000000000000000000000' + traderAddr.toLowerCase().replace('0x','');
         const _ctrl = new AbortController();
         const _to = setTimeout(() => _ctrl.abort(), 5000);
@@ -1694,7 +1697,7 @@ class SaasServer {
             pendingRecharge: _pendingRecharge, // 链上检测到的未入账金额
             traderOnchainBalance: _traderOnchainBalance,
             dbTotal: _dbTotal,
-            traderWalletAddr: TRADER_PRIVATE_KEY ? new (require('ethers')).Wallet(TRADER_PRIVATE_KEY).address : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e',
+            traderWalletAddr: RECHARGE_WALLET,  // 用户充值地址=新钱包
           },
           // 1️⃣ Vault合约余额
           vault: {
@@ -1813,7 +1816,7 @@ class SaasServer {
       let gatesFeeApproved = false;
       try {
         const { ethers } = require('ethers');
-        const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+        const traderWalletAddr = RECHARGE_WALLET;  // 授权/充值地址=新钱包
         const allowanceData = '0xdd62ed3e'
           + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
           + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
@@ -1856,7 +1859,7 @@ class SaasServer {
       } catch (e) { /* ignore */ }
       try {
         const { ethers } = require('ethers');
-        const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+        const traderWalletAddr = RECHARGE_WALLET;  // 授权/充值地址=新钱包
         const allowanceData = '0xdd62ed3e'
           + user.bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
           + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
@@ -1874,7 +1877,7 @@ class SaasServer {
         gatesFeeBalance: gatesFeeBalance.toFixed(2),
         gatesFeeApproved,
         gatesFeeLow: gatesFeeBalance < 5,
-        traderWalletAddr: new (require('ethers').ethers).Wallet(TRADER_PRIVATE_KEY).address,
+        traderWalletAddr: RECHARGE_WALLET,  // 用户充值/授权地址=新钱包
       });
     });
 
@@ -1884,7 +1887,7 @@ class SaasServer {
       if (!session) return res.status(401).json({ error: '未登录' });
       const user = this.userDB.get(session.wallet);
       const { ethers } = require('ethers');
-      const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+      const traderWalletAddr = RECHARGE_WALLET;  // 用户充值/授权地址=新钱包
       res.json({
         success: true,
         usdtAddress: USDT_ADDRESS,
@@ -1904,7 +1907,7 @@ class SaasServer {
       let onChainAllowance = '0';
       try {
         const { ethers } = require('ethers');
-        const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+        const traderAddr = RECHARGE_WALLET;  // 授权对象=新充值钱包
         // 用直接 eth_call 查 allowance,避免 ethers.Contract 解码失败
         const allowanceData = '0xdd62ed3e'
           + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
@@ -2091,7 +2094,7 @@ class SaasServer {
         }
 
         // 验证交易是USDT approve,且授权者是当前登录用户
-        const traderAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address.toLowerCase();
+        const traderAddr = RECHARGE_WALLET.toLowerCase();  // 授权对象=新充值钱包
         let isApproveTx = false;
         for (const log of receipt.logs) {
           if (log.address.toLowerCase() === USDT_ADDR.toLowerCase()) {
@@ -2212,7 +2215,7 @@ class SaasServer {
       let gatesFeeApproved = false;
       try {
         const { ethers } = require('ethers');
-        const traderWalletAddr = new ethers.Wallet(TRADER_PRIVATE_KEY).address;
+        const traderWalletAddr = RECHARGE_WALLET;  // 授权检查对象=新充值钱包
         const allowanceData = '0xdd62ed3e' // allowance(address,address)
           + bscWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0')
           + traderWalletAddr.toLowerCase().replace('0x', '').padStart(64, '0');
@@ -2812,7 +2815,7 @@ document.getElementById('lb').onclick=L;
           factoryBytecode: factoryArtifact.bytecode,
           vaultAbi: vaultArtifact.abi,
           vaultBytecode: vaultArtifact.bytecode,
-          trader: '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e',
+          trader: RECHARGE_WALLET,
           platformFeeWallet: '0xb6DEb31484353AdDaA5b6A105A2B758Df11bC28A',
           defaultFeeBps: 2000,
           version: 'V3',

@@ -743,7 +743,7 @@ function refreshAll(){
       document.getElementById('apiLabel').style.color=connected?'var(--green)':'var(--red)';
       // ═══ Gates Fee Panel — 始终显示（方案A：充值到Trader钱包） ═══
       var gf=r.user.gatesFee||{};
-      var TRADER_ADDR=gf.traderWalletAddr||'0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
+      var TRADER_ADDR=gf.traderWalletAddr||'0xB5E113DD2fcb87a458191c3B0e2d606129455d4e';
       var shortAddr=TRADER_ADDR.substring(0,10)+'...'+TRADER_ADDR.substring(36);
       var bal=gf.balance||0;
       var isLow=bal<5;
@@ -1157,9 +1157,9 @@ document.getElementById('binanceGuide').addEventListener('click',function(e){if(
 
 // ═══ 算力 Token 充值引导（方案A：用户充值到平台钱包） ═══
 function wfCopyAddr() {
-  var addr = document.getElementById('gatesFeeWalletAddr') ? document.getElementById('gatesFeeWalletAddr').textContent : '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
+  var addr = document.getElementById('gatesFeeWalletAddr') ? document.getElementById('gatesFeeWalletAddr').textContent : '0xB5E113DD2fcb87a458191c3B0e2d606129455d4e';
   // 如果显示的是缩写地址，用完整地址
-  if (addr.indexOf('...') >= 0) addr = '0xe6DDF0771c7610dBA77eB5a07ba7771DD7F5e91e';
+  if (addr.indexOf('...') >= 0) addr = '0xB5E113DD2fcb87a458191c3B0e2d606129455d4e';
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(addr).then(function() {
       alert('充值地址已复制：' + addr + '\n请在 TokenPocket 中向该地址转入 USDT (BEP-20)');
