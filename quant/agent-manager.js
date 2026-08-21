@@ -186,6 +186,18 @@ class QuantAgent {
   // 主扫描: 每个标的
   async scan(pool) {
     await this._syncPositions();  // 先同步币安真实持仓
+    // ═══ 普通用户算力费充值门槛: 记账余额<5U时停止开新仓(只管理已有持仓) ═══
+    if (!this.isAdmin && !this.isWhitelist) {
+      const feeInfo = this._getComputeFeeBalance();
+      if (feeInfo.feeBalance < 5) {
+        if (this._lastFeeBlockLog !== feeInfo.feeBalance.toFixed(2)) {
+          this._log(`⛔ ${this._logTag} 算力费余额$${feeInfo.feeBalance.toFixed(2)}<5U, 停止开新仓(用户需充值)`);
+          this._lastFeeBlockLog = feeInfo.feeBalance.toFixed(2);
+        }
+        this._manageOnly();  // 只管理已有持仓(可平仓), 不开新仓
+        return;
+      }
+    }
     if (this.pauseOpen) { this._manageOnly(); return; }
     // 大盘过滤: 缓存BTC状态(每轮查一次)
     try {
@@ -514,6 +526,18 @@ class QuantAgent {
   }
 
   // 算力费扣款(普通用户盈利扣30% → 管理员钱包累计)
+  // ═══ 读取普通用户算力费记账余额(充值余额, 供停止开仓判断) ═══
+  _getComputeFeeBalance() {
+    try {
+      const userFile = path.join(__dirname, '..', 'data', 'saas-users.json');
+      const all = JSON.parse(require('fs').readFileSync(userFile,'utf8'));
+      const wl = (this.wallet || '').toLowerCase();
+      const key = Object.keys(all).find(k => k.toLowerCase() === wl);
+      const bal = key && all[key] ? (+(all[key].gatesFeeBalance || 0)) : 0;
+      return { feeBalance: bal, key: key || wl };
+    } catch(e) { return { feeBalance: 5, key: '' }; }  // 读不到返回5(放行,避免误停)
+  }
+
   _settleServiceFee(symbol, pnlUsd) {
     if (!pnlUsd || pnlUsd <= 0 || this.isAdmin || this.isWhitelist) return;   // 管理员/白名单免算力费
     const platformFee = pnlUsd * PLATFORM_FEE_RATE;
