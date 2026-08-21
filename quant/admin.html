@@ -135,7 +135,12 @@ async function loadChart(){const sym=$('#chartSym').value;const kl=await api('/a
 const info=$('#chartInfo');const stt=a.state==='ranging'?'震荡':a.state==='trending'?'趋势':'剧烈';info.innerHTML='<b>'+sym+'</b> '+stt+' · 趋势'+a.trendDir+' · ADX '+(a.adx||0).toFixed(1)+' · 建议: '+(a.recommended)+'';
 const ab=$('#analyzeBox');ab.innerHTML='<b>'+sym+'</b> 状态='+stt+'<br>趋势方向='+a.trendDir+'<br>ADX='+(a.adx||0).toFixed(1)+'<br>建议策略='+(a.recommended||'-')+'<br>信号: '+(a.signal?JSON.stringify(a.signal):'-');}
 function toggleGrp(id){const el=document.getElementById(id);if(el)el.style.display=el.style.display==='none'?'':'none';}
-async function loadAgents(){const d=await api('/api/quant/agents');const rows=$('#agentRows');let h='';for(const u of (d.agents||[])){const wr=u.trades>0?(u.wins/u.trades*100):0;const pc=u.realizedPnl>=0?'g':'r';h+='<tr><td>'+u.wallet.slice(0,12)+'...</td><td>'+(u.isAdmin?'<span class="tag t-trend">管理员</span>':(u.isWhitelist?'<span class="tag t-rang">白名单</span>':'<span class="tag">普通</span>'))+'</td><td>$'+(u.balance||0).toFixed(1)+'</td><td class="bl">$'+(u.totalEquity!==undefined?u.totalEquity:u.balance||0).toFixed(1)+'</td><td>'+u.positionCount+'</td><td>'+u.trades+'</td><td>'+wr.toFixed(0)+'%</td><td class="'+pc+'">$'+(u.realizedPnl||0).toFixed(2)+'</td></tr>';}
+async function loadAgents(){const d=await api('/api/quant/agents');const rows=$('#agentRows');
+  // ═══ 用户排序: 管理员→白名单→普通 (靠上方) ═══
+  const rankUser={admin:0,whlist:1,normal:2};
+  const agentSorted=(d.agents||[]).map(u=>({u,role:u.isAdmin?'admin':(u.isWhitelist?'whlist':'normal')})).sort((a,b)=>rankUser[a.role]-rankUser[b.role] || b.u.trades-a.u.trades);
+  d.agents=agentSorted.map(x=>x.u);
+  let h='';for(const u of (d.agents||[])){const wr=u.trades>0?(u.wins/u.trades*100):0;const pc=u.realizedPnl>=0?'g':'r';h+='<tr><td>'+u.wallet.slice(0,12)+'...</td><td>'+(u.isAdmin?'<span class="tag t-trend">管理员</span>':(u.isWhitelist?'<span class="tag t-rang">白名单</span>':'<span class="tag">普通</span>'))+'</td><td>$'+(u.balance||0).toFixed(1)+'</td><td class="bl">$'+(u.totalEquity!==undefined?u.totalEquity:u.balance||0).toFixed(1)+'</td><td>'+u.positionCount+'</td><td>'+u.trades+'</td><td>'+wr.toFixed(0)+'%</td><td class="'+pc+'">$'+(u.realizedPnl||0).toFixed(2)+'</td></tr>';}
 rows.innerHTML=h||'<tr><td colspan="8">智能体管理器未运行（仅看盘模式）</td></tr>';
   // ═══ 各用户资金盈利情况表 ═══
   const pnlEl=document.getElementById('pnlRows');
