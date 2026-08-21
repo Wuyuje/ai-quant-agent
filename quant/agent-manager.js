@@ -398,10 +398,10 @@ class QuantAgent {
 
         // V4策略已物理删除: v4持仓不再单独管理(不应存在v4仓; 若历史遗留则交由trendBand兜底不平)
         if (pos.strategy === 'ma7') {
-          // ✱真趋势波段(4h): 宽止损(2.5ATR) + 高止盈(5ATR) + 移动止盈锁盈
+          // ✱真趋势波段(4h): 两阶段锁利(盈利0.5%后切换极紧锁利)
           const mkl = await this.api.getKlines(symbol, pos._t || '4h', 200).catch(() => null);
           if (mkl && mkl.length >= 40) {
-            const mArr = mkl.map(k => ({ open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: k[5] }));
+            const mArr = mkl.map(k => ({ open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: k.volume }));
             const closes = mArr.map(k => +k.close);
             const price = closes[closes.length - 1];
             const highs = mArr.map(k => +k.high);
@@ -455,7 +455,7 @@ class QuantAgent {
           const tf = pos._t || '4h';
           const mkl = await this.api.getKlines(symbol, tf, 200).catch(() => null);
           if (mkl && mkl.length >= 40) {
-            const mArr = mkl.map(k => ({ open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: k[5] }));
+            const mArr = mkl.map(k => ({ open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: k.volume }));
             const closes = mArr.map(k => +k.close);
             const price = closes[closes.length - 1];
             const highs = mArr.map(k => +k.high);
