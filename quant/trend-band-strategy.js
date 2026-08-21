@@ -30,10 +30,12 @@ class TrendBandStrategy {
     // 强单边: 相对EMA50偏移阈值
     this.ema50N = opts.ema50N || 50;
     this.momentumPct = opts.momentumPct || 0.01;   // 1%
-    // 出场
-    this.stopMul = opts.stopMul || 0.8;   // 止损0.8ATR(尽快止损保护本金)
-    this.tpMul = opts.tpMul || 3.0;       // 止盈3ATR(尽快锁利,不再等5ATR)
-    this.trailMul = opts.trailMul || 1.0; // 移动止盈回撤1ATR锁盈(核心: 最小化利润回吐)
+    // 出场(方案C: 两阶段锁利)
+    this.stopMul = opts.stopMul || 0.6;       // 止损0.6ATR
+    this.tpMul = opts.tpMul || 2.0;           // 止盈2ATR
+    this.trailMul = opts.trailMul || 0.7;     // 移动止盈回撤0.7ATR(未达盈利阈值时)
+    this.lockProfitPct = opts.lockProfitPct || 0.5;  // 盈利达0.5%后切换锁利模式
+    this.lockTrailPct = opts.lockTrailPct || 0.2;    // 锁利模式: 回撤0.2%就平仓
     this.maxBars = opts.maxBars || 400;   // 单笔最大持仓bar
     this.minBars = opts.minBars || 200;
   }
@@ -111,7 +113,7 @@ class TrendBandStrategy {
     return pos.side === 'LONG' ? price + this.tpMul * atr : price - this.tpMul * atr;
   }
 
-  // ═══ 持仓管理(每次轮询调用): 宽止损 + 高止盈 + 移动止盈锁盈 ═══
+  // ═══ 持仓管理(两阶段锁利): 阶段1让利润跑, 阶段2快速锁利 ═══
   // pos: {side, entryPrice, _best, ...}; closes: 数字数组(当前周期收盘)
   manage(pos, price, closes, highs, lows) {
     const atr = this._atrValFromArrays(highs, lows, closes);
@@ -119,20 +121,35 @@ class TrendBandStrategy {
     let best = pos._best != null ? pos._best : pos.entryPrice;
     if (pos.side === 'LONG') {
       if (price > best) best = price;
-      const trail = best - this.trailMul * atr;
-      const initStop = pos.entryPrice - this.stopMul * atr;
-      const stop = Math.max(initStop, trail);       // 移动止损不低于初始
-      // 止盈: 到5ATR直接锁
+      // 计算当前盈利比例
+      const pnlPct = (price - pos.entryPrice) / pos.entryPrice * 100;
+      // ═══ 两阶段锁利判断 ═══
+      let stop;
+      if (pnlPct >= this.lockProfitPct) {
+        // 阶段2: 盈利已达阈值(0.5%), 切换极紧锁利模式(回撤0.2%就平)
+        stop = best * (1 - this.lockTrailPct / 100);  // 从最高点回撤0.2%
+      } else {
+        // 阶段1: 盈利未达阈值, 用普通移动止盈(0.7ATR)让利润跑
+        const trail = best - this.trailMul * atr;
+        const initStop = pos.entryPrice - this.stopMul * atr;
+        stop = Math.max(initStop, trail);
+      }
       const tp = pos.entryPrice + this.tpMul * atr;
-      if (price <= stop) return { action: 'CLOSE', reason: `真趋势波段移动止损(${stop.toFixed(4)})`, atr };
+      if (price <= stop) return { action: 'CLOSE', reason: `真趋势波段${pnlPct>=this.lockProfitPct?'锁利':'止损'}(${stop.toFixed(4)} pnl=${pnlPct.toFixed(2)}%)`, atr };
       if (price >= tp) return { action: 'CLOSE', reason: `真趋势波段止盈(${this.tpMul}ATR)`, atr };
     } else {
       if (price < best) best = price;
-      const trail = best + this.trailMul * atr;
-      const initStop = pos.entryPrice + this.stopMul * atr;
-      const stop = Math.min(initStop, trail);
+      const pnlPct = (pos.entryPrice - price) / pos.entryPrice * 100;
+      let stop;
+      if (pnlPct >= this.lockProfitPct) {
+        stop = best * (1 + this.lockTrailPct / 100);
+      } else {
+        const trail = best + this.trailMul * atr;
+        const initStop = pos.entryPrice + this.stopMul * atr;
+        stop = Math.min(initStop, trail);
+      }
       const tp = pos.entryPrice - this.tpMul * atr;
-      if (price >= stop) return { action: 'CLOSE', reason: `真趋势波段移动止损(${stop.toFixed(4)})`, atr };
+      if (price >= stop) return { action: 'CLOSE', reason: `真趋势波段${pnlPct>=this.lockProfitPct?'锁利':'止损'}(${stop.toFixed(4)} pnl=${pnlPct.toFixed(2)}%)`, atr };
       if (price <= tp) return { action: 'CLOSE', reason: `真趋势波段止盈(${this.tpMul}ATR)`, atr };
     }
     pos._best = best;
