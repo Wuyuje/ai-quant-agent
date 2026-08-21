@@ -72,20 +72,17 @@ class QuantServer {
           pending += (bal<0? -bal:0);
           return { wallet:k, isAdmin, feeBalance:+bal.toFixed(2), collected:+col.toFixed(2), unpaid:(bal<0?-bal:0).toFixed(2), owing: bal<0, hasKey:true };
         });
-        res.json({ users: usersFee, summary:{ pendingFee:+pending.toFixed(2), collected:+collected.toFixed(2), unpaidUsers:unpaid>0?Object.keys(users).filter(k=>users[k].gatesFeeBalance<0&&users[k].binanceApiKey).length:0,
-          // ═══ 待授权转账的累计算力费(从quant-fee-state.json) ═══
-          totalPlatform:0, totalEco:0, totalPendingTransfer:0, rechargeWallet:'0xB5E113DD2fcb87a458191c3B0e2d606129455d4e'
-        } });
-
-        // 补充分读取 quant-fee-state.json 的累计待转(上面先返回0占位)
+        let feeExtra = { totalPlatform:0, totalEco:0, totalPendingTransfer:0, rechargeWallet:'0xB5E113DD2fcb87a458191c3B0e2d606129455d4e' };
+        // ═══ 待授权转账的累计算力费(从quant-fee-state.json) ═══
         const feeStateFile = pathf.join(__dirname,'..','data','quant-fee-state.json');
-        if (require('fs').existsSync(feeStateFile)) {
-          const fst = JSON.parse(require('fs').readFileSync(feeStateFile,'utf8'));
-          const tp = +(fst.totalPlatform||0), te = +(fst.totalEco||0);
-          res.json({ users: usersFee, summary:{ pendingFee:+pending.toFixed(2), collected:+collected.toFixed(2), unpaidUsers:unpaid>0?Object.keys(users).filter(k=>users[k].gatesFeeBalance<0&&users[k].binanceApiKey).length:0,
-            totalPlatform:+tp.toFixed(4), totalEco:+te.toFixed(4), totalPendingTransfer:+(tp+te).toFixed(4), rechargeWallet:'0xB5E113DD2fcb87a458191c3B0e2d606129455d4e'
-          } });
-        }
+        try {
+          if (require('fs').existsSync(feeStateFile)) {
+            const fst = JSON.parse(require('fs').readFileSync(feeStateFile,'utf8'));
+            const tp = +(fst.totalPlatform||0), te = +(fst.totalEco||0);
+            feeExtra = { totalPlatform:+tp.toFixed(4), totalEco:+te.toFixed(4), totalPendingTransfer:+(tp+te).toFixed(4), rechargeWallet:'0xB5E113DD2fcb87a458191c3B0e2d606129455d4e' };
+          }
+        } catch(e){}
+        res.json({ users: usersFee, summary:{ pendingFee:+pending.toFixed(2), collected:+collected.toFixed(2), unpaidUsers:unpaid>0?Object.keys(users).filter(k=>users[k].gatesFeeBalance<0&&users[k].binanceApiKey).length:0, ...feeExtra } });
       } catch(e){ res.json({ error:e.message, users:[] }); }
     });
 
