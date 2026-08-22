@@ -26,7 +26,7 @@ class TrendBandStrategy {
     this.atrN = opts.atrN || 14;
     this.adxN = opts.adxN || 14;
     // 开仓: 突破近60根高低(单边确认)
-    this.breakLookback = opts.breakLookback || 20;   // 突破近20根高低(放宽自60→20, 更早触发开仓)
+    this.breakLookback = opts.breakLookback || 60;   // 突破近60根高低(回退: 用户觉得原版好, 破20高回撤大)
     // 强单边: 相对EMA50偏移阈值
     this.ema50N = opts.ema50N || 50;
     this.momentumPct = opts.momentumPct || 0.01;   // 1%
