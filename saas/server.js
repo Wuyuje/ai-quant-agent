@@ -1637,11 +1637,52 @@ class SaasServer {
         }
       }
 
-      // ═══ 算力费余额展示: 直接使用数据库记账余额(充值入账由管理员手工控制) ═══
+      // ═══ 算力费自动记账: 检测 用户BSC钱包→新充值钱包 的USDT转入, 自动计入余额(防重复) ═══
       try {
-        _gatesFeeBalance = user.gatesFeeBalance || 0;
-        _gatesFeeLow = user.gatesFeeLow || ((user.gatesFeeBalance||0) < 5);
-      } catch(e) { _gatesFeeBalance = user?.gatesFeeBalance || 0; }
+        const userBsc = (user?.bscWalletAddr || walletAddr).toLowerCase();
+        const toWallet = RECHARGE_WALLET.toLowerCase();
+        const USDT_ADDR = '0x55d398326f99059fF775485246999027B3197955';
+        const transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+        const fromTopic = '0x000000000000000000000000' + userBsc.slice(2);
+        const toTopic   = '0x000000000000000000000000' + toWallet.slice(2);
+        // 从链上查该用户→新钱包的全部USDT入账(blockrazor支持历史查询)
+        const blkRes = await (await fetch('https://bsc-rpc.publicnode.com',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_blockNumber',params:[]})})).json();
+        const latestNum = parseInt(blkRes.result,16);
+        const fromBlock = latestNum - 2000000;  // 扫最近~6天
+        const gres = await (await fetch('https://bsc.blockrazor.xyz',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getLogs',params:[{address:USDT_ADDR,topics:[transferTopic,fromTopic,toTopic],fromBlock:'0x'+fromBlock.toString(16),toBlock:'latest'}]})})).json();
+        const logs = (gres && gres.result) || [];
+        let totalOnchain = 0;
+        for (const lg of logs) totalOnchain += Number(BigInt(lg.data))/1e18;
+
+        // 已入账追踪(防重复): 只入账新增部分
+        const alreadyTracked = +(user.gatesFeeOnchainRecharged || 0) || 0;
+        const increment = Math.max(0, Math.round((totalOnchain - alreadyTracked) * 1e6) / 1e6);
+
+        if (increment >= 0.01) {  // 有新增充值才入账
+          const oldBalance = +(user.gatesFeeBalance||0);
+          const newBalance = Math.round((oldBalance + increment) * 1e6) / 1e6;
+          const oldTotal = +(user.gatesFeeTotalRecharged||0);
+          const newTotal = Math.round((oldTotal + increment) * 1e6) / 1e6;
+          this.userDB.set(walletAddr, {
+            ...user,
+            gatesFeeBalance: newBalance,
+            gatesFeeTotalRecharged: newTotal,
+            gatesFeeOnchainRecharged: Math.round(totalOnchain * 1e6) / 1e6,  // 记录已追踪链上充值额
+            gatesFeeLow: newBalance < 5,
+            gatesFeeApproved: true,
+          });
+          _gatesFeeBalance = newBalance;
+          _gatesFeeLow = newBalance < 5;
+          console.log(`[GatesFee] ✅ ${walletAddr.slice(0,10)}... 自动入账 +$${increment.toFixed(2)} → 余额 $${newBalance.toFixed(2)}`);
+        } else if (user) {
+          _gatesFeeBalance = user.gatesFeeBalance || 0;
+          _gatesFeeLow = user.gatesFeeLow || ((user.gatesFeeBalance||0) < 5);
+        }
+      } catch(e) {
+        console.log('[GatesFee] 自动记账异常:', e.message);
+        _gatesFeeBalance = user?.gatesFeeBalance || 0;
+        _gatesFeeLow = user?.gatesFeeLow || false;
+      }
 
       res.json({
         success: true,
