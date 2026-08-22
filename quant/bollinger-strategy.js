@@ -19,7 +19,7 @@ class BollingerStrategy {
     this.histLookback = 100;          // 带宽100根历史分位(截图: 100根)
     this.openBandPct = 0.99;          // 禁开: 带宽分位>99%才禁(放宽自90→99, 大幅增加开仓)
     this.releaseBandPct = 0.98;       // 解禁: <98% (放宽自85→98)
-    this.shrinkBars = 3;              // 连续3根收窄 (恢复)
+    this.shrinkBars = 2;              // 连续2根收窄(放宽自3, 增加解禁开仓机会)
     this.tpTriggerPct = 1.0;            // 止盈前提: 浮盈≥1%(从2%改1%, 及时锁利, 减少利润回吐)
     this.volSpikeRatio = 1.8;         // 放量: 成交量>20周期均量×1.8
     this.atrTrail = 0.3;              // 放量ATR跟踪止盈倍数(0.3ATR)
@@ -28,7 +28,7 @@ class BollingerStrategy {
     this.maxAddRounds = 1;            // 补仓1次(从3次改为1次, 减少极端行情补仓放大风险)
     this.addPcts = [0.50, 0.30, 0.20]; // 补仓比例 50%/30%/20%
     this.addGapBars = 3;              // 补仓: 布林收口后间隔3根K线
-    this.feeSettleGuardMin = 15;      // 资金费率结算前15分钟禁交易
+    this.feeSettleGuardMin = 5;       // 资金费率结算前5分钟禁交易(放宽自15, 减少误挡开仓)
     this.deliveryGuardMin = 60;       // 季度交割前1小时禁交易
     this.fe = new FeatureEngineer();
   }
@@ -131,10 +131,10 @@ class BollingerStrategy {
     if (!b) return { allowed: false, reason: '布林数据不足' };
     // 禁开: 带宽分位>99%
     if (b.widthPct > this.openBandPct) return { allowed: false, reason: `带宽分位${(b.widthPct*100).toFixed(0)}%>${(this.openBandPct*100).toFixed(0)}%禁开` };
-    // 解禁: 分位<=100% 且 连续3根收窄(放宽到等于,让100%极限也可开)
-    const released = b.widthPct <= this.releaseBandPct && b.shrinking;
-    if (!released) return { allowed: false, reason: `未解禁(分位${(b.widthPct*100).toFixed(0)}%${b.shrinking?',':'非'}连续3根收窄)` };
-    return { allowed: true, reason: `解禁(分位${(b.widthPct*100).toFixed(0)}%<=${(this.releaseBandPct*100).toFixed(0)}%+连续${this.shrinkBars}根收窄)`, bands: b };
+    // 解禁: 分位<98%即可开(不再强制连续收窄, 4h级别收窄难满足且挡开仓
+    const released = b.widthPct <= this.releaseBandPct;
+    if (!released) return { allowed: false, reason: `未解禁(带宽分位${(b.widthPct*100).toFixed(0)}%>${(this.releaseBandPct*100).toFixed(0)}%)` };
+    return { allowed: true, reason: `解禁(带宽分位${(b.widthPct*100).toFixed(0)}%<${(this.releaseBandPct*100).toFixed(0)}%)`, bands: b };
   }
 
   // ═══ 开仓信号: 只收盘价, 触下轨开多/触上轨开空 (严格截图规格) ═══
