@@ -1637,45 +1637,11 @@ class SaasServer {
         }
       }
 
-      // 查 充值钱包(RECHARGE_WALLET) 链上 USDT 余额 + 自动入账
+      // ═══ 算力费余额展示: 直接使用数据库记账余额(充值入账由管理员手工控制) ═══
       try {
-        const traderAddr = RECHARGE_WALLET;  // 用户充值钱包(新钱包)
-        const _data = '0x70a08231' + '000000000000000000000000' + traderAddr.toLowerCase().replace('0x','');
-        const _ctrl = new AbortController();
-        const _to = setTimeout(() => _ctrl.abort(), 5000);
-        const _resp = await fetch('https://bsc-rpc.publicnode.com', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: '0x55d398326f99059fF775485246999027B3197955', data: _data }, 'latest'] }),
-          signal: _ctrl.signal,
-        });
-        clearTimeout(_to);
-        const _json = await _resp.json();
-        _traderOnchainBalance = _json.result ? Number(BigInt(_json.result)) / 1e18 : 0;
-        _pendingRecharge = Math.max(0, _traderOnchainBalance - _dbTotal);
-        if (_pendingRecharge < 1) _pendingRecharge = 0;
-
-        // v125: 自动入账 — 检测到差额后直接入账到当前用户，不需要手动确认
-        if (_pendingRecharge >= 1 && user) {
-          const rechargeAmount = _pendingRecharge;
-          const oldBalance = user.gatesFeeBalance || 0;
-          const newBalance = oldBalance + rechargeAmount;
-          const oldTotalRecharged = user.gatesFeeTotalRecharged || 0;   // 历史累计充值
-          this.userDB.set(walletAddr, {
-            ...user,
-            gatesFeeBalance: newBalance,
-            gatesFeeTotalRecharged: oldTotalRecharged + rechargeAmount,  // 累计充值累加
-            gatesFeeLow: newBalance < 5,
-            gatesFeeApproved: true,
-          });
-          _gatesFeeBalance = newBalance;
-          _gatesFeeLow = newBalance < 5;
-          _pendingRecharge = 0;
-          console.log(`[GatesFee] ✅ ${walletAddr.slice(0,10)}... 自动入账 $${rechargeAmount.toFixed(2)} → 余额: $${newBalance.toFixed(2)} 累计充值: $${(oldTotalRecharged + rechargeAmount).toFixed(2)}`);
-        }
-      } catch(e) {
-        console.log('[GatesFee] 链上余额查询失败:', e.message);
-      }
+        _gatesFeeBalance = user.gatesFeeBalance || 0;
+        _gatesFeeLow = user.gatesFeeLow || ((user.gatesFeeBalance||0) < 5);
+      } catch(e) { _gatesFeeBalance = user?.gatesFeeBalance || 0; }
 
       res.json({
         success: true,
