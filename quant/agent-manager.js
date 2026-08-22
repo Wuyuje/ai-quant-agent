@@ -352,12 +352,7 @@ class QuantAgent {
         // 布林带策略(4小时级别): 4h K线决策
         const bkl = await this.api.getKlines(symbol, '4h', 200).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
-        // 截图: 单K±3%毛刺信号作废
-        if (this.boll.isSpikeBar(bkl)) continue;
-        // ═══ 流动性枯竭检测: 单K成交量骤降≥50%禁开(防无流动性极端滑点) ═══
-        if (this.boll.isLiquidityDry(bkl)) { if (this.isAdmin) this._log(`🚫 ${symbol} 流动性枯竭禁开`); continue; }
-        // ═══ 趋势过滤器: 4h大周期有明确单边趋势时不进场(震荡策略只在震荡市交易) ═══
-        // 避免单边行情里被反向扫止损(之前回测里20%亏损都是单边造成的)
+        // ═══ 趋势过滤器: 4h大周期有明确单边趋势时不进场 ═══
         {
           const hkl = await this.api.getKlines(symbol, '4h', 120).catch(() => null);
           if (hkl && hkl.length >= 30) {
