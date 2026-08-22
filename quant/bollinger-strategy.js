@@ -17,8 +17,8 @@ class BollingerStrategy {
     this.period = 20;                 // 布林周期
     this.stdDev = 2;                  // 标准差倍数
     this.histLookback = 100;          // 带宽100根历史分位(截图: 100根)
-    this.openBandPct = 0.90;          // 禁开: 带宽分位>90% (恢复截图规范, 减频止血)
-    this.releaseBandPct = 0.85;       // 解禁: <85% (恢复)
+    this.openBandPct = 0.99;          // 禁开: 带宽分位>99%才禁(放宽自90→99, 大幅增加开仓)
+    this.releaseBandPct = 0.98;       // 解禁: <98% (放宽自85→98)
     this.shrinkBars = 3;              // 连续3根收窄 (恢复)
     this.tpTriggerPct = 1.0;            // 止盈前提: 浮盈≥1%(从2%改1%, 及时锁利, 减少利润回吐)
     this.volSpikeRatio = 1.8;         // 放量: 成交量>20周期均量×1.8
