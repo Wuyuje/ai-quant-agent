@@ -349,8 +349,8 @@ class QuantAgent {
           if (this.isAdmin) this._log(`⏸️ ${symbol} 冷却禁开(连续亏损, 解禁时间${new Date(this._bollCooldowns[symbol]).toLocaleTimeString('zh-CN')})`);
           continue;
         }
-        // 布林带策略(规格): 5分钟K线决策
-        const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
+        // 布林带策略(4小时级别): 4h K线决策
+        const bkl = await this.api.getKlines(symbol, '4h', 200).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
         // 截图: 单K±3%毛刺信号作废
         if (this.boll.isSpikeBar(bkl)) continue;
@@ -365,11 +365,11 @@ class QuantAgent {
             const hEma = (list, n) => { const k = 2/(n+1); let e = list[0]; for(let i=1;i<list.length;i++) e=list[i]*k+e*(1-k); return e; };
             const he7 = hEma(hCloses, 7), he25 = hEma(hCloses, 25), he99 = hEma(hCloses, 99);
             const hDir = (he7 > he25 && he25 > he99) ? 'UP' : (he7 < he25 && he25 < he99) ? 'DOWN' : 'FLAT';
-            // ═══ 宽松趋势过滤: 只在EMA7与EMA25距离>2%时禁开(强单边), 弱趋势/缠绕允许进场 ═══
+            // ═══ 放宽趋势过滤: 只在EMA7与EMA25距离>3%时禁开(强单边), 弱/中趋势允许进场 ═══
             const hEmaSpread = Math.abs(he7 - he25) / (he25 || 1) * 100;
-            const hTrendStrong = hDir !== 'FLAT' && hEmaSpread > 1.5;  // EMA差>1.5%才算强趋势(占75%+行情, 只过滤25%最强单边)
+            const hTrendStrong = hDir !== 'FLAT' && hEmaSpread > 3;  // EMA差>3%才算强趋势禁开(从1.5放宽到3, 增加布林开仓机会)
             if (hTrendStrong) {
-              if (this.isAdmin) this._log(`🚫 ${symbol} 4h强趋势=${hDir}(EMA差${hEmaSpread.toFixed(1)}%>2%)禁震荡开仓`);
+              if (this.isAdmin) this._log(`🚫 ${symbol} 4h强趋势=${hDir}(EMA差${hEmaSpread.toFixed(1)}%>3%)禁震荡开仓`);
               continue;
             }
           }
@@ -422,8 +422,8 @@ class QuantAgent {
           }
         }
         if (pos.strategy === 'bollinger') {
-          // 布林带策略止盈/风控(规格): 5min K线
-          const bkl = await this.api.getKlines(symbol, '5m', 120).catch(() => null);
+          // 布林带策略止盈/风控(4小时级别): 4h K线
+          const bkl = await this.api.getKlines(symbol, '4h', 200).catch(() => null);
           if (bkl && bkl.length >= 30) {
             // 截图: 插针击穿止损/补仓点位但收盘回归 → 不执行风控
             const spike = this.boll.isSpikeBar(bkl);
