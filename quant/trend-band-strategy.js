@@ -32,6 +32,8 @@ class TrendBandStrategy {
     this.momentumPct = opts.momentumPct || 0.01;   // 1%
     // ═══ 高位追高过滤: 近20根K线涨幅超过阈值(默认20%)不追多/不追空(避免买在短期顶部被套) ═══
     this.gainFilterPct = opts.gainFilterPct || 20;   // 20%
+    // ═══ 高位位置过滤: 价格处于近20根高位区(>80%)时不追多, 避免买在顶部被回调止损 ═══
+    this.highPosFilterPct = opts.highPosFilterPct || 80;   // 80%
     // 出场(方案C: 两阶段锁利)
     this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别)
     this.tpMul = opts.tpMul || 2.0;           // 止盈2ATR
@@ -94,12 +96,19 @@ class TrendBandStrategy {
     // ═══ 高位追高过滤: 近20根K线涨幅超过阈值时不追(避免买在短期顶部) ═══
     const gain20 = (price - closes[Math.max(0, i - 20)]) / (closes[Math.max(0, i - 20)] || 1) * 100;
     const overheat = Math.abs(gain20) > this.gainFilterPct;
+    // ═══ 高位位置过滤: 价格处于近20根K线高位区(>80%)时不追多(避免买在顶部被回调止损) ═══
+    const seg20 = closes.slice(Math.max(0, i - 19), i + 1);
+    const hi20 = Math.max(...seg20), lo20 = Math.min(...seg20);
+    const pos20 = (price - lo20) / ((hi20 - lo20) || 1) * 100;  // 0=最低, 100=最高
+    const atTop = pos20 > this.highPosFilterPct;
     if (dir === 'UP') {
       const hi = Math.max(...closes.slice(i - look, i));   // 近60根(不含当前)
       const mom = (price - e50) / (e50 || 1);
       if (price > hi && mom > this.momentumPct) {
         // 近20根涨幅过大(追高过热) → 不开多, 等回调
         if (overheat) return { signal: 'NONE', reason: `${this.period}多头排列但近20根涨幅${gain20.toFixed(1)}%过热, 不追高` };
+        // ═══ 高位位置过滤: 价格已在近20根高位区(>80%) → 不追多, 等回调 ═══
+        if (atTop) return { signal: 'NONE', reason: `${this.period}多头排列但价格处于近20根高位(${pos20.toFixed(0)}%>80%), 不追高` };
         return { signal: 'LONG', reason: `${this.period}多头排列破${look}前高${hi.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     } else if (dir === 'DOWN') {
