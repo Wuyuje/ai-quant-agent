@@ -279,25 +279,20 @@ class QuantAgent {
           const bkl = await this.api.getKlines(symbol, '4h', 200).catch(() => null);
           if (!bkl || bkl.length < 40) continue;
           if (this.positions[symbol]) continue;   // 同币已持单
-          // 4h趋势过滤(布林只在中弱趋势开)
-          {
-            const hCloses = bkl.map(k => +k.close);
-            const hEma = (list, n) => { const k = 2/(n+1); let e = list[0]; for(let i=1;i<list.length;i++) e=list[i]*k+e*(1-k); return e; };
-            const he7 = hEma(hCloses, 7), he25 = hEma(hCloses, 25);
-            const hEmaSpread = Math.abs(he7 - he25) / (he25 || 1) * 100;
-            if (hEmaSpread > 5) { if (this.isAdmin) this._log(`🚫 ${symbol} 趋势弱但EMA差${hEmaSpread.toFixed(1)}%>5%禁布林`); continue; }
-          }
           // 带宽门禁
           const openGate = this.boll.canOpen(bkl);
           if (!openGate.allowed) continue;
-          // 接近轨道20%触发
+          // 接近轨道触发(原始信号: 只看触轨)
           const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
-          if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
-            if (countB >= BOLL_MAX) continue;
-            const bs = { notional: Math.max(20, this.balance*rp.posPct*3), margin: Math.max(20,this.balance*rp.posPct*3)/rp.leverage, leverage: rp.leverage };
-            const r = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bs.notional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
-            if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 趋势NONE→布林${esig.signal}开仓`); }
-          }
+          if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
+          // ═══ 布林趋势方向门禁(核心改造): UP只开多/DOWN只开空/FLAT不开 + 强趋势(EMA差>3%)回避 ═══
+          const tg = this.boll.trendDirGate(bkl, esig.signal, 3);
+          if (!tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg.reason}`); continue; }
+          // 用门禁确认的方向开仓(与趋势一致)
+          if (countB >= BOLL_MAX) continue;
+          const bs = { notional: Math.max(20, this.balance*rp.posPct*3), margin: Math.max(20,this.balance*rp.posPct*3)/rp.leverage, leverage: rp.leverage };
+          const r = await this.executor.executeOrder(esig, { symbol, side: tg.side, notional: bs.notional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
+          if (r.success) { this.positions[symbol] = { side: tg.side, qty: r.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 趋势NONE→布林顺势${tg.side}开仓(${tg.reason})`); }
           continue;  // 已尝试布林, 本币结束
         }
         // ═══ 实时市场健康闸门: 当下ADX/ATR校验(根治假波动币, 趋势只碰真单边) ═══
@@ -352,35 +347,21 @@ class QuantAgent {
         // 布林带策略(4小时级别): 4h K线决策
         const bkl = await this.api.getKlines(symbol, '4h', 200).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
-        // ═══ 趋势过滤器: 4h大周期有明确单边趋势时不进场 ═══
-        {
-          const hkl = await this.api.getKlines(symbol, '4h', 120).catch(() => null);
-          if (hkl && hkl.length >= 30) {
-            const hCloses = hkl.map(k => k.close);
-            const hEma = (list, n) => { const k = 2/(n+1); let e = list[0]; for(let i=1;i<list.length;i++) e=list[i]*k+e*(1-k); return e; };
-            const he7 = hEma(hCloses, 7), he25 = hEma(hCloses, 25), he99 = hEma(hCloses, 99);
-            const hDir = (he7 > he25 && he25 > he99) ? 'UP' : (he7 < he25 && he25 < he99) ? 'DOWN' : 'FLAT';
-            // ═══ 放宽趋势过滤: 只在EMA7与EMA25距离>3%时禁开(强单边), 弱/中趋势允许进场 ═══
-            const hEmaSpread = Math.abs(he7 - he25) / (he25 || 1) * 100;
-            const hTrendStrong = hDir !== 'FLAT' && hEmaSpread > 5;  // EMA差>5%才算强趋势禁开(从3放宽到5, 布林更多参与)
-            if (hTrendStrong) {
-              if (this.isAdmin) this._log(`🚫 ${symbol} 4h强趋势=${hDir}(EMA差${hEmaSpread.toFixed(1)}%>3%)禁震荡开仓`);
-              continue;
-            }
-          }
-        }
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
         const guard = this.boll.tradingGuardAllowed(bkl);
         if (!guard.allowed) continue;
         const openGate = this.boll.canOpen(bkl);
         if (!openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
-        /* 严格按用户截图规格: 不额外加 ADX/ATR 外部过滤, 布林自身带宽门禁+触轨信号+双模式止盈已够 */
+        /* 严格按用户截图规格: 不额外加 ADX/ATR 外部过滤, 布林自身带宽门禁+触轨信号+方向门禁已够 */
         const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
-        if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
-          const bs = { notional: Math.max(20, this.balance*rp.posPct*3), margin: Math.max(20,this.balance*rp.posPct*3)/rp.leverage, leverage: rp.leverage };
-          const r = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bs.notional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
-          if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); }
-        }
+        if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
+        // ═══ 布林趋势方向门禁(核心改造): UP只开多/DOWN只开空/FLAT不开 + 强趋势(EMA差>3%)回避 ═══
+        const tg = this.boll.trendDirGate(bkl, esig.signal, 3);
+        if (!tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg.reason}`); continue; }
+        // 用门禁确认的方向开仓(与趋势一致)
+        const bs = { notional: Math.max(20, this.balance*rp.posPct*3), margin: Math.max(20,this.balance*rp.posPct*3)/rp.leverage, leverage: rp.leverage };
+        const r = await this.executor.executeOrder(esig, { symbol, side: tg.side, notional: bs.notional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
+        if (r.success) { this.positions[symbol] = { side: tg.side, qty: r.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 布林顺势${tg.side}开仓(${tg.reason})`); }
       }
       } catch(e) { if (this.isAdmin) this._log(`⚠️ ${symbol} 扫描出错(跳过): ${e.message}`); }
     }

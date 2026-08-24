@@ -128,6 +128,33 @@ class BollingerStrategy {
   }
 
   // ═══ 开仓准入: 带宽100根分位 + 收窄解禁(截图) ═══
+  // ═══ 布林趋势方向门禁: 用4h EMA7/25/99 判断大趋势方向, 布林只顺势方向开仓 ═══
+  // 返回 { dir: 'UP'|'DOWN'|'FLAT', spread: EMA7-25差%, allowed, side, reason }
+  // 核心: UP只开多, DOWN只开空, FLAT(方向不明)不开; 强趋势(EMA差>3%)也不开(回避噪声)
+  trendDirGate(kl, rawSide, maxSpreadPct = 3) {
+    try {
+      const arr = toArray(kl);
+      if (!arr || arr.length < 60) return { allowed: false, side: null, reason: '趋势数据不足' };
+      // 注意: toArray 返回 [open,high,low,close,vol] 数组格式, 用索引访问(与entrySignal一致)
+      const closes = arr.map(k => +k[3]);
+      const ema = (list, n) => { const k = 2/(n+1); let e = list[0]; for (let i=1;i<list.length;i++) e = list[i]*k + e*(1-k); return e; };
+      const e7 = ema(closes, 7), e25 = ema(closes, 25), e99 = ema(closes, 99);
+      let dir = 'FLAT';
+      if (e7 > e25 && e25 > e99) dir = 'UP';
+      else if (e7 < e25 && e25 < e99) dir = 'DOWN';
+      const spread = Math.abs(e7 - e25) / (e25 || 1) * 100;
+      if (dir === 'FLAT') return { allowed: false, side: null, dir, spread: +spread.toFixed(2), reason: `方向不明(FLAT, EMA未单边排列)不开布林` };
+      if (spread > maxSpreadPct) return { allowed: false, side: null, dir, spread: +spread.toFixed(2), reason: `${dir}趋势EMA差${spread.toFixed(1)}%>${maxSpreadPct}%, 强趋势布林回避` };
+      // 方向门禁: 布林信号必须顺趋势
+      const wantLong = rawSide === 'LONG';
+      const wantShort = rawSide === 'SHORT';
+      if (dir === 'UP' && wantLong) return { allowed: true, side: 'LONG', dir, spread: +spread.toFixed(2), reason: `${dir}趋势触及区顺势开多(EMA差${spread.toFixed(1)}%≤${maxSpreadPct}%)` };
+      if (dir === 'DOWN' && wantShort) return { allowed: true, side: 'SHORT', dir, spread: +spread.toFixed(2), reason: `${dir}趋势触及区顺势开空(EMA差${spread.toFixed(1)}%≤${maxSpreadPct}%)` };
+      const blocked = dir === 'UP' ? '逆势摸顶开空' : '逆势抄底开多';
+      return { allowed: false, side: null, dir, spread: +spread.toFixed(2), reason: `${dir}趋势但布林信号${rawSide}为${blocked}, 拒绝` };
+    } catch (e) { return { allowed: false, side: null, reason: '趋势门禁异常' }; }
+  }
+
   canOpen(arr) {
     const b = this.calcBands(arr);
     if (!b) return { allowed: false, reason: '布林数据不足' };
