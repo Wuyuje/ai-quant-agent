@@ -120,19 +120,20 @@ class QuantAgent {
 
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
 
-  // ═══ 共享开仓信号(十万并发阶段2): 开仓方向判定与用户无关, 首个用户算+其他用户复用, 降低CPU ═══
-  // 只共享: 趋势波段信号 / 布林触轨信号 / 布林方向门禁 (均只依赖K线, 不依赖用户持仓)
-  // 注意: brain.decide(每用户独立)和持仓管理(每用户持仓不同) 不共享
+  // ═══ 共享开仓信号(百万框架核心阶段2): 开仓方向判定与用户无关, 全市场只算1次, 所有用户复用 ═══
+  // 共享: 趋势信号 / 布林带宽门禁(openGate) / 布林触轨信号(esig) / 布林方向门禁(gate) — 均只依赖K线
+  // 不共享: brain.decide(每用户独立) / 持仓管理(每用户持仓不同) / 开仓执行(每用户自己资金)
   _getSharedOpenSignal(symbol, kl5, bkl) {
     if (this.signalMap && this.signalMap[symbol]) {
       const s = this.signalMap[symbol];
-      if (s && s.t && (Date.now() - s.t < 60000)) return s;   // 60s内复用共享信号
+      if (s && s.t && (Date.now() - s.t < 60000)) return s;   // 60s内复用共享信号(避免每用户重算)
     }
-    // miss → 本用户算(结果与用户无关), 写回共享供其他用户复用
+    // miss → 本用户算(结果与用户无关), 写回共享供所有用户复用
     const trendSignal = kl5 ? this.trendBand.entrySignal(kl5) : null;
+    const openGate = bkl ? this.boll.canOpen(bkl) : null;
     const esig = bkl ? this.boll.entrySignal(bkl, 'FLAT', false) : null;
     const gate = (bkl && esig && (esig.signal === 'LONG' || esig.signal === 'SHORT')) ? this.boll.trendDirGate(bkl, esig.signal, 3) : null;
-    const sig = { trendSignal, esig, gate, t: Date.now() };
+    const sig = { trendSignal, openGate, esig, gate, t: Date.now() };
     if (this.signalMap) this.signalMap[symbol] = sig;
     return sig;
   }
@@ -321,9 +322,9 @@ class QuantAgent {
         let sig = null, stg = 'ma7';
         let kl5 = null;   // 提前声明, 供下方闸门/贴线判断统一使用(修复kl5块级作用域丢失bug)
         {
-          // ═══ 真趋势波段(4h): EMA排列+破60前高低+动量确认, 宽止损/高止盈 ═══
+          // ═══ 真趋势波段(4h): EMA排列+破60前高低+动量确认, 宽止损/高止盈 (共享信号, 不每用户重算) ═══
           kl5 = await this._getKlinesShared(symbol, '4h', 300).catch(() => null);
-          sig = this.trendBand.entrySignal(kl5 || kl);
+          sig = this._getSharedOpenSignal(symbol, kl5 || kl, null).trendSignal || null;
         }
         if (!sig || sig.signal === 'NONE') {
           // ═══ 趋势无信号 → 落到布林补充(趋势优先, 布林补充, 同币互斥) ═══
@@ -335,15 +336,14 @@ class QuantAgent {
           const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
           if (!bkl || bkl.length < 40) continue;
           if (this.positions[symbol]) continue;   // 同币已持单
-          // 带宽门禁
-          const openGate = this.boll.canOpen(bkl);
-          if (!openGate.allowed) continue;
-          // 接近轨道触发(原始信号: 只看触轨)
-          const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
+          // ═══ 共享开仓信号(百万框架): 带宽门禁/触轨/方向门禁 由全局共用1份, 不每用户重算 ═══
+          const shSig = this._getSharedOpenSignal(symbol, null, bkl);
+          const openGate = shSig.openGate;
+          if (!openGate || !openGate.allowed) continue;
+          const esig = shSig.esig;
           if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
-          // ═══ 布林趋势方向门禁(核心改造): UP只开多/DOWN只开空/FLAT不开 + 强趋势(EMA差>3%)回避 ═══
-          const tg = this.boll.trendDirGate(bkl, esig.signal, 3);
-          if (!tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg.reason}`); continue; }
+          const tg = shSig.gate;
+          if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg ? tg.reason : '无门禁'}`); continue; }
           // 用门禁确认的方向开仓(与趋势一致)
           // ═══ 仓位/敞口上限(自动按余额分级): 每策略上限+总仓位上上限+保证金熔断 ═══
           const capOk = this._exposureOk('bollinger', rp);
@@ -408,14 +408,14 @@ class QuantAgent {
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
         const guard = this.boll.tradingGuardAllowed(bkl);
         if (!guard.allowed) continue;
-        const openGate = this.boll.canOpen(bkl);
-        if (!openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
-        /* 严格按用户截图规格: 不额外加 ADX/ATR 外部过滤, 布林自身带宽门禁+触轨信号+方向门禁已够 */
-        const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
+        // ═══ 共享开仓信号(百万框架): 带宽门禁/触轨/方向门禁 由全局共用1份, 不每用户重算 ═══
+        const shSig = this._getSharedOpenSignal(symbol, null, bkl);
+        const openGate = shSig.openGate;
+        if (!openGate || !openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
+        const esig = shSig.esig;
         if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
-        // ═══ 布林趋势方向门禁(核心改造): UP只开多/DOWN只开空/FLAT不开 + 强趋势(EMA差>3%)回避 ═══
-        const tg = this.boll.trendDirGate(bkl, esig.signal, 3);
-        if (!tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg.reason}`); continue; }
+        const tg = shSig.gate;
+        if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg ? tg.reason : '无门禁'}`); continue; }
         // 用门禁确认的方向开仓(与趋势一致)
         // ═══ 仓位/敞口上限(自动按余额分级) ═══
         const capOk2 = this._exposureOk('bollinger', rp);
