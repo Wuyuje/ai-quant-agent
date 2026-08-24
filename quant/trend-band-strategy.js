@@ -105,10 +105,9 @@ class TrendBandStrategy {
       const hi = Math.max(...closes.slice(i - look, i));   // 近60根(不含当前)
       const mom = (price - e50) / (e50 || 1);
       if (price > hi && mom > this.momentumPct) {
-        // 近20根涨幅过大(追高过热) → 不开多, 等回调
-        if (overheat) return { signal: 'NONE', reason: `${this.period}多头排列但近20根涨幅${gain20.toFixed(1)}%过热, 不追高` };
-        // ═══ 高位位置过滤: 价格已在近20根高位区(>80%) → 不追多, 等回调 ═══
-        if (atTop) return { signal: 'NONE', reason: `${this.period}多头排列但价格处于近20根高位(${pos20.toFixed(0)}%>80%), 不追高` };
+        // ═══ 组合追高过滤: 位置>80% AND 涨幅>20% 同时满足才拦截(精准拦极端追高, 保留正常突破) ═══
+        const comboOverheat = atTop && overheat;
+        if (comboOverheat) return { signal: 'NONE', reason: `${this.period}多头排列但高位(${pos20.toFixed(0)}%>80%)且涨幅${gain20.toFixed(1)}%>20%, 不追高` };
         return { signal: 'LONG', reason: `${this.period}多头排列破${look}前高${hi.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     } else if (dir === 'DOWN') {
