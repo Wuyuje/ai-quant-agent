@@ -22,11 +22,12 @@ const PLATFORM_FEE_RATE = 0.20;
 const ECO_FUND_RATE = 0.10;
 
 class QuantAgent {
-  constructor({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB, pauseOpen }) {
+  constructor({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB, pauseOpen, klineCache }) {
     this.wallet = wallet;
     this.isAdmin = isAdmin;
     this.isWhitelist = isWhitelist || false;
     this.userDB = userDB;
+    this.klineCache = klineCache || null;   // ═══ 十万并发: 共享K线缓存(所有用户共用1份, 防重复拉取爆API) ═══
     if (typeof pauseOpen === 'boolean') this.pauseOpen = pauseOpen;
     this.api = new BinanceAPI(apiKey, apiSecret);
     this.fe = new FeatureEngineer();
@@ -115,6 +116,27 @@ class QuantAgent {
   }
 
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
+
+  // ═══ 共享K线缓存(十万并发核心): 所有用户共用一份K线, 避免重复拉取爆Binance API ═══
+  // 优先走 manager 的全局缓存, miss 才实际请求; TTL 按周期自动(5m=15s/4h=30s/15m=20s/1d=300s)
+  async _getKlinesShared(symbol, interval, limit) {
+    if (!this.klineCache) return this.api.getKlines(symbol, interval, limit);   // 无缓存(单机)直接请求
+    const key = symbol + ':' + interval + ':' + limit;
+    const ttl = ({ '5m':15000, '15m':20000, '4h':30000, '1d':300000 })[interval] || 20000;
+    const now = Date.now();
+    const c = this.klineCache[key];
+    if (c && (now - c.t < ttl)) return c.data;   // 缓存命中
+    // miss → 实际请求 + 写入共享缓存
+    try {
+      const data = await this.api.getKlines(symbol, interval, limit);
+      this.klineCache[key] = { t: now, data };
+      return data;
+    } catch (e) {
+      // 失败则回退旧缓存(若有)
+      if (c) return c.data;
+      throw e;
+    }
+  }
   // ═══ 持仓策略持久化: symbol → 开仓策略(ma7/v4/bollinger). 重启后由原策略继续管理, 不再靠inTrend误判接管 ═══
   _saveState() { try { const posMap = {}; for (const [sym, p] of Object.entries(this.positions)) { if (p && p.strategy) posMap[sym] = { strategy: p.strategy, side: p.side, qty: p.qty, entryPrice: p.entryPrice, leverage: p.leverage }; } fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance, positions: posMap }, null, 1)); } catch(e){} }
   // 重启后恢复持仓策略归属(只存策略映射, 不直接重建持仓, 真正head由币安同步)
@@ -232,7 +254,7 @@ class QuantAgent {
     // 大盘过滤: 缓存BTC状态(每轮查一次)
     try {
       if (!this._btcCache || Date.now() - this._btcCache.t > 60000) {
-        const bkl = await this.api.getKlines('BTCUSDT', '4h', 60).catch(() => null);
+        const bkl = await this._getKlinesShared('BTCUSDT', '4h', 60).catch(() => null);
         this._btcCache = { t: Date.now(), state: bkl ? this._btcRegime(bkl) : 'OK' };
       }
       this._marketRisk = this._btcCache.state;
@@ -253,7 +275,7 @@ class QuantAgent {
       // 开仓顺序由 rankedPool 保证(趋势Top5优先扫描, 排名靠前先开仓)
       // 若优先后右币, 其他币也实时尝试开仓(不空仓)
 
-      const kl = await this.api.getKlines(symbol, '15m', 300).catch(() => null);   // 300根够MA7 lookback(288)算位置区间
+      const kl = await this._getKlinesShared(symbol, '15m', 300).catch(() => null);   // 300根够MA7 lookback(288)算位置区间
       if (this.isAdmin && (this._runCount % 1 === 0)) this._log(`🔍scan ${symbol}: kl=${kl?(kl.length||0):'null'}枚`);
       if (!kl || kl.length < 288) { if (this.isAdmin) this._log(`  ⏭️ ${symbol} 数据不足(kl=${kl?(kl.length||0):0})`); continue; }
       // 资金费率
@@ -280,7 +302,7 @@ class QuantAgent {
         let kl5 = null;   // 提前声明, 供下方闸门/贴线判断统一使用(修复kl5块级作用域丢失bug)
         {
           // ═══ 真趋势波段(4h): EMA排列+破60前高低+动量确认, 宽止损/高止盈 ═══
-          kl5 = await this.api.getKlines(symbol, '4h', 300).catch(() => null);
+          kl5 = await this._getKlinesShared(symbol, '4h', 300).catch(() => null);
           sig = this.trendBand.entrySignal(kl5 || kl);
         }
         if (!sig || sig.signal === 'NONE') {
@@ -290,7 +312,7 @@ class QuantAgent {
           // 进入布林分支(当前币无趋势信号, 用布林接近轨道开仓)
           // 布林策略(4h): 接近轨道20% + 趋势过滤5% + 带宽门禁
           if (this.pauseBoll) continue;   // 布林暂停
-          const bkl = await this.api.getKlines(symbol, '4h', 200).catch(() => null);
+          const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
           if (!bkl || bkl.length < 40) continue;
           if (this.positions[symbol]) continue;   // 同币已持单
           // 带宽门禁
@@ -361,7 +383,7 @@ class QuantAgent {
           continue;
         }
         // 布林带策略(4小时级别): 4h K线决策
-        const bkl = await this.api.getKlines(symbol, '4h', 200).catch(() => null);
+        const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
         const guard = this.boll.tradingGuardAllowed(bkl);
@@ -395,7 +417,7 @@ class QuantAgent {
         // ⛔ 接管仓(启动时从币安同步的存量仓,_managed=true): 一律不平仓, 保护用户存量持仓
         //    只允许本引擎自己新开的仓(非_managed)按策略管理. 用户明确要求启动不平仓.
         if (pos._managed) { continue; }
-        const kl = await this.api.getKlines(symbol, '15m', 60).catch(() => null);
+        const kl = await this._getKlinesShared(symbol, '15m', 60).catch(() => null);
         if (!kl || kl.length < 20) continue;
         const price = +toArray(kl)[kl.length-1][3];
         pos.currentPrice = price;
@@ -405,7 +427,7 @@ class QuantAgent {
         // V4策略已物理删除: v4持仓不再单独管理(不应存在v4仓; 若历史遗留则交由trendBand兜底不平)
         if (pos.strategy === 'ma7') {
           // ✱真趋势波段(4h): 0.6ATR止损 + 两阶段锁利
-          const mkl = await this.api.getKlines(symbol, pos._t || '4h', 200).catch(() => null);
+          const mkl = await this._getKlinesShared(symbol, pos._t || '4h', 200).catch(() => null);
           if (mkl && mkl.length >= 40) {
             const mArr = mkl.map(k => ({ open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: k.volume }));
             const closes = mArr.map(k => +k.close);
@@ -418,7 +440,7 @@ class QuantAgent {
         }
         if (pos.strategy === 'bollinger') {
           // 布林带策略止盈/风控(4小时级别): 4h K线
-          const bkl = await this.api.getKlines(symbol, '4h', 200).catch(() => null);
+          const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
           if (bkl && bkl.length >= 30) {
             // 截图: 插针击穿止损/补仓点位但收盘回归 → 不执行风控
             const spike = this.boll.isSpikeBar(bkl);
@@ -459,7 +481,7 @@ class QuantAgent {
           // ✱接管/存量仓: 用真趋势波段(4h) 宽ATR止损/高止盈/移动止盈 统一管理,
           // 不再用旧EMA7/25即时反转(那会一秒砍掉刚接管的仓). 布林接管仓也不误杀。
           const tf = pos._t || '4h';
-          const mkl = await this.api.getKlines(symbol, tf, 200).catch(() => null);
+          const mkl = await this._getKlinesShared(symbol, tf, 200).catch(() => null);
           if (mkl && mkl.length >= 40) {
             const mArr = mkl.map(k => ({ open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: k.volume }));
             const closes = mArr.map(k => +k.close);
@@ -495,7 +517,7 @@ class QuantAgent {
               const pnlPct = notional > 0 ? (pnlToCount / notional) * 100 : 0;
               let marketFeat = null;
               try {
-                const fkl = await this.api.getKlines(symbol, '15m', 60).catch(() => null);
+                const fkl = await this._getKlinesShared(symbol, '15m', 60).catch(() => null);
                 if (fkl && fkl.length >= 30) {
                   const j = this.classifier.judgeMarketState(fkl, 0);
                   marketFeat = [ j.volatility*100, j.trendStrength/100, j.maConverge!=null?j.maConverge*5:0.5, j.fundingRate*1000, j.trendDir==='UP'?1:(j.trendDir==='DOWN'?-1:0) ];
@@ -719,6 +741,7 @@ class QuantAgentManager {
     this.intervalMs = opts.intervalMs || 60000;
     this._timer = null;
     this._agents = {};       // wallet → QuantAgent
+    this._klineCache = {};   // ═══ 十万并发: 全局共享K线缓存(symbol:interval:limit → {t,data}), 所有用户共用防重复拉API ═══
     this.running = false;
     this.pauseOpen = false;
     this.pauseTrend = false;
@@ -812,7 +835,7 @@ class QuantAgentManager {
             if (isAdmin) { apiKey = this.adminApiKey; apiSecret = this.adminApiSecret; }
             else continue;  // 白名单无key不交易但保留
           }
-          this._agents[wallet] = new QuantAgent({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB: this.userDB, pauseOpen: this.pauseOpen });
+          this._agents[wallet] = new QuantAgent({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB: this.userDB, pauseOpen: this.pauseOpen, klineCache: this._klineCache });
           const role = isAdmin ? '管理员' : (isWhitelist ? '白名单' : '普通');
           this._log(`${wallet.slice(0,10)} 智能体启动(${role})`);
         }
