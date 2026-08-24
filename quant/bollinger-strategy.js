@@ -27,7 +27,7 @@ class BollingerStrategy {
     this.finalLossPct = 70;           // 终极风控(截图): 总浮亏≥持仓金额70%全平 (已回退D方案)
     this.maxAddRounds = 1;            // 补仓1次(从3次改为1次, 减少极端行情补仓放大风险)
     // ═══ 接近轨道触发: 价格距下轨/上轨在轨道宽度X%内即触发开仓(增加开仓, 保留均值回归方向) ═══
-    this.touchProximity = opts.touchProximity || 20;   // 距轨道20%内触发
+    this.touchAtr = opts.touchAtr || 1.0;   // 距下轨/上轨1.0ATR内触发开仓(改用ATR距离, 比相对宽度%稳定)
     this.addPcts = [0.50, 0.30, 0.20]; // 补仓比例 50%/30%/20%
     this.addGapBars = 3;              // 补仓: 布林收口后间隔3根K线
     this.feeSettleGuardMin = 5;       // 资金费率结算前5分钟禁交易(放宽自15, 减少误挡开仓)
@@ -145,20 +145,18 @@ class BollingerStrategy {
     if (!b) return { signal: 'NONE', reason: '布林不足' };
     const price = +toArray(arr)[arr.length-1][3];
     if (existingSame) return { signal: 'ADD', reason: '已有同向持仓走补仓', bands: b };
-    // ═══ 接近轨道触发(保留均值回归方向): 距下轨X%内开多, 距上轨X%内开空 ═══
-    const rangeWidth = (b.upper - b.lower) || 1;
-    const distToLow = (price - b.lower) / rangeWidth * 100;   // 距下轨相对轨道宽度%
-    const distToUp = (b.upper - price) / rangeWidth * 100;    // 距上轨相对轨道宽度%
-    // 严格触轨(价格接近/达到轨道)
-    // 接近/触下轨 → 开多 (距下轨20%内)
-    if (distToLow <= this.touchProximity) {
-      return { signal: 'LONG', reason: `接近/触下轨开多(距下轨${distToLow.toFixed(0)}%<${this.touchProximity}%)`, bands: b };
+    // ═══ 接近轨道触发(保留均值回归方向): 距下轨/上轨 1.0ATR 内开仓 ═══
+    // 用ATR距离(稳定, 不受带宽影响), 比相对宽度%更可靠
+    const atr = this.fe.calcATR(toArray(arr)) || 1;
+    // 接近/触下轨 → 开多 (距下轨<=ATR距离)
+    if ((price - b.lower) <= this.touchAtr) {
+      return { signal: 'LONG', reason: `接近/触下轨开多(距下轨${((price-b.lower)/atr).toFixed(2)}ATR<${this.touchAtr}ATR)`, bands: b };
     }
-    // 接近/触上轨 → 开空 (距上轨20%内)
-    if (distToUp <= this.touchProximity) {
-      return { signal: 'SHORT', reason: `接近/触上轨开空(距上轨${distToUp.toFixed(0)}%<${this.touchProximity}%)`, bands: b };
+    // 接近/触上轨 → 开空 (距上轨<=ATR距离)
+    if ((b.upper - price) <= this.touchAtr) {
+      return { signal: 'SHORT', reason: `接近/触上轨开空(距上轨${((b.upper-price)/atr).toFixed(2)}ATR<${this.touchAtr}ATR)`, bands: b };
     }
-    return { signal: 'NONE', reason: `收盘在轨道中(距下轨${distToLow.toFixed(0)}%,距上轨${distToUp.toFixed(0)}%>20%)` };
+    return { signal: 'NONE', reason: `收盘在轨道内(距下轨${((price-b.lower)/atr).toFixed(2)}ATR,距上轨${((b.upper-price)/atr).toFixed(2)}ATR>${this.touchAtr}ATR)` };
   }
 
   // ═══ 插针/毛刺过滤: 单K±3%作废信号(截图) ═══
