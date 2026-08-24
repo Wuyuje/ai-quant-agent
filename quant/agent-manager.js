@@ -131,7 +131,7 @@ class QuantAgent {
           // ═══ 接管仓归属判定: 优先用持久化的开仓策略(布林仓永远是布林), 防重启后布林仓被误判为trend而被EMA砍掉 ═══
           // 持久化映射来自 _posStrategy (开仓时写入, 重启从quant-state.json加载)
           const persisted = this._posStrategy[sym];
-          const inTrend = (this.MA7_POOL && this.MA7_POOL.includes(sym)) || (this.V4_POOL && this.V4_POOL.includes(sym));
+          const inTrend = (this.MA7_POOL && this.MA7_POOL.includes(sym));
           let strat;
           if (persisted && persisted.strategy) {
             strat = persisted.strategy;                                // 原策略继续管理(ma7/v4/bollinger)
@@ -232,17 +232,12 @@ class QuantAgent {
       const decision = this.brain.decide(symbol, kl);
       // ═══ 分池决定策略: 币在趋势池→趋势; 否则一律尝试布林带(不再受限布林选币池, 全市场触轨才开) ═══
       const inMA7 = this.MA7_POOL && this.MA7_POOL.includes(symbol);
-      const inV4  = this.V4_POOL && this.V4_POOL.includes(symbol);
-      let strat;
-      if (inMA7) strat = 'trend_ma7';
-      else if (inV4) strat = 'trend_v4';
-      else strat = 'bollinger';   // 布林带: 清除限定选币池, 凡不在趋势池的币全走布林, 靠带宽门禁+触轨信号控制开仓
-      if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} V4池${inV4?'✓':'✗'} → ${strat}`);
+      let strat = inMA7 ? 'trend_ma7' : 'bollinger';   // 布林带: 清除限定选币池, 凡不在趋势池的币全走布林, 靠带宽门禁+触轨信号控制开仓
+      if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} → ${strat}`);
       // ═══ 各引擎独立仓位配额 + 总持仓硬上限(防超限堆积) ═══
       // ═══ 三策略独立配额, 每策略≤3, 未平仓严禁再开, 平后补到3 ═══
       // EMA(ma7)/V4(v4)/布林(bollinger) 各计数(含接管仓计为该策略)
       const countM = Object.values(this.positions).filter(p => p.strategy === 'ma7' || (p._managed && p.strategy === 'trend')).length;   // EMA
-      const countV = Object.values(this.positions).filter(p => p.strategy === 'v4').length;                                              // V4
       const countB = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;                                        // 布林
       const totalCount = Object.keys(this.positions).length;
       // ═══ 仓位配额: 趋势策略独立5仓, 布林策略独立5仓, 互不影响 ═══
@@ -256,7 +251,6 @@ class QuantAgent {
       if (strat !== 'bollinger' && trendTotalCount >= TREND_MAX) { if (this.isAdmin) this._log(`⏸️ 趋势总持仓已达${trendTotalCount}/${TREND_MAX}, 趋势不开新仓`); continue; }
       // 按目标策略各自限仓(布林/趋势各独立5仓)
       if (strat === 'trend_ma7' && countM >= TREND_PER_STG) { if (this.isAdmin) this._log(`⏸️ MA7趋势仓已达${countM}/${TREND_PER_STG}, 未平仓不补`); continue; }
-      if (strat === 'trend_v4' && countV >= TREND_PER_STG) { if (this.isAdmin) this._log(`⏸️ V4趋势仓已达${countV}/${TREND_PER_STG}, 未平仓不补`); continue; }
       if (strat === 'bollinger' && countB >= BOLL_MAX) { if (this.isAdmin) this._log(`⏸️ 布林仓已达${countB}/${BOLL_MAX}, 未平仓不补`); continue; }
       // 每币单一策略锁: 已锁定则强制一致
       if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
@@ -264,17 +258,13 @@ class QuantAgent {
       const pm = await this.api.getExchangeInfo().catch(()=>null);
       const price = +toArray(kl)[kl.length-1][3];
       let sig;
-      if (strat === 'trend_ma7' || strat === 'trend_v4') {
+      if (strat === 'trend_ma7') {
         if (this.pauseTrend) continue;   // 趋势引擎暂停开仓
-        if (strat === 'trend_v4' && this.pauseV4) { if (this.isAdmin) this._log(`⛔ ${symbol} V4策略已停用(只开新趋势策略), 跳过`); continue; }
         if (this.positions[symbol]) continue;   // 同币已持单, 不再开
         // ═══ 分开选池: 币在MA7池只跑MA7(15m), 在V4池只跑V4(日线) ═══
-        let sig = null, stg = strat === 'trend_v4' ? 'v4' : 'ma7', stf = strat === 'trend_v4' ? '15m' : '15m';
+        let sig = null, stg = 'ma7';
         let kl5 = null;   // 提前声明, 供下方闸门/贴线判断统一使用(修复kl5块级作用域丢失bug)
-        if (strat === 'trend_v4') {
-          // V4已物理删除: 池不走到这(前端已pauseV4); 若进来直接跳过信号(视为NONE)
-          sig = null;
-        } else {
+        {
           // ═══ 真趋势波段(4h): EMA排列+破60前高低+动量确认, 宽止损/高止盈 ═══
           kl5 = await this.api.getKlines(symbol, '4h', 300).catch(() => null);
           sig = this.trendBand.entrySignal(kl5 || kl);
@@ -314,7 +304,7 @@ class QuantAgent {
         const gate = this._marketGate('trend', kl5 || kl);
         if (gate) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}禁开: ${gate}`); continue; }
         // ═══ 大级别方向闸门(EMA200同向): 防EMA及V4把趋势开反(方案2只留EMA200, 保留更多开仓且防逆势) ═══
-        if ((stg === 'ma7' || stg === 'v4') && sig && (sig.signal === 'LONG' || sig.signal === 'SHORT')) {
+        if (stg === 'ma7' && sig && (sig.signal === 'LONG' || sig.signal === 'SHORT')) {
           const alignBlock = await this._trendAlignGate(symbol, sig.signal, stg === 'ma7' ? (kl5 || kl) : kl).catch(() => null);
           if (alignBlock) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}反大趋势禁开: ${alignBlock}`); continue; }
         }
@@ -832,7 +822,7 @@ class QuantAgentManager {
       const agents = Object.values(this._agents);
       for (const a of agents) { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; a.pauseBoll = !!this.pauseBoll; 
         // ═══ 同步manager的池给agent(MA7/V4/布林各自独立池) + 排名Top ═══
-        a.MA7_POOL = this.MA7_POOL; a.V4_POOL = this.V4_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL;
+        a.MA7_POOL = this.MA7_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL;
         a.trendTop = this.trendTop || []; a.bollTop = this.bollTop || []; }
       // ═══ 排序后开仓: 先扫描排名Top的优质币, 再扫剩余池子(保证优质币优先占位) ═══
       const rankedPool = [ ...(this.trendTop || []), ...(this.COIN_POOL || []).filter(b => !(this.trendTop||[]).includes(b)) ];
@@ -909,7 +899,7 @@ class QuantAgentManager {
       this._log('🧠 动态选币开始...');
       const apiInst = new BinanceAPI(this.adminApiKey, this.adminApiSecret);
       const CANDIDATES = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT','HYPEUSDT','TAOUSDT','BCHUSDT','ENAUSDT','1000SHIBUSDT','AAVEUSDT','ONDOUSDT','TRUMPUSDT','XLMUSDT','1000BONKUSDT','LITUSDT'];   // 补充适合布林带的主流流动性币(波动适中+流动性好)
-      const trendPool=[], bollPool=[], trendV4Pool=[];
+      const trendPool=[], bollPool=[];
       for (const sym of CANDIDATES) {
         // ═══ 自动识别低波动横盘币并踢出(不手动拉黑) ═══
         const kld0 = await apiInst.getKlines(sym, '1d', 45).catch(()=>null);
@@ -944,36 +934,30 @@ class QuantAgentManager {
         if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret, boRet: bo.ret});   // 优胜劣汰: 回测盈利才进震荡池, 亏损剔除
       }
       // V4池已删除: trendV4Pool不再填入, 恒为空
-      trendV4Pool.length = 0;
       this.TREND_V4_POOL = [];   // V4已物理删除
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
       const trendC = trendPool.slice(0,25);      // MA7候选(仅回测盈利)
       const bollC = bollPool.slice(0,25);        // 震荡候选
       // ═══ 分开选池: MA7趋势池(15m) 和 V4趋势池(日线) 各自独立 ═══
-      const ma7Sym = trendC.map(x=>x.sym);       // MA7池 = 15m回测盈利币
-      const v4Sym  = (this.TREND_V4_POOL && this.TREND_V4_POOL.length) ? this.TREND_V4_POOL : [];   // V4池 = 日线回测盈利币
+      const ma7Sym = trendC.map(x=>x.sym);       // MA7池 = 回测盈利币
       const newMA7 = ma7Sym.slice(0,25);
-      // 放宽: V4为空时回退到MA7池, 保证趋势池活跃(不因V4日线无候选而僵死)
-      let newV4 = v4Sym.slice(0,25);
-      if (newV4.length === 0) newV4 = newMA7.slice(0,25);
-      // 震荡池: 从布林盈利候选剔除进入任一趋势池的币(共同合)
-      const allTrend = new Set([...newMA7, ...newV4]);
+      // 震荡池: 从布林盈利候选剔除进入趋势池的币
+      const allTrend = new Set(newMA7);
       const bollAll = bollPool.slice(0,50).filter(x=>!allTrend.has(x.sym)).map(x=>x.sym);
       const newBoll = bollAll.slice(0,25);
-      // 放宽: 只要趋势池或布林池任一有候选就更新(m原先要求三者全非空)
-      if ((newMA7.length>=1 && newBoll.length>=1) || (newV4.length>=1 && newBoll.length>=1)) {
-        // ═══ 完全去池: 趋势/布林都=全市场候选, 每个币实时判断策略(不再缩成小池) ═══
+      // 只要趋势池或布林池任一有候选就更新
+      if (newMA7.length>=1 && newBoll.length>=1) {
+        // ═══ 完全去池: 趋势/布林都=全市场候选, 每个币实时判断策略 ═══
         this.COIN_POOL = [...CANDIDATES];
         this.TREND_POOL = [...this.COIN_POOL];
         this.MA7_POOL = [...this.COIN_POOL];
-        this.V4_POOL = [...this.COIN_POOL];
         this.BOLLINGER_POOL = [...this.COIN_POOL];
-        // 排名靠前子集(开仓限): 各前5只(按回测性能), 池内排名靠后才开仓
-        this.trendTop = [...new Set([...newMA7, ...newV4])].slice(0,5);
+        // 排名靠前子集(开仓限)
+        this.trendTop = newMA7.slice(0,5);
         this.bollTop = newBoll.slice(0,5);
-        this._log(`🧠 动态选币 → MA7池${newMA7.length}只: ${newMA7.join(',')} | V4池${newV4.length}只: ${newV4.join(',')} | 震荡池${newBoll.length}只(≤20): ${newBoll.join(',')}`);
-        this._log(`🟢 开仓限 → MA7/V4 Top: ${this.trendTop.join(',')} | 震荡Top: ${this.bollTop.join(',')}`);
+        this._log(`🧠 动态选币 → MA7池${newMA7.length}只: ${newMA7.join(',')} | 震荡池${newBoll.length}只(≤20): ${newBoll.join(',')}`);
+        this._log(`🟢 开仓限 → MA7 Top: ${this.trendTop.join(',')} | 震荡Top: ${this.bollTop.join(',')}`);
       }
     } catch(e){ this._log(`⚠️ 动态选币失败: ${e.message.slice(0,30)}`); }
   }
