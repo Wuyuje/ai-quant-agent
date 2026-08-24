@@ -44,7 +44,7 @@ class QuantAgent {
     this.closedHistory = [];
     this._stratLock = {};      // symbol → 锁定的策略(trend/bollinger), 防双引擎互博
     this.pauseOpen = false;
-    this.BLACKLIST = ['ATOMUSDT', 'STXUSDT'];   // ═══ 黑名单(禁区币): ATOM高频秒仓连亏; STX贴EMA99横盘被秒止损, 禁交易 ═══
+    this.BLACKLIST = ['ATOMUSDT', 'STXUSDT', 'LITUSDT'];   // ═══ 黑名单: ATOM/STX高频秒仓连亏; LIT高波动暴涨暴跌连亏, 禁交易 ═══
     // ═══ 震荡策略风控: 单日熔断 + 单币连续亏损禁开 ═══
     this._dailyLossTotal = 0;      // 当日已实现盈亏累计(用于熔断)
     this._dailyLossDate = null;    // 当前累计日期(重置用)
@@ -219,6 +219,12 @@ class QuantAgent {
       if (this.BLACKLIST && this.BLACKLIST.includes(symbol)) continue;
       // 已有仓位 → 交给平仓管理(趋势移动止损/网格离场)
       if (this.positions[symbol]) continue;
+      // ═══ 精选优选池: 只对 trendTop/布林Top 的优选币新开仓, 其他币不新开(只管理已有持仓) ═══
+      // 从候选币中精选最好的优先持仓, 避免在非优选币上频繁开仓/亏损
+      // 保护: 若优选池为空(动态选币未完成/失败), 则不限制(避免系统完全停止开仓)
+      const hasPreferredPool = (this.trendTop && this.trendTop.length > 0) || (this.bollTop && this.bollTop.length > 0);
+      const isPreferred = hasPreferredPool ? ((this.trendTop && this.trendTop.includes(symbol)) || (this.bollTop && this.bollTop.includes(symbol))) : true;
+      if (!isPreferred) continue;  // 非优选币不新开仓
 
       const kl = await this.api.getKlines(symbol, '15m', 300).catch(() => null);   // 300根够MA7 lookback(288)算位置区间
       if (this.isAdmin && (this._runCount % 1 === 0)) this._log(`🔍scan ${symbol}: kl=${kl?(kl.length||0):'null'}枚`);
@@ -725,7 +731,7 @@ class QuantAgentManager {
     this.pauseV4 = true;          // ⛔ 只开新趋势策略(真趋势波段), V4禁止开仓
     this.pauseBoll = false;      // 暂停震荡(布林)开仓
     // ═══ 黑名单(禁区币) — 管理器层(选币/scan共用): ATOM高频秒仓连亏; STX贴EMA99被秒止损 ═══
-    this.BLACKLIST = ['ATOMUSDT', 'STXUSDT'];
+    this.BLACKLIST = ['ATOMUSDT', 'STXUSDT', 'LITUSDT'];
     // ═══ 角色区分 ═══
     // 管理员(唯一): fa3b90c5(0xfA3b90c574469909D20848273C06752a22fdE74a)
     this.ADMIN_WALLETS = ['0xfA3b90c574469909D20848273C06752a22fdE74a'];
