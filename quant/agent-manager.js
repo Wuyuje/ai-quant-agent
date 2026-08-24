@@ -280,28 +280,35 @@ class QuantAgent {
           sig = this.trendBand.entrySignal(kl5 || kl);
         }
         if (!sig || sig.signal === 'NONE') {
-          // ═══ 趋势策略无信号时不fallback布林(布林已在独立strat=bollinger分支处理) ═══
-          this._log(`🔍 ${symbol} ${stg}信号NONE`);
-          /// ⛔ 布林已停用(用户决定只开新趋势策略): 不再开布林仓
-          if (false) {
-          if (countB < STRAT_MAX) {
-            try {
-              const bkl = await this.api.getKlines(symbol, '5m', 120).catch(()=>null);
-              if (bkl && bkl.length>=40 && !this.boll.isSpikeBar(bkl) && this.boll.tradingGuardAllowed().allowed) {
-                const og = this.boll.canOpen(bkl);
-                if (og.allowed) {
-                  const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
-                  if (esig.signal==='LONG'||esig.signal==='SHORT') {
-                    const bnotional = Math.max(20, this.balance*rp.posPct*3);
-                    const rr = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bnotional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
-                    if (rr.success) { this.positions[symbol] = { side: esig.signal, qty: rr.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: -1, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 趋势NONE→布林触轨${esig.signal}开仓`); }
-                  }
-                }
-              }
-            } catch(e){}
+          // ═══ 趋势无信号 → 落到布林补充(趋势优先, 布林补充, 同币互斥) ═══
+          // 趋势策略不介入该币, 交给布林震荡策略处理
+          strat = 'bollinger';
+          // 进入布林分支(当前币无趋势信号, 用布林接近轨道开仓)
+          // 布林策略(4h): 接近轨道20% + 趋势过滤5% + 带宽门禁
+          if (this.pauseBoll) continue;   // 布林暂停
+          const bkl = await this.api.getKlines(symbol, '4h', 200).catch(() => null);
+          if (!bkl || bkl.length < 40) continue;
+          if (this.positions[symbol]) continue;   // 同币已持单
+          // 4h趋势过滤(布林只在中弱趋势开)
+          {
+            const hCloses = bkl.map(k => +k.close);
+            const hEma = (list, n) => { const k = 2/(n+1); let e = list[0]; for(let i=1;i<list.length;i++) e=list[i]*k+e*(1-k); return e; };
+            const he7 = hEma(hCloses, 7), he25 = hEma(hCloses, 25);
+            const hEmaSpread = Math.abs(he7 - he25) / (he25 || 1) * 100;
+            if (hEmaSpread > 5) { if (this.isAdmin) this._log(`🚫 ${symbol} 趋势弱但EMA差${hEmaSpread.toFixed(1)}%>5%禁布林`); continue; }
           }
+          // 带宽门禁
+          const openGate = this.boll.canOpen(bkl);
+          if (!openGate.allowed) continue;
+          // 接近轨道20%触发
+          const esig = this.boll.entrySignal(bkl, decision.market.trendDir, false);
+          if (esig.signal === 'LONG' || esig.signal === 'SHORT') {
+            if (countB >= BOLL_MAX) continue;
+            const bs = { notional: Math.max(20, this.balance*rp.posPct*3), margin: Math.max(20,this.balance*rp.posPct*3)/rp.leverage, leverage: rp.leverage };
+            const r = await this.executor.executeOrder(esig, { symbol, side: esig.signal, notional: bs.notional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
+            if (r.success) { this.positions[symbol] = { side: esig.signal, qty: r.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 趋势NONE→布林${esig.signal}开仓`); }
           }
-          continue;
+          continue;  // 已尝试布林, 本币结束
         }
         // ═══ 实时市场健康闸门: 当下ADX/ATR校验(根治假波动币, 趋势只碰真单边) ═══
         const gate = this._marketGate('trend', kl5 || kl);
