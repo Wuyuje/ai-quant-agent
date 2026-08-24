@@ -219,12 +219,9 @@ class QuantAgent {
       if (this.BLACKLIST && this.BLACKLIST.includes(symbol)) continue;
       // 已有仓位 → 交给平仓管理(趋势移动止损/网格离场)
       if (this.positions[symbol]) continue;
-      // ═══ 精选优选池: 只对 trendTop/布林Top 的优选币新开仓, 其他币不新开(只管理已有持仓) ═══
-      // 从候选币中精选最好的优先持仓, 避免在非优选币上频繁开仓/亏损
-      // 保护: 若优选池为空(动态选币未完成/失败), 则不限制(避免系统完全停止开仓)
-      const hasPreferredPool = (this.trendTop && this.trendTop.length > 0) || (this.bollTop && this.bollTop.length > 0);
-      const isPreferred = hasPreferredPool ? ((this.trendTop && this.trendTop.includes(symbol)) || (this.bollTop && this.bollTop.includes(symbol))) : true;
-      if (!isPreferred) continue;  // 非优选币不新开仓
+      // ═══ 实时选币: 不硬性限制只开优选池, 所有币都实时评估开仓 ═══
+      // 开仓顺序由 rankedPool 保证(趋势Top5优先扫描, 排名靠前先开仓)
+      // 若优先后右币, 其他币也实时尝试开仓(不空仓)
 
       const kl = await this.api.getKlines(symbol, '15m', 300).catch(() => null);   // 300根够MA7 lookback(288)算位置区间
       if (this.isAdmin && (this._runCount % 1 === 0)) this._log(`🔍scan ${symbol}: kl=${kl?(kl.length||0):'null'}枚`);
