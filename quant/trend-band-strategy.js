@@ -38,8 +38,8 @@ class TrendBandStrategy {
     this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别)
     this.tpMul = opts.tpMul || 2.0;           // 止盈2ATR
     this.trailMul = opts.trailMul || 0.7;     // 移动止盈回撤0.7ATR(未达盈利阈值时)
-    this.lockProfitPct = opts.lockProfitPct || 0.5;  // 盈利达0.5%后切换锁利模式
-    this.lockTrailPct = opts.lockTrailPct || 0.2;    // 锁利模式: 回撤0.2%就平仓
+    this.lockProfitPct = opts.lockProfitPct || 2.0;  // 盈利达2%后切换锁利模式(从0.5放宽, 让利润先跑再锁)
+    this.lockTrailPct = opts.lockTrailPct || 1.0;    // 锁利模式: 回撤1%就平仓(从0.2放宽, 减少被正常波动扫掉)
     this.maxBars = opts.maxBars || 400;   // 单笔最大持仓bar
     this.minBars = opts.minBars || 200;
   }
