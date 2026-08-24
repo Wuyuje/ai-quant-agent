@@ -362,7 +362,7 @@ class QuantAgent {
             const hDir = (he7 > he25 && he25 > he99) ? 'UP' : (he7 < he25 && he25 < he99) ? 'DOWN' : 'FLAT';
             // ═══ 放宽趋势过滤: 只在EMA7与EMA25距离>3%时禁开(强单边), 弱/中趋势允许进场 ═══
             const hEmaSpread = Math.abs(he7 - he25) / (he25 || 1) * 100;
-            const hTrendStrong = hDir !== 'FLAT' && hEmaSpread > 3;  // EMA差>3%才算强趋势禁开(从1.5放宽到3, 增加布林开仓机会)
+            const hTrendStrong = hDir !== 'FLAT' && hEmaSpread > 5;  // EMA差>5%才算强趋势禁开(从3放宽到5, 布林更多参与)
             if (hTrendStrong) {
               if (this.isAdmin) this._log(`🚫 ${symbol} 4h强趋势=${hDir}(EMA差${hEmaSpread.toFixed(1)}%>3%)禁震荡开仓`);
               continue;
