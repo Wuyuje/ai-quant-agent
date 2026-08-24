@@ -84,6 +84,36 @@ class QuantAgent {
     return { maxPositions, maxPerStrategy, leverage, posPct, riskPct, balance: bal };
   }
 
+  // ═══ 仓位/敞口上限(自动+有上限): 每策略上限+跨策略总仓位上上限+保证金敞口熔断 ═══
+  // 各账户独立用自身balance/positions计算, 互不影响
+  _exposureOk(strat, rp) {
+    try {
+      // 每策略上限(自动按余额分级, 封顶5仓)
+      const perStrat = Math.max(1, Math.min(rp.maxPerStrategy || 3, 5));
+      // 跨策略总仓位上上限(防趋势5+布林5叠到10仓超限)
+      const totalCap = Math.max(perStrat, rp.maxPositions || 3);
+      const trendCount = Object.values(this.positions).filter(p => p.strategy !== 'bollinger').length;
+      const bollCount = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;
+      const totalCount = Object.keys(this.positions).length;
+      const targetCount = strat === 'bollinger' ? bollCount : trendCount;
+      const isBoll = strat === 'bollinger';
+      if (targetCount >= perStrat) return { allow: false, reason: `${isBoll?'布林':'趋势'}持仓已达${targetCount}/${perStrat}上限` };
+      if (totalCount >= totalCap) return { allow: false, reason: `账户总仓位已达上限${totalCount}/${totalCap}(趋势+布林合计)` };
+      // ═══ 保证金敞口熔断: 已有持仓保证金(notional/lev) + 新仓保证金 ≤ 总权益×90% ═══
+      const eq = (this.totalWalletBalance > 0 ? this.totalWalletBalance : (this.balance || 1));
+      let curMargin = 0;
+      for (const p of Object.values(this.positions)) {
+        const lev = p.leverage || rp.leverage || 1;
+        const notional = (p.entryPrice || 0) * (p.qty || 0);
+        curMargin += notional / lev;
+      }
+      const newMargin = (this.balance || 0) * rp.posPct;   // 新仓保证金 = 余额×每仓%本金
+      const marginCap = eq * 0.9;                          // 保证金占用 ≤ 总权益90%(留10%保证金缓冲)
+      if ((curMargin + newMargin) > marginCap) return { allow: false, reason: `保证金敞口将超限(当前$${curMargin.toFixed(1)}+新$${newMargin.toFixed(1)}>上限$${marginCap.toFixed(1)})` };
+      return { allow: true, perStrat, totalCap };
+    } catch (e) { return { allow: true }; }
+  }
+
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
   // ═══ 持仓策略持久化: symbol → 开仓策略(ma7/v4/bollinger). 重启后由原策略继续管理, 不再靠inTrend误判接管 ═══
   _saveState() { try { const posMap = {}; for (const [sym, p] of Object.entries(this.positions)) { if (p && p.strategy) posMap[sym] = { strategy: p.strategy, side: p.side, qty: p.qty, entryPrice: p.entryPrice, leverage: p.leverage }; } fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance, positions: posMap }, null, 1)); } catch(e){} }
@@ -234,24 +264,8 @@ class QuantAgent {
       const inMA7 = this.MA7_POOL && this.MA7_POOL.includes(symbol);
       let strat = inMA7 ? 'trend_ma7' : 'bollinger';   // 布林带: 清除限定选币池, 凡不在趋势池的币全走布林, 靠带宽门禁+触轨信号控制开仓
       if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} → ${strat}`);
-      // ═══ 各引擎独立仓位配额 + 总持仓硬上限(防超限堆积) ═══
-      // ═══ 三策略独立配额, 每策略≤3, 未平仓严禁再开, 平后补到3 ═══
-      // EMA(ma7)/V4(v4)/布林(bollinger) 各计数(含接管仓计为该策略)
-      const countM = Object.values(this.positions).filter(p => p.strategy === 'ma7' || (p._managed && p.strategy === 'trend')).length;   // EMA
-      const countB = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;                                        // 布林
-      const totalCount = Object.keys(this.positions).length;
-      // ═══ 仓位配额: 趋势策略独立5仓, 布林策略独立5仓, 互不影响 ═══
+      // ═══ 仓位配额: 每策略+总仓位上上限+保证金敞口 由 _exposureOk 统一管控(自动按余额分级, 防超限) ═══
       const rp = this._riskProfile(this.balance);  // 杠杆/资金比例仍按余额自适应
-      const TREND_MAX = 5;  // 趋势策略独立上限: 固定5仓
-      const BOLL_MAX = 5;   // 布林策略独立上限: 固定5仓
-      const TREND_PER_STG = 5;  // 趋势每策略(ma7/v4)各自上限5
-      // ═══ 各引擎独立仓位配额(防超限堆积) ═══
-      // 两策略互不影响: 布林仓不计入趋势限额, 趋势仓不计入布林限额
-      const trendTotalCount = Object.keys(this.positions).filter(s => this.positions[s].strategy !== 'bollinger').length;  // 趋势仓总数
-      if (strat !== 'bollinger' && trendTotalCount >= TREND_MAX) { if (this.isAdmin) this._log(`⏸️ 趋势总持仓已达${trendTotalCount}/${TREND_MAX}, 趋势不开新仓`); continue; }
-      // 按目标策略各自限仓(布林/趋势各独立5仓)
-      if (strat === 'trend_ma7' && countM >= TREND_PER_STG) { if (this.isAdmin) this._log(`⏸️ MA7趋势仓已达${countM}/${TREND_PER_STG}, 未平仓不补`); continue; }
-      if (strat === 'bollinger' && countB >= BOLL_MAX) { if (this.isAdmin) this._log(`⏸️ 布林仓已达${countB}/${BOLL_MAX}, 未平仓不补`); continue; }
       // 每币单一策略锁: 已锁定则强制一致
       if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
 
@@ -289,7 +303,9 @@ class QuantAgent {
           const tg = this.boll.trendDirGate(bkl, esig.signal, 3);
           if (!tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg.reason}`); continue; }
           // 用门禁确认的方向开仓(与趋势一致)
-          if (countB >= BOLL_MAX) continue;
+          // ═══ 仓位/敞口上限(自动按余额分级): 每策略上限+总仓位上上限+保证金熔断 ═══
+          const capOk = this._exposureOk('bollinger', rp);
+          if (!capOk.allow) { if (this.isAdmin) this._log(`⏸️ ${symbol} 布林不开新仓: ${capOk.reason}`); continue; }
           const bs = { notional: Math.max(20, this.balance*rp.posPct*3), margin: Math.max(20,this.balance*rp.posPct*3)/rp.leverage, leverage: rp.leverage };
           const r = await this.executor.executeOrder(esig, { symbol, side: tg.side, notional: bs.notional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
           if (r.success) { this.positions[symbol] = { side: tg.side, qty: r.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 趋势NONE→布林顺势${tg.side}开仓(${tg.reason})`); }
@@ -323,9 +339,9 @@ class QuantAgent {
           bs = { notional };
         }
         if ((this.balance || 0) < 50) continue;
-        const stgHeld = Object.values(this.positions).filter(p=>p.strategy===stg).length;
-        const maxPerStg = 5;  // 趋势每策略固定5仓上限
-        if (stgHeld >= maxPerStg) continue;
+        // ═══ 仓位/敞口上限(自动按余额分级): 每策略上限+总仓位上上限+保证金熔断 ═══
+        const capOkT = this._exposureOk('trend', rp);
+        if (!capOkT.allow) { if (this.isAdmin) this._log(`⏸️ ${symbol} 趋势不开新仓: ${capOkT.reason}`); continue; }
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: lev, precisionMap: pm, price, balance: this.balance });
         if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: lev, strategy: stg, _t: '4h', _peak: price, _best: price, openTime: Date.now() }; this._stratLock[symbol]=stg; this._saveState(); }
       } else if (strat === 'bollinger') {
@@ -359,6 +375,9 @@ class QuantAgent {
         const tg = this.boll.trendDirGate(bkl, esig.signal, 3);
         if (!tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg.reason}`); continue; }
         // 用门禁确认的方向开仓(与趋势一致)
+        // ═══ 仓位/敞口上限(自动按余额分级) ═══
+        const capOk2 = this._exposureOk('bollinger', rp);
+        if (!capOk2.allow) { if (this.isAdmin) this._log(`⏸️ ${symbol} 布林不开新仓: ${capOk2.reason}`); continue; }
         const bs = { notional: Math.max(20, this.balance*rp.posPct*3), margin: Math.max(20,this.balance*rp.posPct*3)/rp.leverage, leverage: rp.leverage };
         const r = await this.executor.executeOrder(esig, { symbol, side: tg.side, notional: bs.notional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
         if (r.success) { this.positions[symbol] = { side: tg.side, qty: r.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 布林顺势${tg.side}开仓(${tg.reason})`); }
