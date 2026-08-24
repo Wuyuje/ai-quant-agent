@@ -16,18 +16,21 @@ const { TradeExecutionCore } = require('./execution-core');
 // V4策略已删除(用户决定移除)
 const { BollingerStrategy } = require('./bollinger-strategy');
 const { BrainCore } = require('./brain-core');
+const { SharedMarket } = require('../lib/shared-market');  // ═══ 百万框架: 成熟共享行情(single-flight去重+缓存回退) ═══
 
 // 算力费(与旧A策略一致): 盈利按平台0.20+生态0.10=30%扣给管理员
 const PLATFORM_FEE_RATE = 0.20;
 const ECO_FUND_RATE = 0.10;
 
 class QuantAgent {
-  constructor({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB, pauseOpen, klineCache }) {
+  constructor({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB, pauseOpen, sharedMarket, signalMap }) {
     this.wallet = wallet;
     this.isAdmin = isAdmin;
     this.isWhitelist = isWhitelist || false;
     this.userDB = userDB;
-    this.klineCache = klineCache || null;   // ═══ 十万并发: 共享K线缓存(所有用户共用1份, 防重复拉取爆API) ═══
+    this.sharedMarket = sharedMarket || null;   // ═══ 百万框架: 全局共享行情(所有用户共用1份K线, single-flight去重) ═══
+    this.klineCache = (sharedMarket && sharedMarket._klineCache) || null;  // 兼容旧缓存引用
+    this.signalMap = signalMap || null;     // ═══ 十万并发阶段2: 共享开仓信号(首个用户算,其他复用, 降低CPU) ═══
     if (typeof pauseOpen === 'boolean') this.pauseOpen = pauseOpen;
     this.api = new BinanceAPI(apiKey, apiSecret);
     this.fe = new FeatureEngineer();
@@ -117,23 +120,39 @@ class QuantAgent {
 
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[${this._logTag}] ${ts} ${m}`); }
 
-  // ═══ 共享K线缓存(十万并发核心): 所有用户共用一份K线, 避免重复拉取爆Binance API ═══
-  // 优先走 manager 的全局缓存, miss 才实际请求; TTL 按周期自动(5m=15s/4h=30s/15m=20s/1d=300s)
+  // ═══ 共享开仓信号(十万并发阶段2): 开仓方向判定与用户无关, 首个用户算+其他用户复用, 降低CPU ═══
+  // 只共享: 趋势波段信号 / 布林触轨信号 / 布林方向门禁 (均只依赖K线, 不依赖用户持仓)
+  // 注意: brain.decide(每用户独立)和持仓管理(每用户持仓不同) 不共享
+  _getSharedOpenSignal(symbol, kl5, bkl) {
+    if (this.signalMap && this.signalMap[symbol]) {
+      const s = this.signalMap[symbol];
+      if (s && s.t && (Date.now() - s.t < 60000)) return s;   // 60s内复用共享信号
+    }
+    // miss → 本用户算(结果与用户无关), 写回共享供其他用户复用
+    const trendSignal = kl5 ? this.trendBand.entrySignal(kl5) : null;
+    const esig = bkl ? this.boll.entrySignal(bkl, 'FLAT', false) : null;
+    const gate = (bkl && esig && (esig.signal === 'LONG' || esig.signal === 'SHORT')) ? this.boll.trendDirGate(bkl, esig.signal, 3) : null;
+    const sig = { trendSignal, esig, gate, t: Date.now() };
+    if (this.signalMap) this.signalMap[symbol] = sig;
+    return sig;
+  }
+
+  // ═══ 共享K线(百万框架核心): 所有用户共用1份K线, single-flight去重, 避免重复拉取爆Binance API ═══
+  // 优先走 manager 的 SharedMarket(成熟: 并发去重+缓存回退), miss 才实际请求; ag告无SharedMarket则走自建缓存
   async _getKlinesShared(symbol, interval, limit) {
+    if (this.sharedMarket) return this.sharedMarket.getKlines(symbol, interval, limit);  // SharedMarket: 共享+single-flight+回退
     if (!this.klineCache) return this.api.getKlines(symbol, interval, limit);   // 无缓存(单机)直接请求
     const key = symbol + ':' + interval + ':' + limit;
     const ttl = ({ '5m':15000, '15m':20000, '4h':30000, '1d':300000 })[interval] || 20000;
     const now = Date.now();
     const c = this.klineCache[key];
     if (c && (now - c.t < ttl)) return c.data;   // 缓存命中
-    // miss → 实际请求 + 写入共享缓存
     try {
       const data = await this.api.getKlines(symbol, interval, limit);
       this.klineCache[key] = { t: now, data };
       return data;
     } catch (e) {
-      // 失败则回退旧缓存(若有)
-      if (c) return c.data;
+      if (c) return c.data;   // 失败回退旧缓存
       throw e;
     }
   }
@@ -291,7 +310,8 @@ class QuantAgent {
       // 每币单一策略锁: 已锁定则强制一致
       if (this._stratLock[symbol] && this._stratLock[symbol] !== strat) continue;
 
-      const pm = await this.api.getExchangeInfo().catch(()=>null);
+      const pm = this.sharedMarket ? await this.sharedMarket.getExchangeInfo().catch(()=>null) : await this.api.getExchangeInfo().catch(()=>null);
+      
       const price = +toArray(kl)[kl.length-1][3];
       let sig;
       if (strat === 'trend_ma7') {
@@ -421,7 +441,8 @@ class QuantAgent {
         if (!kl || kl.length < 20) continue;
         const price = +toArray(kl)[kl.length-1][3];
         pos.currentPrice = price;
-        const pm = await this.api.getExchangeInfo().catch(()=>null);
+        const pm = this.sharedMarket ? await this.sharedMarket.getExchangeInfo().catch(()=>null) : await this.api.getExchangeInfo().catch(()=>null);
+      
         let closeReason = null, pnlToCount = null;
 
         // V4策略已物理删除: v4持仓不再单独管理(不应存在v4仓; 若历史遗留则交由trendBand兜底不平)
@@ -741,7 +762,9 @@ class QuantAgentManager {
     this.intervalMs = opts.intervalMs || 60000;
     this._timer = null;
     this._agents = {};       // wallet → QuantAgent
-    this._klineCache = {};   // ═══ 十万并发: 全局共享K线缓存(symbol:interval:limit → {t,data}), 所有用户共用防重复拉API ═══
+    this.sharedMarket = new SharedMarket();  // ═══ 百万框架: 全局共享行情(所有用户共用1份K线/ticker, single-flight去重防重复拉API) ═══
+    this._klineCache = this.sharedMarket._klineCache || {};  // 兼容旧引用
+    this.signalMap = {};     // ═══ 十万并发阶段2: 全局共享开仓信号(symbol → {trend, bollSide, dirGate, t}) 首个用户算, 其他用户复用 ═══
     this.running = false;
     this.pauseOpen = false;
     this.pauseTrend = false;
@@ -835,7 +858,7 @@ class QuantAgentManager {
             if (isAdmin) { apiKey = this.adminApiKey; apiSecret = this.adminApiSecret; }
             else continue;  // 白名单无key不交易但保留
           }
-          this._agents[wallet] = new QuantAgent({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB: this.userDB, pauseOpen: this.pauseOpen, klineCache: this._klineCache });
+          this._agents[wallet] = new QuantAgent({ wallet, apiKey, apiSecret, isAdmin, isWhitelist, userDB: this.userDB, pauseOpen: this.pauseOpen, sharedMarket: this.sharedMarket, signalMap: this.signalMap });
           const role = isAdmin ? '管理员' : (isWhitelist ? '白名单' : '普通');
           this._log(`${wallet.slice(0,10)} 智能体启动(${role})`);
         }
