@@ -749,7 +749,6 @@ class QuantAgentManager {
     // ═══ 完全去池: 趋势池=全市场候选, 每个币都实时尝试趋势信号(不再限定固定趋势池) ═══
     this.TREND_POOL = [...this.COIN_POOL];
     this.MA7_POOL = [...this.COIN_POOL];   // MA7趋势池=全市场(每币实时判断)
-    this.V4_POOL = [...this.COIN_POOL];    // V4趋势池=全市场(每币实时判断)
     this.trendTop = [...this.COIN_POOL].slice(0,5);  // 排名Top币(开仓优先, 动态选币后更新)
     this.bollTop = [...this.COIN_POOL].slice(0,5);   // 震荡Top币
   }
@@ -933,8 +932,6 @@ class QuantAgentManager {
         const bo = this._btBoll(kl);   // 用最新截图版振荡(BollingerStrategy)真实回测
         if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret, boRet: bo.ret});   // 优胜劣汰: 回测盈利才进震荡池, 亏损剔除
       }
-      // V4池已删除: trendV4Pool不再填入, 恒为空
-      this.TREND_V4_POOL = [];   // V4已物理删除
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
       const trendC = trendPool.slice(0,25);      // MA7候选(仅回测盈利)
