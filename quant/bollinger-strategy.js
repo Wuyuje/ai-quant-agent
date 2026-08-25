@@ -175,12 +175,12 @@ class BollingerStrategy {
     // ═══ 接近轨道触发(保留均值回归方向): 距下轨/上轨 1.0ATR 内开仓 ═══
     // 用ATR距离(稳定, 不受带宽影响), 比相对宽度%更可靠
     const atr = this.fe.calcATR(toArray(arr)) || 1;
-    // 接近/触下轨 → 开多 (距下轨<=ATR距离)
-    if ((price - b.lower) <= this.touchAtr) {
+    // 接近/触下轨 → 开多 (距下轨<=touchAtr个ATR距离)
+    if (atr > 0 && ((price - b.lower) / atr) <= this.touchAtr) {
       return { signal: 'LONG', reason: `接近/触下轨开多(距下轨${((price-b.lower)/atr).toFixed(2)}ATR<${this.touchAtr}ATR)`, bands: b };
     }
-    // 接近/触上轨 → 开空 (距上轨<=ATR距离)
-    if ((b.upper - price) <= this.touchAtr) {
+    // 接近/触上轨 → 开空 (距上轨<=touchAtr个ATR距离)
+    if (atr > 0 && ((b.upper - price) / atr) <= this.touchAtr) {
       return { signal: 'SHORT', reason: `接近/触上轨开空(距上轨${((b.upper-price)/atr).toFixed(2)}ATR<${this.touchAtr}ATR)`, bands: b };
     }
     return { signal: 'NONE', reason: `收盘在轨道内(距下轨${((price-b.lower)/atr).toFixed(2)}ATR,距上轨${((b.upper-price)/atr).toFixed(2)}ATR>${this.touchAtr}ATR)` };
