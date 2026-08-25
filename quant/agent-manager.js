@@ -442,9 +442,8 @@ class QuantAgent {
     for (const symbol of Object.keys(this.positions)) {
       const pos = this.positions[symbol];
       try {
-        // ⛔ 接管仓(启动时从币安同步的存量仓,_managed=true): 一律不平仓, 保护用户存量持仓
-        //    只允许本引擎自己新开的仓(非_managed)按策略管理. 用户明确要求启动不平仓.
-        if (pos._managed) { continue; }
+        // ═══ 接管仓也按策略止盈止损管理(用户确认: 存量接管仓不让干拿着, TAO/APT布林仓也走止盈止损) ═══
+        // 接管仓进入对应的策略管理分支: 布林接管走布林止盈/止损, ma7接管走trendBand
         const kl = await this._getKlinesShared(symbol, '15m', 60).catch(() => null);
         if (!kl || kl.length < 20) continue;
         const price = +toArray(kl)[kl.length-1][3];
