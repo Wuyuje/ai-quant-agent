@@ -20,3 +20,7 @@ secure-conn.js
 
 # Supervisor chat inbox (运行时数据)
 supervisor/
+
+# ── Python 编译缓存 ──
+__pycache__/
+*.pyc
