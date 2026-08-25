@@ -67,9 +67,11 @@ sleep 5
 
 echo ""
 echo "======================================"
+# 自动检测本机公网IP(去中心化: 任意节点部署都能正确显示访问地址)
+IP=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost')
 echo "✅ 部署完成！"
 echo "  量化看盘:   http://$IP:10060  (系统自动可用)"
 echo "  用户面板:   http://$IP:10020"
 echo "  端口: 10010/10020/10030/10060"
-echo "  以下是检测到的IP/端口, 稍等确认"
+echo "  外部访问需在服务器安全组放行: 10010/10020/10030/10060(TCP)"
 echo "======================================"
