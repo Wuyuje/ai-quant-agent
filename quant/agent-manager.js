@@ -361,6 +361,11 @@ class QuantAgent {
           const alignBlock = await this._trendAlignGate(symbol, sig.signal, stg === 'ma7' ? (kl5 || kl) : kl).catch(() => null);
           if (alignBlock) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}反大趋势禁开: ${alignBlock}`); continue; }
         }
+        // ═══ 5分钟短期方向闸门(A方案): 5m下行禁开多 / 5m上行禁开空, 堵住'4h看多但5m在跌'的逆势亏损 ═══
+        if (sig && (sig.signal === 'LONG' || sig.signal === 'SHORT')) {
+          const shortBlock = await this._shortTermDirGate(symbol, sig.signal).catch(() => null);
+          if (shortBlock) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}逆5m短期: ${shortBlock}`); continue; }
+        }
         // ═══ 贴EMA99禁开仓: 真趋势波段用ATR宽止损不用贴线; V4已删除 ═══
         this._log(`🔍 ${symbol} ${stg}信号=${sig.signal} 准备开仓`);
         // ═══ 仓位: 真趋势波段(4h) 用波动率目标 + 自适应资金配置(按余额算posPct/riskPct/leverage) ═══
@@ -750,6 +755,30 @@ class QuantAgent {
         }
       }
       return null;   // 通过
+    } catch (e) { return null; }
+  }
+
+  // ═══ 5分钟短期方向确认闸门(修复: 4h趋势开多但5m正在下跌导致亏损) ═══
+  // 核心: 趋势策略(4h)开仓前先确认5m短期方向不逆势
+  //  - LONG信号: 若5m EMA7<EMA25(短期向下) → 禁开多 (5m向下不开多)
+  //  - SHORT信号: 若5m EMA7>EMA25(短期向上) → 禁开空
+  // 返回禁开原因字符串(有值=禁开), null=通过
+  async _shortTermDirGate(symbol, sigSignal) {
+    try {
+      const kl5 = await this._getKlinesShared(symbol, '5m', 120).catch(() => null);
+      if (!kl5 || kl5.length < 60) return null;   // 5m数据不足则放行(不误拦)
+      const arr = toArray(kl5);
+      const closes = arr.map(k => +k[3]);
+      const e7 = this.trend._ema(closes, 7);
+      const e25 = this.trend._ema(closes, 25);
+      if (e7 == null || e25 == null) return null;
+      const dir5m = e7 > e25 ? 'UP' : (e7 < e25 ? 'DOWN' : 'FLAT');
+      const wantsLong = sigSignal === 'LONG';
+      // 多头: 5m向下 → 禁开多 (你要求: 5m趋势向下不开多)
+      if (wantsLong && dir5m === 'DOWN') return `5m短期下行(EMA7=${e7.toFixed(6)}<EMA25=${e25.toFixed(6)})禁开多`;
+      // 空头: 5m向上 → 禁开空
+      if (!wantsLong && dir5m === 'UP') return `5m短期上行(EMA7=${e7.toFixed(6)}>EMA25=${e25.toFixed(6)})禁开空`;
+      return null;   // 5m方向不逆势, 通过
     } catch (e) { return null; }
   }
 }
