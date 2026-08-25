@@ -158,7 +158,7 @@ class QuantAgent {
     }
   }
   // ═══ 持仓策略持久化: symbol → 开仓策略(ma7/v4/bollinger). 重启后由原策略继续管理, 不再靠inTrend误判接管 ═══
-  _saveState() { try { const posMap = {}; for (const [sym, p] of Object.entries(this.positions)) { if (p && p.strategy) posMap[sym] = { strategy: p.strategy, side: p.side, qty: p.qty, entryPrice: p.entryPrice, leverage: p.leverage }; } fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance, positions: posMap }, null, 1)); } catch(e){} }
+  _saveState() { try { const posMap = {}; for (const [sym, p] of Object.entries(this.positions)) { if (p && p.strategy) posMap[sym] = { strategy: p.strategy, side: p.side, qty: p.qty, entryPrice: p.entryPrice, leverage: p.leverage, _managed: !!p._managed }; } fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance, positions: posMap }, null, 1)); } catch(e){} }
   // 重启后恢复持仓策略归属(只存策略映射, 不直接重建持仓, 真正head由币安同步)
   _loadPosStrategy() { try { if (fs.existsSync(this._stateFile)) { const st = JSON.parse(fs.readFileSync(this._stateFile,'utf8')); if (st && st.positions) this._posStrategy = st.positions; } } catch(e){} this._posStrategy = this._posStrategy || {}; }
   _loadState() { try { if (fs.existsSync(this._stateFile)) { const st = JSON.parse(fs.readFileSync(this._stateFile,'utf8')); if (Array.isArray(st.closedHistory)) {
@@ -212,15 +212,18 @@ class QuantAgent {
           }
           // 将兜底'trend'归一: 趋势接管统一为ma7(管理分支一致), 且仅当确无持久化记录才允许
           if (strat === 'trend' && !persisted) strat = 'ma7';
+          // ═══ 接管仓识别(修复: 手动接管仓必须持久化_managed, 重启后仍为接管仓不可被策略平仓) ═══
+          // 只有"引擎自己开的仓"(_managed=falsede持久化)才正常策略管理; 手动/历史存量仓永远视作接管仓(_managed=true)不平仓
+          const managed = (persisted && persisted._managed === false) ? false : true;
           this.positions[sym] = {
             symbol: sym, side, qty: Math.abs(amt), entryPrice: +p.entryPrice,
             currentPrice: +p.markPrice, margin: Math.abs(+p.entryPrice)*(+p.markPrice)/lev,
             leverage: lev, _peak: +p.entryPrice, openTime: Date.now(),
             strategy: strat,
-            _managed: !persisted   // 有持久化策略记录=引擎自己开的仓,正常策略管理; 无记录才标接管不平仓
+            _managed: managed   // true=接管仓(手动/存量,不平仓); false=引擎自己开的仓(正常策略管理)
           };
-          // 同步回持久化, 防止重复误判
-          this._posStrategy[sym] = { strategy: strat, side, qty: Math.abs(amt), entryPrice: +p.entryPrice, leverage: lev };
+          // 同步回持久化(含_managed标记), 防止重启后误判接管仓为策略仓而被平
+          this._posStrategy[sym] = { strategy: strat, side, qty: Math.abs(amt), entryPrice: +p.entryPrice, leverage: lev, _managed: managed };
           this._saveState();
         } else {
           // 已有记录, 更新价格/数量
