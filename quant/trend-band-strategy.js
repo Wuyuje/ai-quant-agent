@@ -19,28 +19,27 @@ function toArray(a) {
 
 class TrendBandStrategy {
   constructor(opts = {}) {
-    this.period = '4h';                 // 固定4h
+    this.period = '5m';                 // ═══ 用户要求改为5分钟级别(风险: 5m趋势回测亏损, 已备案可回退4h) ═══
     this.fast = opts.fast || 7;
     this.mid = opts.mid || 25;
     this.slow = opts.slow || 99;
     this.atrN = opts.atrN || 14;
     this.adxN = opts.adxN || 14;
-    // 开仓: 突破近60根高低(单边确认)
-    this.breakLookback = opts.breakLookback || 60;   // 突破近60根高低(回退: 用户觉得原版好, 破20高回撤大)
+    // 开仓: 突破近30根高低(5m噪音大, 缩短突破窗口减少假突破延迟)
+    this.breakLookback = opts.breakLookback || 30;   // 5m: 突破近30根(4h原60, 5m噪音大窗口太长发信号滞后)
     // 强单边: 相对EMA50偏移阈值
     this.ema50N = opts.ema50N || 50;
-    this.momentumPct = opts.momentumPct || 0.01;   // 1%
-    // ═══ 高位追高过滤: 近20根K线涨幅超过阈值(默认20%)不追多/不追空(避免买在短期顶部被套) ═══
-    this.gainFilterPct = opts.gainFilterPct || 20;   // 20%
-    // ═══ 高位位置过滤: 价格处于近20根高位区(>80%)时不追多, 避免买在顶部被回调止损 ═══
-    this.highPosFilterPct = opts.highPosFilterPct || 80;   // 80%
-    // 出场(方案C: 两阶段锁利 — 让利版, 回测7币12个月最优点, 放大止盈让趋势跑)
-    this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别, 保持)
-    this.tpMul = opts.tpMul || 5.0;           // 止盈5ATR(从2改5, 让利润奔跑, 吃满大波段 — 关键! 2ATR太紧致亏损)
-    this.trailMul = opts.trailMul || 0.9;     // 移动止盈回撤0.9ATR(从0.7放宽, 避免被正常波动扫掉)
-    this.lockProfitPct = opts.lockProfitPct || 3.0;  // 盈利达3%后切换锁利模式(从2%放宽, 让利润先跑)
-    this.lockTrailPct = opts.lockTrailPct || 1.2;    // 锁利模式: 回撤1.2%平仓(从1%放宽, 减少被正常波动扫掉)
-    this.maxBars = opts.maxBars || 400;   // 单笔最大持仓bar
+    this.momentumPct = opts.momentumPct || 0.005;   // 5m: 动量阈值降到0.5%(4h原1%, 5m单根动量小)
+    // ═══ 高位追高过滤: 5m剧烈, 阈值放宽避免过多拦截但保留防追高 ═══
+    this.gainFilterPct = opts.gainFilterPct || 10;   // 5m: 近20根涨幅超10%不追(4h 20%→5m 10%)
+    this.highPosFilterPct = opts.highPosFilterPct || 85;   // 高位>85%不追多
+    // 出场(两阶段锁利 — 5m适配版): 5m ATR小, 止损稍宽防秒损, 止盈放大让短线跑
+    this.stopMul = opts.stopMul || 1.0;       // 止损1.0ATR(5m, 4h原0.8, 5m秒动快稍放宽防秒损)
+    this.tpMul = opts.tpMul || 6.0;           // 止盈6ATR(5m短线放大止盈)
+    this.trailMul = opts.trailMul || 1.0;     // 移动止盈回撤1.0ATR
+    this.lockProfitPct = opts.lockProfitPct || 2.0;  // 盈利2%后锁利(5m波动快)
+    this.lockTrailPct = opts.lockTrailPct || 1.0;    // 锁利回撤1%平
+    this.maxBars = opts.maxBars || 200;   // 单笔最大持仓bar(5m: 200根≈17小时)
     this.minBars = opts.minBars || 200;
   }
 

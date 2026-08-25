@@ -36,7 +36,7 @@ class QuantAgent {
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
     this.trend = new TrendStrategy();  // MA多空排列趋势引擎(纯MA7, 回测一致无DIF)
-    this.trendBand = new TrendBandStrategy({ period: '4h' });  // ✱真趋势波段引擎(4h, 主策略)
+    this.trendBand = new TrendBandStrategy({ period: '5m' });  // ✱真趋势波段引擎(5m, 用户要求改5分钟级别, 风险已回测备案可回退4h)
     this.boll = new BollingerStrategy();      // 新震荡·布林带策略
     this.brain = new BrainCore(wallet);       // 大脑中枢(切换+自学习+NN, 每用户独立持久化)
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
@@ -323,7 +323,7 @@ class QuantAgent {
         let kl5 = null;   // 提前声明, 供下方闸门/贴线判断统一使用(修复kl5块级作用域丢失bug)
         {
           // ═══ 真趋势波段(4h): EMA排列+破60前高低+动量确认, 宽止损/高止盈 (共享信号, 不每用户重算) ═══
-          kl5 = await this._getKlinesShared(symbol, '4h', 300).catch(() => null);
+          kl5 = await this._getKlinesShared(symbol, '5m', 450).catch(() => null);  // ═══ 趋势改5m: 450根≈37小时够EMA99+break30 ═══
           sig = this._getSharedOpenSignal(symbol, kl5 || kl, null).trendSignal || null;
         }
         if (!sig || sig.signal === 'NONE') {
@@ -390,7 +390,7 @@ class QuantAgent {
         const capOkT = this._exposureOk('trend', rp);
         if (!capOkT.allow) { if (this.isAdmin) this._log(`⏸️ ${symbol} 趋势不开新仓: ${capOkT.reason}`); continue; }
         const r = await this.executor.executeOrder(sig, { symbol, side: sig.signal, notional: bs.notional, leverage: lev, precisionMap: pm, price, balance: this.balance });
-        if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: lev, strategy: stg, _t: '4h', _peak: price, _best: price, openTime: Date.now() }; this._stratLock[symbol]=stg; this._saveState(); }
+        if (r.success) { this.positions[symbol] = { side: sig.signal, qty: r.qty, entryPrice: price, leverage: lev, strategy: stg, _t: '5m', _peak: price, _best: price, openTime: Date.now() }; this._stratLock[symbol]=stg; this._saveState(); }
       } else if (strat === 'bollinger') {
         // 多币并仓: 震荡池全部币可开(不限bollTop前5, 提高资金使用)
         if (this.pauseBoll) continue;   // 暂停震荡(布林)策略开仓
@@ -453,7 +453,7 @@ class QuantAgent {
         // V4策略已物理删除: v4持仓不再单独管理(不应存在v4仓; 若历史遗留则交由trendBand兜底不平)
         if (pos.strategy === 'ma7') {
           // ✱真趋势波段(4h): 0.6ATR止损 + 两阶段锁利
-          const mkl = await this._getKlinesShared(symbol, pos._t || '4h', 200).catch(() => null);
+          const mkl = await this._getKlinesShared(symbol, pos._t || '5m', 200).catch(() => null);
           if (mkl && mkl.length >= 40) {
             const mArr = mkl.map(k => ({ open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: k.volume }));
             const closes = mArr.map(k => +k.close);
@@ -506,7 +506,7 @@ class QuantAgent {
         if (pos.strategy === 'trend' || (pos.strategy === 'ma7' && pos._managed)) {
           // ✱接管/存量仓: 用真趋势波段(4h) 宽ATR止损/高止盈/移动止盈 统一管理,
           // 不再用旧EMA7/25即时反转(那会一秒砍掉刚接管的仓). 布林接管仓也不误杀。
-          const tf = pos._t || '4h';
+          const tf = pos._t || '5m';
           const mkl = await this._getKlinesShared(symbol, tf, 200).catch(() => null);
           if (mkl && mkl.length >= 40) {
             const mArr = mkl.map(k => ({ open: +k.open, high: +k.high, low: +k.low, close: +k.close, volume: k.volume }));
