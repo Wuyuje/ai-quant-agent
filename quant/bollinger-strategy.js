@@ -175,15 +175,15 @@ class BollingerStrategy {
     // ═══ 接近轨道触发(保留均值回归方向): 距下轨/上轨 1.0ATR 内开仓 ═══
     // 用ATR距离(稳定, 不受带宽影响), 比相对宽度%更可靠
     const atr = this.fe.calcATR(toArray(arr)) || 1;
-    // 接近/触下轨 → 开多 (距下轨<=touchAtr个ATR距离)
-    if (atr > 0 && ((price - b.lower) / atr) <= this.touchAtr) {
-      return { signal: 'LONG', reason: `接近/触下轨开多(距下轨${((price-b.lower)/atr).toFixed(2)}ATR<${this.touchAtr}ATR)`, bands: b };
+    // ═══ 严格触轨开仓(用户要求回退): 收盘价真正到达/穿过上下轨才开仓, 非接近就开 ═══
+    // 触下轨(price<=lower)→开多 / 触上轨(price>=upper)→开空
+    if (price <= b.lower) {
+      return { signal: 'LONG', reason: `严格触下轨开多(收${price.toFixed(6)}<=下轨${b.lower.toFixed(6)})`, bands: b };
     }
-    // 接近/触上轨 → 开空 (距上轨<=touchAtr个ATR距离)
-    if (atr > 0 && ((b.upper - price) / atr) <= this.touchAtr) {
-      return { signal: 'SHORT', reason: `接近/触上轨开空(距上轨${((b.upper-price)/atr).toFixed(2)}ATR<${this.touchAtr}ATR)`, bands: b };
+    if (price >= b.upper) {
+      return { signal: 'SHORT', reason: `严格触上轨开空(收${price.toFixed(6)}>=上轨${b.upper.toFixed(6)})`, bands: b };
     }
-    return { signal: 'NONE', reason: `收盘在轨道内(距下轨${((price-b.lower)/atr).toFixed(2)}ATR,距上轨${((b.upper-price)/atr).toFixed(2)}ATR>${this.touchAtr}ATR)` };
+    return { signal: 'NONE', reason: `收盘在轨道内(价${price.toFixed(6)}未触轨, 下轨${b.lower.toFixed(6)}/上轨${b.upper.toFixed(6)})` };
   }
 
   // ═══ 插针/毛刺过滤: 单K±3%作废信号(截图) ═══
