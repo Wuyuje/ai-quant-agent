@@ -797,6 +797,7 @@ class QuantAgentManager {
     this.MA7_POOL = [...this.COIN_POOL];   // MA7趋势池=全市场(每币实时判断)
     this.trendTop = [...this.COIN_POOL].slice(0,5);  // 排名Top币(开仓优先, 动态选币后更新)
     this.bollTop = [...this.COIN_POOL].slice(0,5);   // 震荡Top币
+    this.trendRanked = [...this.COIN_POOL];           // ═══ 完整趋势强度排序(降序, 选币开仓按趋势最强优先) ═══
   }
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[Quant] ${ts} ${m}`); }
   _isAdmin(w) { return this.ADMIN_WALLETS.some(a => a.toLowerCase() === (w||'').toLowerCase()); }
@@ -869,8 +870,9 @@ class QuantAgentManager {
         // ═══ 同步manager的池给agent(MA7/V4/布林各自独立池) + 排名Top ═══
         a.MA7_POOL = this.MA7_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL;
         a.trendTop = this.trendTop || []; a.bollTop = this.bollTop || []; }
-      // ═══ 排序后开仓: 先扫描排名Top的优质币, 再扫剩余池子(保证优质币优先占位) ═══
-      const rankedPool = [ ...(this.trendTop || []), ...(this.COIN_POOL || []).filter(b => !(this.trendTop||[]).includes(b)) ];
+      // ═══ 选币开仓按趋势强度排序: 最强的排最前优先开仓, 保证先占优质币 ═══
+      const tf = this.trendRanked && this.trendRanked.length ? this.trendRanked : (this.trendTop || []);
+      const rankedPool = [ ...tf, ...(this.COIN_POOL || []).filter(b => !tf.includes(b)) ];
       await Promise.all(agents.map(a => a.scan(rankedPool).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
       // ═══ 持仓状况检查: 打印管理员各策略/接管仓分布(启动后可见) ═══
@@ -980,6 +982,8 @@ class QuantAgentManager {
       }
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
+      // ═══ 保存完整趋势强度排序(降序): 选币开仓时最强者最优先 ═══
+      this.trendRanked = trendPool.map(x=>x.sym);   // 所有候选按趋势强度降序
       const trendC = trendPool.slice(0,25);      // MA7候选(仅回测盈利)
       const bollC = bollPool.slice(0,25);        // 震荡候选
       // ═══ 分开选池: MA7趋势池(15m) 和 V4趋势池(日线) 各自独立 ═══
