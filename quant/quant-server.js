@@ -215,15 +215,22 @@ class QuantServer {
   }
 
   async start(port = 10060) {
-    // 绑定多用户智能体管理器(只展示状态, 默认停开仓, 不实盘)
+    // 绑定多用户智能体管理器
     try {
       const mgr = new QuantAgentManager({ apiKey: APIKEY, apiSecret: APISECRET });
-      mgr.pauseOpen = false;            // ✅ 放开开仓(真趋势波段实盘, 所有用户正常使用)
-      mgr.pauseTrend = false;           // ✅ 放开真趋势波段开仓
-      mgr.pauseBoll = false;             // ✅ 放开震荡(布林)策略开仓(与趋势策略共存,各自管理)
+      // ═══ 读取持久化交易开关(data/pause-trading.json) ═══ 默认停开仓; 管理员改文件或以后加接口控制
+      let pause = { pauseOpen: false, pauseTrend: false, pauseBoll: false };
+      try {
+        const pf = path.join(__dirname, '..', 'data', 'pause-trading.json');
+        if (require('fs').existsSync(pf)) pause = { ...pause, ...JSON.parse(require('fs').readFileSync(pf, 'utf8')) };
+      } catch(e){}
+      mgr.pauseOpen = !!pause.pauseOpen;      // true=停止所有用户开新仓
+      mgr.pauseTrend = !!pause.pauseTrend;    // true=停止趋势策略开仓
+      mgr.pauseBoll = !!pause.pauseBoll;      // true=停止布林策略开仓
+      const pfx = (mgr.pauseOpen?'[停开仓]':'-')+(mgr.pauseTrend?' T':'')+(mgr.pauseBoll?' B':'-');
       mgr.start();
       global.__quantAgents = mgr;
-      console.log('[QuantServer] 🤖 多用户管理器已挂载(真趋势波段实盘, 布林停用)');
+      console.log(`[QuantServer] 🤖 多用户管理器已挂载 ${pfx}`);
     } catch(e){ console.log('[QuantServer] ⚠️ 智能体管理器挂载失败:', e.message); }
     // 等待首次市场轮询填缓存, 然后再listen(确保页面首次打开就有数据)
     await this._pollMarket().catch(()=>{});
