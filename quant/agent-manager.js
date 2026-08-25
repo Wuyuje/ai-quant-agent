@@ -123,19 +123,34 @@ class QuantAgent {
   // ═══ 共享开仓信号(百万框架核心阶段2): 开仓方向判定与用户无关, 全市场只算1次, 所有用户复用 ═══
   // 共享: 趋势信号 / 布林带宽门禁(openGate) / 布林触轨信号(esig) / 布林方向门禁(gate) — 均只依赖K线
   // 不共享: brain.decide(每用户独立) / 持仓管理(每用户持仓不同) / 开仓执行(每用户自己资金)
+  // ⚠️ 修复: 趋势和布林信号用不同缓存key(signalMap[key])分开存, 避免趋势缓存(仅trendSignal)命中时布林拿到空openGate/esig/gate被误拦
   _getSharedOpenSignal(symbol, kl5, bkl) {
-    if (this.signalMap && this.signalMap[symbol]) {
-      const s = this.signalMap[symbol];
-      if (s && s.t && (Date.now() - s.t < 60000)) return s;   // 60s内复用共享信号(避免每用户重算)
+    // 分开缓存: 趋势信号与布林信号互不复用(因各自只算一部分, 合并到一个对象会互相污染)
+    const trendKey = 'trend:' + symbol;
+    const bollKey = 'boll:' + symbol;
+    const now = Date.now();
+    if (kl5 && this.signalMap && this.signalMap[trendKey]) {
+      const s = this.signalMap[trendKey];
+      if (s && s.t && (now - s.t < 60000)) return { trendSignal: s.trendSignal, openGate: null, esig: null, gate: null };
     }
-    // miss → 本用户算(结果与用户无关), 写回共享供所有用户复用
-    const trendSignal = kl5 ? this.trendBand.entrySignal(kl5) : null;
-    const openGate = bkl ? this.boll.canOpen(bkl) : null;
-    const esig = bkl ? this.boll.entrySignal(bkl, 'FLAT', false) : null;
-    const gate = (bkl && esig && (esig.signal === 'LONG' || esig.signal === 'SHORT')) ? this.boll.trendDirGate(bkl, esig.signal, 3) : null;
-    const sig = { trendSignal, openGate, esig, gate, t: Date.now() };
-    if (this.signalMap) this.signalMap[symbol] = sig;
-    return sig;
+    if (bkl && this.signalMap && this.signalMap[bollKey]) {
+      const s = this.signalMap[bollKey];
+      if (s && s.t && (now - s.t < 60000)) return { trendSignal: null, openGate: s.openGate, esig: s.esig, gate: s.gate };
+    }
+    // miss → 本用户算(结果与用户无关), 按key写回共享供所有用户复用
+    if (kl5) {
+      const trendSignal = this.trendBand.entrySignal(kl5);
+      if (this.signalMap) this.signalMap[trendKey] = { trendSignal, t: now };
+      return { trendSignal, openGate: null, esig: null, gate: null };
+    }
+    if (bkl) {
+      const openGate = this.boll.canOpen(bkl);
+      const esig = this.boll.entrySignal(bkl, 'FLAT', false);
+      const gate = (esig && (esig.signal === 'LONG' || esig.signal === 'SHORT')) ? this.boll.trendDirGate(bkl, esig.signal, 3) : null;
+      if (this.signalMap) this.signalMap[bollKey] = { openGate, esig, gate, t: now };
+      return { trendSignal: null, openGate, esig, gate };
+    }
+    return { trendSignal: null, openGate: null, esig: null, gate: null };
   }
 
   // ═══ 共享K线(百万框架核心): 所有用户共用1份K线, single-flight去重, 避免重复拉取爆Binance API ═══
