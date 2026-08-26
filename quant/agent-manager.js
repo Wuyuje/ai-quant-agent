@@ -361,6 +361,8 @@ class QuantAgent {
           const esig = shSig.esig;   // 5min严格触轨
           if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
           // ═══ 方案B: 方向门禁用4h大趋势(防逆势), 4h趋势明确且顺势才开; 布林管震荡不强趋势 ═══
+          // ═══ 治本保护: 大盘BTC下跌时布林完全禁开(不抄底山寨, 防下跌市触下轨开多被套) ═══
+          if (this._marketRisk === 'DOWN') { if (this.isAdmin) this._log(`🚫 ${symbol} 布林禁开: 大盘BTC下跌(${this._marketRisk})`); continue; }
           const hkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
           const tg = (hkl && hkl.length >= 60) ? this.boll.trendDirGate(hkl, esig.signal, 2) : null;
           if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁(4h): ${tg ? tg.reason : '无4h数据'}`); continue; }
@@ -439,6 +441,8 @@ class QuantAgent {
         if (!openGate || !openGate.allowed) continue;   // 5min带宽门禁
         const esig = shSig.esig;
         if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
+        // ═══ 治本保护: 大盘BTC下跌时布林完全禁开(不抄底山寨, 防下跌市触下轨开多被套) ═══
+        if (this._marketRisk === 'DOWN') { if (this.isAdmin) this._log(`🚫 ${symbol} 布林禁开: 大盘BTC下跌(${this._marketRisk})`); continue; }
         // ═══ 方案B: 方向门禁用4h大趋势(防逆势) ═══
         const hkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
         const tg = (hkl && hkl.length >= 60) ? this.boll.trendDirGate(hkl, esig.signal, 2) : null;
