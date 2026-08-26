@@ -36,7 +36,7 @@ class QuantAgent {
     this.fe = new FeatureEngineer();
     this.classifier = new MarketClassifier();
     this.trend = new TrendStrategy();  // MA多空排列趋势引擎(纯MA7, 回测一致无DIF)
-    this.trendBand = new TrendBandStrategy({ period: '4h' });  // ✱真趋势波段引擎(4h, 主策略, 已从5m回退)
+    this.trendBand = new TrendBandStrategy({ period: '4h' });  // ✱真趋势波段引擎(4h, 主策略)
     this.boll = new BollingerStrategy();      // 新震荡·布林带策略
     this.brain = new BrainCore(wallet);       // 大脑中枢(切换+自学习+NN, 每用户独立持久化)
     this.executor = new TradeExecutionCore({ api: this.api, wallet, logFn: m => this._log(m) });
@@ -92,15 +92,15 @@ class QuantAgent {
   // 各账户独立用自身balance/positions计算, 互不影响
   _exposureOk(strat, rp) {
     try {
-      // 每策略上限: 布林固定5仓(图片一-3: 同时开5个币, 交易结束自动补足); 趋势仍按余额分级(不影响趋势策略)
-      const isBoll = strat === 'bollinger';
-      const perStrat = isBoll ? 5 : Math.max(1, Math.min(rp.maxPerStrategy || 3, 5));
-      // 跨策略总仓位上上限
+      // 每策略上限(自动按余额分级, 封顶5仓)
+      const perStrat = Math.max(1, Math.min(rp.maxPerStrategy || 3, 5));
+      // 跨策略总仓位上上限(防趋势5+布林5叠到10仓超限)
       const totalCap = Math.max(perStrat, rp.maxPositions || 3);
       const trendCount = Object.values(this.positions).filter(p => p.strategy !== 'bollinger').length;
       const bollCount = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;
       const totalCount = Object.keys(this.positions).length;
       const targetCount = strat === 'bollinger' ? bollCount : trendCount;
+      const isBoll = strat === 'bollinger';
       if (targetCount >= perStrat) return { allow: false, reason: `${isBoll?'布林':'趋势'}持仓已达${targetCount}/${perStrat}上限` };
       if (totalCount >= totalCap) return { allow: false, reason: `账户总仓位已达上限${totalCount}/${totalCap}(趋势+布林合计)` };
       // ═══ 保证金敞口熔断: 已有持仓保证金(notional/lev) + 新仓保证金 ≤ 总权益×90% ═══
@@ -123,34 +123,19 @@ class QuantAgent {
   // ═══ 共享开仓信号(百万框架核心阶段2): 开仓方向判定与用户无关, 全市场只算1次, 所有用户复用 ═══
   // 共享: 趋势信号 / 布林带宽门禁(openGate) / 布林触轨信号(esig) / 布林方向门禁(gate) — 均只依赖K线
   // 不共享: brain.decide(每用户独立) / 持仓管理(每用户持仓不同) / 开仓执行(每用户自己资金)
-  // ⚠️ 修复: 趋势和布林信号用不同缓存key(signalMap[key])分开存, 避免趋势缓存(仅trendSignal)命中时布林拿到空openGate/esig/gate被误拦
   _getSharedOpenSignal(symbol, kl5, bkl) {
-    // 分开缓存: 趋势信号与布林信号互不复用(因各自只算一部分, 合并到一个对象会互相污染)
-    const trendKey = 'trend:' + symbol;
-    const bollKey = 'boll:' + symbol;
-    const now = Date.now();
-    if (kl5 && this.signalMap && this.signalMap[trendKey]) {
-      const s = this.signalMap[trendKey];
-      if (s && s.t && (now - s.t < 60000)) return { trendSignal: s.trendSignal, openGate: null, esig: null, gate: null };
+    if (this.signalMap && this.signalMap[symbol]) {
+      const s = this.signalMap[symbol];
+      if (s && s.t && (Date.now() - s.t < 60000)) return s;   // 60s内复用共享信号(避免每用户重算)
     }
-    if (bkl && this.signalMap && this.signalMap[bollKey]) {
-      const s = this.signalMap[bollKey];
-      if (s && s.t && (now - s.t < 60000)) return { trendSignal: null, openGate: s.openGate, esig: s.esig, gate: s.gate };
-    }
-    // miss → 本用户算(结果与用户无关), 按key写回共享供所有用户复用
-    if (kl5) {
-      const trendSignal = this.trendBand.entrySignal(kl5);
-      if (this.signalMap) this.signalMap[trendKey] = { trendSignal, t: now };
-      return { trendSignal, openGate: null, esig: null, gate: null };
-    }
-    if (bkl) {
-      const openGate = this.boll.canOpen(bkl);
-      const esig = this.boll.entrySignal(bkl, 'FLAT', false);
-      const gate = (esig && (esig.signal === 'LONG' || esig.signal === 'SHORT')) ? this.boll.trendDirGate(bkl, esig.signal, 3) : null;
-      if (this.signalMap) this.signalMap[bollKey] = { openGate, esig, gate, t: now };
-      return { trendSignal: null, openGate, esig, gate };
-    }
-    return { trendSignal: null, openGate: null, esig: null, gate: null };
+    // miss → 本用户算(结果与用户无关), 写回共享供所有用户复用
+    const trendSignal = kl5 ? this.trendBand.entrySignal(kl5) : null;
+    const openGate = bkl ? this.boll.canOpen(bkl) : null;
+    const esig = bkl ? this.boll.entrySignal(bkl, 'FLAT', false) : null;
+    const gate = (bkl && esig && (esig.signal === 'LONG' || esig.signal === 'SHORT')) ? this.boll.trendDirGate(bkl, esig.signal, 3) : null;
+    const sig = { trendSignal, openGate, esig, gate, t: Date.now() };
+    if (this.signalMap) this.signalMap[symbol] = sig;
+    return sig;
   }
 
   // ═══ 共享K线(百万框架核心): 所有用户共用1份K线, single-flight去重, 避免重复拉取爆Binance API ═══
@@ -173,7 +158,7 @@ class QuantAgent {
     }
   }
   // ═══ 持仓策略持久化: symbol → 开仓策略(ma7/v4/bollinger). 重启后由原策略继续管理, 不再靠inTrend误判接管 ═══
-  _saveState() { try { const posMap = {}; for (const [sym, p] of Object.entries(this.positions)) { if (p && p.strategy) posMap[sym] = { strategy: p.strategy, side: p.side, qty: p.qty, entryPrice: p.entryPrice, leverage: p.leverage, _managed: !!p._managed }; } fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance, positions: posMap }, null, 1)); } catch(e){} }
+  _saveState() { try { const posMap = {}; for (const [sym, p] of Object.entries(this.positions)) { if (p && p.strategy) posMap[sym] = { strategy: p.strategy, side: p.side, qty: p.qty, entryPrice: p.entryPrice, leverage: p.leverage }; } fs.writeFileSync(this._stateFile, JSON.stringify({ closedHistory: this.closedHistory, balance: this.balance, positions: posMap }, null, 1)); } catch(e){} }
   // 重启后恢复持仓策略归属(只存策略映射, 不直接重建持仓, 真正head由币安同步)
   _loadPosStrategy() { try { if (fs.existsSync(this._stateFile)) { const st = JSON.parse(fs.readFileSync(this._stateFile,'utf8')); if (st && st.positions) this._posStrategy = st.positions; } } catch(e){} this._posStrategy = this._posStrategy || {}; }
   _loadState() { try { if (fs.existsSync(this._stateFile)) { const st = JSON.parse(fs.readFileSync(this._stateFile,'utf8')); if (Array.isArray(st.closedHistory)) {
@@ -227,18 +212,15 @@ class QuantAgent {
           }
           // 将兜底'trend'归一: 趋势接管统一为ma7(管理分支一致), 且仅当确无持久化记录才允许
           if (strat === 'trend' && !persisted) strat = 'ma7';
-          // ═══ 接管仓识别(修复: 手动接管仓必须持久化_managed, 重启后仍为接管仓不可被策略平仓) ═══
-          // 只有"引擎自己开的仓"(_managed=falsede持久化)才正常策略管理; 手动/历史存量仓永远视作接管仓(_managed=true)不平仓
-          const managed = (persisted && persisted._managed === false) ? false : true;
           this.positions[sym] = {
             symbol: sym, side, qty: Math.abs(amt), entryPrice: +p.entryPrice,
             currentPrice: +p.markPrice, margin: Math.abs(+p.entryPrice)*(+p.markPrice)/lev,
             leverage: lev, _peak: +p.entryPrice, openTime: Date.now(),
             strategy: strat,
-            _managed: managed   // true=接管仓(手动/存量,不平仓); false=引擎自己开的仓(正常策略管理)
+            _managed: !persisted   // 有持久化策略记录=引擎自己开的仓,正常策略管理; 无记录才标接管不平仓
           };
-          // 同步回持久化(含_managed标记), 防止重启后误判接管仓为策略仓而被平
-          this._posStrategy[sym] = { strategy: strat, side, qty: Math.abs(amt), entryPrice: +p.entryPrice, leverage: lev, _managed: managed };
+          // 同步回持久化, 防止重复误判
+          this._posStrategy[sym] = { strategy: strat, side, qty: Math.abs(amt), entryPrice: +p.entryPrice, leverage: lev };
           this._saveState();
         } else {
           // 已有记录, 更新价格/数量
@@ -351,21 +333,17 @@ class QuantAgent {
           // 进入布林分支(当前币无趋势信号, 用布林接近轨道开仓)
           // 布林策略(4h): 接近轨道20% + 趋势过滤5% + 带宽门禁
           if (this.pauseBoll) continue;   // 布林暂停
-          const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
+          const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
           if (!bkl || bkl.length < 40) continue;
           if (this.positions[symbol]) continue;   // 同币已持单
-          // ═══ 共享开仓信号(百万框架): 触轨/带宽门禁 用5min(图片规格震荡策略), 方向门禁用4h大趋势(方案B防逆势) ═══
+          // ═══ 共享开仓信号(百万框架): 带宽门禁/触轨/方向门禁 由全局共用1份, 不每用户重算 ═══
           const shSig = this._getSharedOpenSignal(symbol, null, bkl);
-          const openGate = shSig.openGate;   // 5min带宽门禁
+          const openGate = shSig.openGate;
           if (!openGate || !openGate.allowed) continue;
-          const esig = shSig.esig;   // 5min严格触轨
+          const esig = shSig.esig;
           if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
-          // ═══ 方案B: 方向门禁用4h大趋势(防逆势), 4h趋势明确且顺势才开; 布林管震荡不强趋势 ═══
-          // ═══ 治本保护: 大盘BTC下跌时布林完全禁开(不抄底山寨, 防下跌市触下轨开多被套) ═══
-          if (this._marketRisk === 'DOWN') { if (this.isAdmin) this._log(`🚫 ${symbol} 布林禁开: 大盘BTC下跌(${this._marketRisk})`); continue; }
-          const hkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
-          const tg = (hkl && hkl.length >= 60) ? this.boll.trendDirGate(hkl, esig.signal, 2) : null;
-          if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁(4h): ${tg ? tg.reason : '无4h数据'}`); continue; }
+          const tg = shSig.gate;
+          if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg ? tg.reason : '无门禁'}`); continue; }
           // 用门禁确认的方向开仓(与趋势一致)
           // ═══ 仓位/敞口上限(自动按余额分级): 每策略上限+总仓位上上限+保证金熔断 ═══
           const capOk = this._exposureOk('bollinger', rp);
@@ -382,11 +360,6 @@ class QuantAgent {
         if (stg === 'ma7' && sig && (sig.signal === 'LONG' || sig.signal === 'SHORT')) {
           const alignBlock = await this._trendAlignGate(symbol, sig.signal, stg === 'ma7' ? (kl5 || kl) : kl).catch(() => null);
           if (alignBlock) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}反大趋势禁开: ${alignBlock}`); continue; }
-        }
-        // ═══ 5分钟短期方向闸门(A方案): 5m下行禁开多 / 5m上行禁开空, 堵住'4h看多但5m在跌'的逆势亏损 ═══
-        if (sig && (sig.signal === 'LONG' || sig.signal === 'SHORT')) {
-          const shortBlock = await this._shortTermDirGate(symbol, sig.signal).catch(() => null);
-          if (shortBlock) { if (this.isAdmin) this._log(`🚫 ${symbol} ${stg}逆5m短期: ${shortBlock}`); continue; }
         }
         // ═══ 贴EMA99禁开仓: 真趋势波段用ATR宽止损不用贴线; V4已删除 ═══
         this._log(`🔍 ${symbol} ${stg}信号=${sig.signal} 准备开仓`);
@@ -430,23 +403,19 @@ class QuantAgent {
           continue;
         }
         // 布林带策略(4小时级别): 4h K线决策
-        const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
+        const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
         const guard = this.boll.tradingGuardAllowed(bkl);
         if (!guard.allowed) continue;
-        // ═══ 共享开仓信号: 触轨/带宽用5min(图片震荡策略), 方向门禁用4h大趋势(方案B防逆势) ═══
+        // ═══ 共享开仓信号(百万框架): 带宽门禁/触轨/方向门禁 由全局共用1份, 不每用户重算 ═══
         const shSig = this._getSharedOpenSignal(symbol, null, bkl);
         const openGate = shSig.openGate;
-        if (!openGate || !openGate.allowed) continue;   // 5min带宽门禁
+        if (!openGate || !openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
         const esig = shSig.esig;
         if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
-        // ═══ 治本保护: 大盘BTC下跌时布林完全禁开(不抄底山寨, 防下跌市触下轨开多被套) ═══
-        if (this._marketRisk === 'DOWN') { if (this.isAdmin) this._log(`🚫 ${symbol} 布林禁开: 大盘BTC下跌(${this._marketRisk})`); continue; }
-        // ═══ 方案B: 方向门禁用4h大趋势(防逆势) ═══
-        const hkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
-        const tg = (hkl && hkl.length >= 60) ? this.boll.trendDirGate(hkl, esig.signal, 2) : null;
-        if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁(4h): ${tg ? tg.reason : '无4h数据'}`); continue; }
+        const tg = shSig.gate;
+        if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg ? tg.reason : '无门禁'}`); continue; }
         // 用门禁确认的方向开仓(与趋势一致)
         // ═══ 仓位/敞口上限(自动按余额分级) ═══
         const capOk2 = this._exposureOk('bollinger', rp);
@@ -465,8 +434,9 @@ class QuantAgent {
     for (const symbol of Object.keys(this.positions)) {
       const pos = this.positions[symbol];
       try {
-        // ═══ 接管仓也按策略止盈止损管理(用户确认: 存量接管仓不让干拿着, TAO/APT布林仓也走止盈止损) ═══
-        // 接管仓进入对应的策略管理分支: 布林接管走布林止盈/止损, ma7接管走trendBand
+        // ⛔ 接管仓(启动时从币安同步的存量仓,_managed=true): 一律不平仓, 保护用户存量持仓
+        //    只允许本引擎自己新开的仓(非_managed)按策略管理. 用户明确要求启动不平仓.
+        if (pos._managed) { continue; }
         const kl = await this._getKlinesShared(symbol, '15m', 60).catch(() => null);
         if (!kl || kl.length < 20) continue;
         const price = +toArray(kl)[kl.length-1][3];
@@ -491,7 +461,7 @@ class QuantAgent {
         }
         if (pos.strategy === 'bollinger') {
           // 布林带策略止盈/风控(4小时级别): 4h K线
-          const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
+          const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
           if (bkl && bkl.length >= 30) {
             // 截图: 插针击穿止损/补仓点位但收盘回归 → 不执行风控
             const spike = this.boll.isSpikeBar(bkl);
@@ -782,30 +752,6 @@ class QuantAgent {
       return null;   // 通过
     } catch (e) { return null; }
   }
-
-  // ═══ 5分钟短期方向确认闸门(修复: 4h趋势开多但5m正在下跌导致亏损) ═══
-  // 核心: 趋势策略(4h)开仓前先确认5m短期方向不逆势
-  //  - LONG信号: 若5m EMA7<EMA25(短期向下) → 禁开多 (5m向下不开多)
-  //  - SHORT信号: 若5m EMA7>EMA25(短期向上) → 禁开空
-  // 返回禁开原因字符串(有值=禁开), null=通过
-  async _shortTermDirGate(symbol, sigSignal) {
-    try {
-      const kl5 = await this._getKlinesShared(symbol, '5m', 120).catch(() => null);
-      if (!kl5 || kl5.length < 60) return null;   // 5m数据不足则放行(不误拦)
-      const arr = toArray(kl5);
-      const closes = arr.map(k => +k[3]);
-      const e7 = this.trend._ema(closes, 7);
-      const e25 = this.trend._ema(closes, 25);
-      if (e7 == null || e25 == null) return null;
-      const dir5m = e7 > e25 ? 'UP' : (e7 < e25 ? 'DOWN' : 'FLAT');
-      const wantsLong = sigSignal === 'LONG';
-      // 多头: 5m向下 → 禁开多 (你要求: 5m趋势向下不开多)
-      if (wantsLong && dir5m === 'DOWN') return `5m短期下行(EMA7=${e7.toFixed(6)}<EMA25=${e25.toFixed(6)})禁开多`;
-      // 空头: 5m向上 → 禁开空
-      if (!wantsLong && dir5m === 'UP') return `5m短期上行(EMA7=${e7.toFixed(6)}>EMA25=${e25.toFixed(6)})禁开空`;
-      return null;   // 5m方向不逆势, 通过
-    } catch (e) { return null; }
-  }
 }
 
 class QuantAgentManager {
@@ -851,7 +797,6 @@ class QuantAgentManager {
     this.MA7_POOL = [...this.COIN_POOL];   // MA7趋势池=全市场(每币实时判断)
     this.trendTop = [...this.COIN_POOL].slice(0,5);  // 排名Top币(开仓优先, 动态选币后更新)
     this.bollTop = [...this.COIN_POOL].slice(0,5);   // 震荡Top币
-    this.trendRanked = [...this.COIN_POOL];           // ═══ 完整趋势强度排序(降序, 选币开仓按趋势最强优先) ═══
   }
   _log(m) { const ts = new Date().toLocaleString('sv-SE',{timeZone:'Asia/Shanghai'}); console.log(`[Quant] ${ts} ${m}`); }
   _isAdmin(w) { return this.ADMIN_WALLETS.some(a => a.toLowerCase() === (w||'').toLowerCase()); }
@@ -924,9 +869,8 @@ class QuantAgentManager {
         // ═══ 同步manager的池给agent(MA7/V4/布林各自独立池) + 排名Top ═══
         a.MA7_POOL = this.MA7_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL;
         a.trendTop = this.trendTop || []; a.bollTop = this.bollTop || []; }
-      // ═══ 选币开仓按趋势强度排序: 最强的排最前优先开仓, 保证先占优质币 ═══
-      const tf = this.trendRanked && this.trendRanked.length ? this.trendRanked : (this.trendTop || []);
-      const rankedPool = [ ...tf, ...(this.COIN_POOL || []).filter(b => !tf.includes(b)) ];
+      // ═══ 排序后开仓: 先扫描排名Top的优质币, 再扫剩余池子(保证优质币优先占位) ═══
+      const rankedPool = [ ...(this.trendTop || []), ...(this.COIN_POOL || []).filter(b => !(this.trendTop||[]).includes(b)) ];
       await Promise.all(agents.map(a => a.scan(rankedPool).catch(() => {})));
       this._log(`[循环] ${agents.length}个智能体 · 持仓${agents.reduce((s,a)=>s+Object.keys(a.positions).length,0)}`);
       // ═══ 持仓状况检查: 打印管理员各策略/接管仓分布(启动后可见) ═══
@@ -1036,8 +980,6 @@ class QuantAgentManager {
       }
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
-      // ═══ 保存完整趋势强度排序(降序): 选币开仓时最强者最优先 ═══
-      this.trendRanked = trendPool.map(x=>x.sym);   // 所有候选按趋势强度降序
       const trendC = trendPool.slice(0,25);      // MA7候选(仅回测盈利)
       const bollC = bollPool.slice(0,25);        // 震荡候选
       // ═══ 分开选池: MA7趋势池(15m) 和 V4趋势池(日线) 各自独立 ═══

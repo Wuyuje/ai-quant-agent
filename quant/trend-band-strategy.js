@@ -27,20 +27,19 @@ class TrendBandStrategy {
     this.adxN = opts.adxN || 14;
     // 开仓: 突破近60根高低(单边确认)
     this.breakLookback = opts.breakLookback || 60;   // 突破近60根高低(回退: 用户觉得原版好, 破20高回撤大)
-    // 强单边: 相对EMA50偏移阈值(单位%), 过低=动量不足
+    // 强单边: 相对EMA50偏移阈值
     this.ema50N = opts.ema50N || 50;
-    this.momentumPct = opts.momentumPct || 0.5;   // 动量%阈值(0.5%, 原0.01→改百分数口径)
-    this.overheatMomentum = opts.overheatMomentum || 6.0;  // ═══ 动量过热阈值: 相对EMA50涨幅%>6%视为追高禁开(堵住JUP+12.7%追多被套) ═══
+    this.momentumPct = opts.momentumPct || 0.01;   // 1%
     // ═══ 高位追高过滤: 近20根K线涨幅超过阈值(默认20%)不追多/不追空(避免买在短期顶部被套) ═══
     this.gainFilterPct = opts.gainFilterPct || 20;   // 20%
     // ═══ 高位位置过滤: 价格处于近20根高位区(>80%)时不追多, 避免买在顶部被回调止损 ═══
     this.highPosFilterPct = opts.highPosFilterPct || 80;   // 80%
-    // 出场(方案C: 两阶段锁利 — 让利版, 回测7币12个月最优点, 放大止盈让趋势跑)
-    this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别, 保持)
-    this.tpMul = opts.tpMul || 5.0;           // 止盈5ATR(从2改5, 让利润奔跑, 吃满大波段 — 关键! 2ATR太紧致亏损)
-    this.trailMul = opts.trailMul || 0.9;     // 移动止盈回撤0.9ATR(从0.7放宽, 避免被正常波动扫掉)
-    this.lockProfitPct = opts.lockProfitPct || 3.0;  // 盈利达3%后切换锁利模式(从2%放宽, 让利润先跑)
-    this.lockTrailPct = opts.lockTrailPct || 1.2;    // 锁利模式: 回撤1.2%平仓(从1%放宽, 减少被正常波动扫掉)
+    // 出场(方案C: 两阶段锁利)
+    this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别)
+    this.tpMul = opts.tpMul || 2.0;           // 止盈2ATR
+    this.trailMul = opts.trailMul || 0.7;     // 移动止盈回撤0.7ATR(未达盈利阈值时)
+    this.lockProfitPct = opts.lockProfitPct || 2.0;  // 盈利达2%后切换锁利模式(从0.5放宽, 让利润先跑再锁)
+    this.lockTrailPct = opts.lockTrailPct || 1.0;    // 锁利模式: 回撤1%就平仓(从0.2放宽, 减少被正常波动扫掉)
     this.maxBars = opts.maxBars || 400;   // 单笔最大持仓bar
     this.minBars = opts.minBars || 200;
   }
@@ -104,19 +103,18 @@ class TrendBandStrategy {
     const atTop = pos20 > this.highPosFilterPct;
     if (dir === 'UP') {
       const hi = Math.max(...closes.slice(i - look, i));   // 近60根(不含当前)
-      const mom = (price - e50) / (e50 || 1) * 100;   // 动量% (相对EMA50)
+      const mom = (price - e50) / (e50 || 1);
       if (price > hi && mom > this.momentumPct) {
-        // ═══ 追高过滤(改宽松): 位置>80% OR 涨幅>20% OR 动量过热>6% 任一项即拦, 堵住'大增大涨追高被套'(如JUP动量+12.7%追多被止损) ═══
-        const momentumOverheat = mom > this.overheatMomentum;   // 动量过热(相对EMA50涨幅过大)
-        if (atTop || overheat || momentumOverheat) return { signal: 'NONE', reason: `${this.period}多头排列但${atTop?`位置${pos20.toFixed(0)}%高`:''}${overheat?`涨幅${gain20.toFixed(1)}%大`:''}${momentumOverheat?`动量${mom.toFixed(1)}%过热`:''}, 不追高` };
-        return { signal: 'LONG', reason: `${this.period}多头排列破${look}前高${hi.toFixed(4)}+动量${mom.toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
+        // ═══ 组合追高过滤: 位置>80% AND 涨幅>20% 同时满足才拦截(精准拦极端追高, 保留正常突破) ═══
+        const comboOverheat = atTop && overheat;
+        if (comboOverheat) return { signal: 'NONE', reason: `${this.period}多头排列但高位(${pos20.toFixed(0)}%>80%)且涨幅${gain20.toFixed(1)}%>20%, 不追高` };
+        return { signal: 'LONG', reason: `${this.period}多头排列破${look}前高${hi.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     } else if (dir === 'DOWN') {
       const lo = Math.min(...closes.slice(i - look, i));
-      const mom = (price - e50) / (e50 || 1) * 100;
+      const mom = (price - e50) / (e50 || 1);
       if (price < lo && mom < -this.momentumPct) {
-        const momentumOverheat = Math.abs(mom) > this.overheatMomentum;
-        if (overheat || momentumOverheat) return { signal: 'NONE', reason: `${this.period}空头排列但${overheat?`近20根跌幅${gain20.toFixed(1)}%`:''}${momentumOverheat?`动量${Math.abs(mom).toFixed(1)}%过热`:''}, 不追空` };
+        if (overheat) return { signal: 'NONE', reason: `${this.period}空头排列但近20根跌幅${gain20.toFixed(1)}%过热, 不追空` };
         return { signal: 'SHORT', reason: `${this.period}空头排列破${look}前低${lo.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     }
