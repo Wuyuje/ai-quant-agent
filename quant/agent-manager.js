@@ -92,15 +92,15 @@ class QuantAgent {
   // 各账户独立用自身balance/positions计算, 互不影响
   _exposureOk(strat, rp) {
     try {
-      // 每策略上限(自动按余额分级, 封顶5仓)
-      const perStrat = Math.max(1, Math.min(rp.maxPerStrategy || 3, 5));
-      // 跨策略总仓位上上限(防趋势5+布林5叠到10仓超限)
+      // 每策略上限: 布林固定5仓(图片一-3: 同时开5个币, 交易结束自动补足); 趋势仍按余额分级(不影响趋势策略)
+      const isBoll = strat === 'bollinger';
+      const perStrat = isBoll ? 5 : Math.max(1, Math.min(rp.maxPerStrategy || 3, 5));
+      // 跨策略总仓位上上限
       const totalCap = Math.max(perStrat, rp.maxPositions || 3);
       const trendCount = Object.values(this.positions).filter(p => p.strategy !== 'bollinger').length;
       const bollCount = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;
       const totalCount = Object.keys(this.positions).length;
       const targetCount = strat === 'bollinger' ? bollCount : trendCount;
-      const isBoll = strat === 'bollinger';
       if (targetCount >= perStrat) return { allow: false, reason: `${isBoll?'布林':'趋势'}持仓已达${targetCount}/${perStrat}上限` };
       if (totalCount >= totalCap) return { allow: false, reason: `账户总仓位已达上限${totalCount}/${totalCap}(趋势+布林合计)` };
       // ═══ 保证金敞口熔断: 已有持仓保证金(notional/lev) + 新仓保证金 ≤ 总权益×90% ═══
