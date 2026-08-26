@@ -298,7 +298,13 @@ class BollingerStrategy {
   checkHardStop(pos, arr, positionEquity) {
     const price = +toArray(arr)[arr.length-1][3];
     const entry = pos.entryPrice;
+    const b = this.calcBands(arr);
     const kPct = pos.side === 'LONG' ? (price-entry)/entry : (entry-price)/entry;
+    // ═══ 硬保护: 多头跌破布林下轨/空头突破上轨 → 震荡逻辑失效, 立即止损(防'触下轨开多后继续跌'被套) ═══
+    if (b) {
+      if (pos.side === 'LONG' && price < b.lower) return { stop: true, reason: `多头跌破布林下轨${b.lower.toFixed(6)}(止损于跌穿支撑继续下探) 收${price.toFixed(6)}` };
+      if (pos.side === 'SHORT' && price > b.upper) return { stop: true, reason: `空头突破布林上轨${b.upper.toFixed(6)}(止损于涨穿压力继续上攻) 收${price.toFixed(6)}` };
+    }
     // 相对单笔本金(保证金)的浮亏%: 价格变动×杠杆(全仓) → 用本金口径
     const leverage = pos.leverage || 3;
     const lossOnEquity = Math.abs(kPct) * leverage * 100;
