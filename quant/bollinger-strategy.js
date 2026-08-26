@@ -17,22 +17,24 @@ class BollingerStrategy {
     this.period = 20;                 // 布林周期
     this.stdDev = 2;                  // 标准差倍数
     this.histLookback = 100;          // 带宽100根历史分位(截图: 100根)
-    this.openBandPct = 0.99;          // 禁开: 带宽分位>99%才禁(放宽自90→99, 大幅增加开仓)
-    this.releaseBandPct = 0.98;       // 解禁: <98% (放宽自85→98)
-    this.shrinkBars = 2;              // 连续2根收窄(放宽自3, 增加解禁开仓机会)
-    this.tpTriggerPct = 1.0;            // 止盈前提: 浮盈≥1%(从2%改1%, 及时锁利, 减少利润回吐)
-    this.volSpikeRatio = 1.8;         // 放量: 成交量>20周期均量×1.8
-    this.atrTrail = 0.3;              // 放量ATR跟踪止盈倍数(0.3ATR)
-    this.lossKillPct = 20;            // 前置风控: 单K浮亏≥单笔本金20%全平(补仓后动态收紧)
-    this.finalLossPct = 70;           // 终极风控(截图): 总浮亏≥持仓金额70%全平 (已回退D方案)
-    this.maxAddRounds = 1;            // 补仓1次(从3次改为1次, 减少极端行情补仓放大风险)
-    // ═══ 接近轨道触发: 价格距下轨/上轨在轨道宽度X%内即触发开仓(增加开仓, 保留均值回归方向) ═══
-    this.touchAtr = opts.touchAtr || 1.0;   // 距下轨/上轨1.0ATR内触发开仓(改用ATR距离, 比相对宽度%稳定)
-    this.minSpreadPct = opts.minSpreadPct || 1.5;   // ═══ 布林开仓EMA差下限: EMA差<1.5%视为趋势极弱(近似横盘)不开, 防止趋势未明确就开仓导致浮亏 ═══
-    this.addPcts = [0.50, 0.30, 0.20]; // 补仓比例 50%/30%/20%
-    this.addGapBars = 3;              // 补仓: 布林收口后间隔3根K线
-    this.feeSettleGuardMin = 5;       // 资金费率结算前5分钟禁交易(放宽自15, 减少误挡开仓)
-    this.deliveryGuardMin = 60;       // 季度交割前1小时禁交易
+    // ═══ 严格按图片规格(5分钟级别): 开仓准入 ═══
+    this.openBandPct = 0.90;          // 禁开: 带宽分位>90%(截图四-1)
+    this.releaseBandPct = 0.85;       // 解禁: <85%(截图四-2)
+    this.shrinkBars = 3;              // 连续3根收窄(截图四-2)
+    this.tpTriggerPct = 2.0;          // 止盈前提: 浮盈≥2%(截图五, 从1%改回2%)
+    this.volSpikeRatio = 1.8;         // 放量: 成交量>20周期均量×1.8(截图五-2)
+    this.atrTrail = 0.3;              // 放量ATR跟踪止盈0.3ATR(截图五-2)
+    this.lossKillPct = 20;            // 前置风控: 单K浮亏≥单笔本金20%全平(截图七)
+    this.finalLossPct = 70;           // 终极风控: 总浮亏≥持仓金额70%全平(截图八)
+    this.maxAddRounds = 3;            // 补仓3次(截图六: 50%/30%/20%)
+    // 严格触轨: 5min收盘价触及/跌破下轨开多, 触及/突破上轨开空(截图四-3)
+    this.touchAtr = opts.touchAtr || 0.0;   // 0=严格触轨(收盘价≤下轨/≥上轨才开)
+    this.minSpreadPct = opts.minSpreadPct || 1.0;   // 方案B: 保留趋势方向约束, EMA差>=1%才允开(防极弱横盘), 布林只管震荡不强趋势
+    this.addPcts = [0.50, 0.30, 0.20]; // 补仓比例 50%/30%/20%(截图六)
+    this.addGapBars = 3;              // 补仓: 布林收口后间隔3根K线(截图六)
+    this.feeSettleGuardMin = 15;      // 资金费率结算前15分钟禁交易(截图二-1, 从5改回15)
+    this.deliveryGuardMin = 60;       // 季度交割前1小时禁交易(截图二-2)
+    this.openPeriodCooldownMs = opts.openPeriodCooldownMs || (15*60*1000);  // 布林收口后15分钟冷却期禁新开(截图二-3)
     this.fe = new FeatureEngineer();
   }
 
@@ -118,11 +120,17 @@ class BollingerStrategy {
         return { allowed: true, reason: '临近交割日(次日交割)', type: 'approaching' };
       }
     }
-    // 布林开口期禁交易（分离带宽扩张时的开仓）
+    // 布林开口期禁交易（分离带宽扩张时的开仓）— 截图二-3: 开口禁开补, 直到收口15分钟后才允新开
     if (arr) {
       const b = this.calcBands(arr);
       if (b && b.widthPct > 0.9) {
+        // 记录开口状态: 开口后15分钟内(含收口后)都禁开补
+        this._bollOpenUntil = Date.now() + this.openPeriodCooldownMs;   // 从现在起+15分钟禁开补
         return { allowed: false, reason: `布林开口期(带宽分位${(b.widthPct*100).toFixed(0)}%>90%)禁开补`, type: 'openPeriod' };
+      }
+      // 开口结束后冷却期(截图: 收口15分钟后才允许新开): 之前开口过且未满15分钟 → 仍禁开补
+      if (this._bollOpenUntil && Date.now() < this._bollOpenUntil) {
+        return { allowed: false, reason: `布林刚收口(距开口${Math.ceil((this._bollOpenUntil-Date.now())/60000)}分钟<15分钟冷却期), 禁开补`, type: 'openCooldown' };
       }
     }
     return { allowed: true };

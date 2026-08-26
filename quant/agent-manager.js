@@ -351,17 +351,19 @@ class QuantAgent {
           // 进入布林分支(当前币无趋势信号, 用布林接近轨道开仓)
           // 布林策略(4h): 接近轨道20% + 趋势过滤5% + 带宽门禁
           if (this.pauseBoll) continue;   // 布林暂停
-          const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
+          const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
           if (!bkl || bkl.length < 40) continue;
           if (this.positions[symbol]) continue;   // 同币已持单
-          // ═══ 共享开仓信号(百万框架): 带宽门禁/触轨/方向门禁 由全局共用1份, 不每用户重算 ═══
+          // ═══ 共享开仓信号(百万框架): 触轨/带宽门禁 用5min(图片规格震荡策略), 方向门禁用4h大趋势(方案B防逆势) ═══
           const shSig = this._getSharedOpenSignal(symbol, null, bkl);
-          const openGate = shSig.openGate;
+          const openGate = shSig.openGate;   // 5min带宽门禁
           if (!openGate || !openGate.allowed) continue;
-          const esig = shSig.esig;
+          const esig = shSig.esig;   // 5min严格触轨
           if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
-          const tg = shSig.gate;
-          if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg ? tg.reason : '无门禁'}`); continue; }
+          // ═══ 方案B: 方向门禁用4h大趋势(防逆势), 4h趋势明确且顺势才开; 布林管震荡不强趋势 ═══
+          const hkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
+          const tg = (hkl && hkl.length >= 60) ? this.boll.trendDirGate(hkl, esig.signal, 2) : null;
+          if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁(4h): ${tg ? tg.reason : '无4h数据'}`); continue; }
           // 用门禁确认的方向开仓(与趋势一致)
           // ═══ 仓位/敞口上限(自动按余额分级): 每策略上限+总仓位上上限+保证金熔断 ═══
           const capOk = this._exposureOk('bollinger', rp);
@@ -426,19 +428,21 @@ class QuantAgent {
           continue;
         }
         // 布林带策略(4小时级别): 4h K线决策
-        const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
+        const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
         const guard = this.boll.tradingGuardAllowed(bkl);
         if (!guard.allowed) continue;
-        // ═══ 共享开仓信号(百万框架): 带宽门禁/触轨/方向门禁 由全局共用1份, 不每用户重算 ═══
+        // ═══ 共享开仓信号: 触轨/带宽用5min(图片震荡策略), 方向门禁用4h大趋势(方案B防逆势) ═══
         const shSig = this._getSharedOpenSignal(symbol, null, bkl);
         const openGate = shSig.openGate;
-        if (!openGate || !openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
+        if (!openGate || !openGate.allowed) continue;   // 5min带宽门禁
         const esig = shSig.esig;
         if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
-        const tg = shSig.gate;
-        if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg ? tg.reason : '无门禁'}`); continue; }
+        // ═══ 方案B: 方向门禁用4h大趋势(防逆势) ═══
+        const hkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
+        const tg = (hkl && hkl.length >= 60) ? this.boll.trendDirGate(hkl, esig.signal, 2) : null;
+        if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁(4h): ${tg ? tg.reason : '无4h数据'}`); continue; }
         // 用门禁确认的方向开仓(与趋势一致)
         // ═══ 仓位/敞口上限(自动按余额分级) ═══
         const capOk2 = this._exposureOk('bollinger', rp);
@@ -483,7 +487,7 @@ class QuantAgent {
         }
         if (pos.strategy === 'bollinger') {
           // 布林带策略止盈/风控(4小时级别): 4h K线
-          const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
+          const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
           if (bkl && bkl.length >= 30) {
             // 截图: 插针击穿止损/补仓点位但收盘回归 → 不执行风控
             const spike = this.boll.isSpikeBar(bkl);
