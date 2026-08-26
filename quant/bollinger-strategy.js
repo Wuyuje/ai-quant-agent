@@ -28,6 +28,7 @@ class BollingerStrategy {
     this.maxAddRounds = 1;            // 补仓1次(从3次改为1次, 减少极端行情补仓放大风险)
     // ═══ 接近轨道触发: 价格距下轨/上轨在轨道宽度X%内即触发开仓(增加开仓, 保留均值回归方向) ═══
     this.touchAtr = opts.touchAtr || 1.0;   // 距下轨/上轨1.0ATR内触发开仓(改用ATR距离, 比相对宽度%稳定)
+    this.minSpreadPct = opts.minSpreadPct || 1.5;   // ═══ 布林开仓EMA差下限: EMA差<1.5%视为趋势极弱(近似横盘)不开, 防止趋势未明确就开仓导致浮亏 ═══
     this.addPcts = [0.50, 0.30, 0.20]; // 补仓比例 50%/30%/20%
     this.addGapBars = 3;              // 补仓: 布林收口后间隔3根K线
     this.feeSettleGuardMin = 5;       // 资金费率结算前5分钟禁交易(放宽自15, 减少误挡开仓)
@@ -144,6 +145,8 @@ class BollingerStrategy {
       else if (e7 < e25 && e25 < e99) dir = 'DOWN';
       const spread = Math.abs(e7 - e25) / (e25 || 1) * 100;
       if (dir === 'FLAT') return { allowed: false, side: null, dir, spread: +spread.toFixed(2), reason: `方向不明(FLAT, EMA未单边排列)不开布林` };
+      // ═══ 趋势极弱(EMA差<minSpreadPct≈横盘)也拒绝: 防止趋势未明确(伪UP/伪DOWN, EMA差0.5%等)就开仓导致浮亏 ═══
+      if (spread < this.minSpreadPct) return { allowed: false, side: null, dir, spread: +spread.toFixed(2), reason: `${dir}趋势极弱(EMA差${spread.toFixed(1)}%<${this.minSpreadPct}%≈横盘), 不明确不开布林` };
       if (spread > maxSpreadPct) return { allowed: false, side: null, dir, spread: +spread.toFixed(2), reason: `${dir}趋势EMA差${spread.toFixed(1)}%>${maxSpreadPct}%, 强趋势布林回避` };
       // 方向门禁: 布林信号必须顺趋势
       const wantLong = rawSide === 'LONG';
