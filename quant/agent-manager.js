@@ -92,10 +92,9 @@ class QuantAgent {
   // 各账户独立用自身balance/positions计算, 互不影响
   _exposureOk(strat, rp) {
     try {
-      // 每策略上限(自动按余额分级, 封顶5仓)
-      const perStrat = Math.max(1, Math.min(rp.maxPerStrategy || 3, 5));
-      // 跨策略总仓位上上限(防趋势5+布林5叠到10仓超限)
-      const totalCap = Math.max(perStrat, rp.maxPositions || 3);
+      // ═══ 用户要求: 趋势策略和布林策略 各自最多5个仓位, 互不干扰 ═══
+      const perStrat = 5;              // 每策略固定最多5仓(趋势≤5, 布林≤5)
+      const totalCap = 10;             // 跨策略总上限10(趋势5+布林5)
       const trendCount = Object.values(this.positions).filter(p => p.strategy !== 'bollinger').length;
       const bollCount = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;
       const totalCount = Object.keys(this.positions).length;
