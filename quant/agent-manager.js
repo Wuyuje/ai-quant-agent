@@ -302,10 +302,15 @@ class QuantAgent {
       let fr = 0; try { const f = await this.api.getFundingRate(symbol); fr = Array.isArray(f)&&f[0] ? +f[0].fundingRate : 0; } catch(e){}
       // ═══ 大脑中枢: 提供市场分类/方向(不再用它的'none'拦截池内币) ═══
       const decision = this.brain.decide(symbol, kl);
-      // ═══ 分池决定策略: 币在趋势池→趋势; 否则一律尝试布林带(不再受限布林选币池, 全市场触轨才开) ═══
-      const inMA7 = this.MA7_POOL && this.MA7_POOL.includes(symbol);
-      let strat = inMA7 ? 'trend_ma7' : 'bollinger';   // 布林带: 清除限定选币池, 凡不在趋势池的币全走布林, 靠带宽门禁+触轨信号控制开仓
-      if (this.isAdmin) this._log(`🔍分池 ${symbol}: MA7池${inMA7?'✓':'✗'} → ${strat}`);
+      // ═══ 市场状态识别+策略自动切换(方案): trending→趋势策略顺势, ranging→布林高抛低吸, shock→观察 ═══
+      const mst = (decision.market && decision.market.state) || 'ranging';
+      const tdir = (decision.market && decision.market.trendDir) || 'FLAT';
+      // 剧烈波动(shock)或强势下跌趋势中布林不追多: 观察
+      let strat;
+      if (mst === 'shock') { if (this.isAdmin) this._log(`⚡ ${symbol} 剧烈波动(shock)观望`); continue; }
+      if (mst === 'trending') strat = 'trend_ma7';     // 趋势市 → 趋势策略(顺势做多/空)
+      else strat = 'bollinger';                         // 震荡市 → 布林(高抛低吸)
+      if (this.isAdmin) this._log(`🔍分池 ${symbol}: 市场=${mst} 方向=${tdir} → ${strat}`);
       // ═══ 仓位配额: 每策略+总仓位上上限+保证金敞口 由 _exposureOk 统一管控(自动按余额分级, 防超限) ═══
       const rp = this._riskProfile(this.balance);  // 杠杆/资金比例仍按余额自适应
       // 每币单一策略锁: 已锁定则强制一致
@@ -327,31 +332,9 @@ class QuantAgent {
           sig = this._getSharedOpenSignal(symbol, kl5 || kl, null).trendSignal || null;
         }
         if (!sig || sig.signal === 'NONE') {
-          // ═══ 趋势无信号 → 落到布林补充(趋势优先, 布林补充, 同币互斥) ═══
-          // 趋势策略不介入该币, 交给布林震荡策略处理
-          strat = 'bollinger';
-          // 进入布林分支(当前币无趋势信号, 用布林接近轨道开仓)
-          // 布林策略(4h): 接近轨道20% + 趋势过滤5% + 带宽门禁
-          if (this.pauseBoll) continue;   // 布林暂停
-          const bkl = await this._getKlinesShared(symbol, '4h', 200).catch(() => null);
-          if (!bkl || bkl.length < 40) continue;
-          if (this.positions[symbol]) continue;   // 同币已持单
-          // ═══ 共享开仓信号(百万框架): 带宽门禁/触轨/方向门禁 由全局共用1份, 不每用户重算 ═══
-          const shSig = this._getSharedOpenSignal(symbol, null, bkl);
-          const openGate = shSig.openGate;
-          if (!openGate || !openGate.allowed) continue;
-          const esig = shSig.esig;
-          if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
-          const tg = shSig.gate;
-          if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg ? tg.reason : '无门禁'}`); continue; }
-          // 用门禁确认的方向开仓(与趋势一致)
-          // ═══ 仓位/敞口上限(自动按余额分级): 每策略上限+总仓位上上限+保证金熔断 ═══
-          const capOk = this._exposureOk('bollinger', rp);
-          if (!capOk.allow) { if (this.isAdmin) this._log(`⏸️ ${symbol} 布林不开新仓: ${capOk.reason}`); continue; }
-          const bs = { notional: Math.max(20, this.balance*rp.posPct*3), margin: Math.max(20,this.balance*rp.posPct*3)/rp.leverage, leverage: rp.leverage };
-          const r = await this.executor.executeOrder(esig, { symbol, side: tg.side, notional: bs.notional, leverage: rp.leverage, precisionMap: pm, price, balance: this.balance });
-          if (r.success) { this.positions[symbol] = { side: tg.side, qty: r.qty, entryPrice: price, leverage: rp.leverage, strategy: 'bollinger', _peak: price, _addRound: 0, _lastAddIdx: 0, openTime: Date.now() }; this._stratLock[symbol]='bollinger'; this._saveState(); this._log(`🔥 ${symbol} 趋势NONE→布林顺势${tg.side}开仓(${tg.reason})`); }
-          continue;  // 已尝试布林, 本币结束
+          // ═══ 市场状态分池: 趋势市(trending)趋势无信号→直接跳过, 不再落布林(防布林在趋势市逆势抄底); 布林只在震荡市走bollinger分支 ═══
+          if (this.isAdmin) this._log(`⏭️ ${symbol} 趋势市无趋势信号, 跳过(不落布林)`);
+          continue;
         }
         // ═══ 实时市场健康闸门: 当下ADX/ATR校验(根治假波动币, 趋势只碰真单边) ═══
         const gate = this._marketGate('trend', kl5 || kl);
