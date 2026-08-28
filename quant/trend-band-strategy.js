@@ -78,6 +78,53 @@ class TrendBandStrategy {
     return 'FLAT';
   }
 
+  // ═══ 高低点共振识别(高位不追高/低位不追低): 返回 {hiCount, loCount} 每个是共振指标数 ═══
+  // 高点指标: ①RSI>75 ②近60根位置>90% ③MACD顶背离 ④高位缩量
+  // 低点指标: ①RSI<25 ②近60根位置<10% ③MACD底背离 ④低位缩量
+  // 调用方: 高点共振数>=2 → 不追多; 低点共振数>=2 → 不追空
+  highLowResonance(klines) {
+    const arr = toArray(klines);
+    if (!arr || arr.length < 80) return { hiCount: 0, loCount: 0 };
+    const closes = arr.map(k => +k.close);
+    const vols = arr.map(k => +k.volume);
+    const i = closes.length - 1;
+    const price = closes[i];
+    let gains = 0, losses = 0;
+    const n = 14;
+    if (i > n) {
+      for (let j = i - n + 1; j <= i; j++) {
+        const d = closes[j] - closes[j-1];
+        if (d > 0) gains += d; else losses -= d;
+      }
+    }
+    const rsi = (gains + losses) === 0 ? 50 : 100 - 100 / (1 + (losses > 0 ? gains/losses : 99));
+    const win = closes.slice(Math.max(0, i - 59), i);
+    const hi60 = Math.max(...win), lo60 = Math.min(...win);
+    const pos60 = (hi60 === lo60) ? 100 : (price - lo60) / (hi60 - lo60) * 100;
+    const macd = (idx) => { const e12 = this._emaAt(closes, 12, idx), e26 = this._emaAt(closes, 26, idx); return (e12 != null && e26 != null) ? e12 - e26 : null; };
+    const macdNow = macd(i);
+    let hiIdx = 0, loIdx = 0;
+    win.forEach((x, k) => { if (x === hi60) hiIdx = Math.max(0, i - 59) + k; if (x === lo60) loIdx = Math.max(0, i - 59) + k; });
+    const macdHi = macd(hiIdx), macdLo = macd(loIdx);
+    let volr = 1;
+    if (i >= 25) {
+      const vNow = vols.slice(i-4, i+1).reduce((a,b)=>a+b,0)/5;
+      const vPrev = vols.slice(i-24, i-4).reduce((a,b)=>a+b,0)/20;
+      volr = vPrev > 0 ? vNow / vPrev : 1;
+    }
+    let hiCount = 0;
+    if (rsi > 75) hiCount++;
+    if (pos60 > 90) hiCount++;
+    if (macdNow != null && macdHi != null && hiIdx !== i && macdNow < macdHi) hiCount++;
+    if (pos60 > 70 && volr < 1) hiCount++;
+    let loCount = 0;
+    if (rsi < 25) loCount++;
+    if (pos60 < 10) loCount++;
+    if (macdNow != null && macdLo != null && loIdx !== i && macdNow > macdLo) loCount++;
+    if (pos60 < 30 && volr < 1) loCount++;
+    return { hiCount, loCount, pos60, rsi };
+  }
+
   // ═══ 开仓信号: 只在确认的强单边中段介入 ═══
   entrySignal(klines) {
     const arr = toArray(klines);
@@ -93,28 +140,24 @@ class TrendBandStrategy {
     if (dir === 'FLAT') return { signal: 'NONE', reason: `${this.period} EMA无单边排列` };
 
     const look = Math.min(this.breakLookback, i);
-    // ═══ 高位追高过滤: 近20根K线涨幅超过阈值时不追(避免买在短期顶部) ═══
-    const gain20 = (price - closes[Math.max(0, i - 20)]) / (closes[Math.max(0, i - 20)] || 1) * 100;
-    const overheat = Math.abs(gain20) > this.gainFilterPct;
-    // ═══ 高位位置过滤: 价格处于近20根K线高位区(>80%)时不追多(避免买在顶部被回调止损) ═══
-    const seg20 = closes.slice(Math.max(0, i - 19), i + 1);
-    const hi20 = Math.max(...seg20), lo20 = Math.min(...seg20);
-    const pos20 = (price - lo20) / ((hi20 - lo20) || 1) * 100;  // 0=最低, 100=最高
-    const atTop = pos20 > this.highPosFilterPct;
+    // ═══ 高低点共振过滤(用户要求): RSI+位置+MACD背离+量价背离, ≥2个共振→高位不追多/低位不追空 ═══
+    const res = this.highLowResonance(arr);
+    const blockedHigh = res.hiCount >= 2;   // 高点共振≥2 → 不追多(防套顶)
+    const blockedLow = res.loCount >= 2;    // 低点共振≥2 → 不追空(防套底)
     if (dir === 'UP') {
       const hi = Math.max(...closes.slice(i - look, i));   // 近60根(不含当前)
       const mom = (price - e50) / (e50 || 1);
       if (price > hi && mom > this.momentumPct) {
-        // ═══ 组合追高过滤: 位置>80% AND 涨幅>20% 同时满足才拦截(精准拦极端追高, 保留正常突破) ═══
-        const comboOverheat = atTop && overheat;
-        if (comboOverheat) return { signal: 'NONE', reason: `${this.period}多头排列但高位(${pos20.toFixed(0)}%>80%)且涨幅${gain20.toFixed(1)}%>20%, 不追高` };
+        // ═══ 高低点共振: 高点共振≥2 → 高位不追高(涨无可涨) ═══
+        if (blockedHigh) return { signal: 'NONE', reason: `${this.period}多头排列但高点共振${res.hiCount}个(RSI${res.rsi.toFixed(0)}/位${res.pos60.toFixed(0)}%)≥2, 高位不追高` };
         return { signal: 'LONG', reason: `${this.period}多头排列破${look}前高${hi.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     } else if (dir === 'DOWN') {
       const lo = Math.min(...closes.slice(i - look, i));
       const mom = (price - e50) / (e50 || 1);
       if (price < lo && mom < -this.momentumPct) {
-        if (overheat) return { signal: 'NONE', reason: `${this.period}空头排列但近20根跌幅${gain20.toFixed(1)}%过热, 不追空` };
+        // ═══ 高低点共振: 低点共振≥2 → 低位不追空(跌无可跌) ═══
+        if (blockedLow) return { signal: 'NONE', reason: `${this.period}空头排列但低点共振${res.loCount}个(RSI${res.rsi.toFixed(0)}/位${res.pos60.toFixed(0)}%)≥2, 低位不追空` };
         return { signal: 'SHORT', reason: `${this.period}空头排列破${look}前低${lo.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     }
