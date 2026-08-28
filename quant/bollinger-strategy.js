@@ -264,25 +264,26 @@ class BollingerStrategy {
 
   // ═══ 趋势方向门禁(与趋势策略配合): 4h大趋势顺势力才允许布林开仓, 防逆势抄底/摸顶 ═══
   // openBollinger: 布林在震荡市顺势, 趋势方向由4h EMA判断, 避免在趋势市中逆势
+  // ═══ 多层周期确认方向(截图四-3): 5min触轨信号 + 4h大方向确认, 不逆大趋势才开 ═══
+  // 开多: 5min触下轨 + 4h不是DOWN(不逆势抄底) → 允many
+  // 开空: 5min触上轨 + 4h不是UP(不逆势摸顶) → 允空
+  // 即: 用4h方向避开逆势, 4h顺势/FLAT都可开(高抛低吸)
   trendDirGate(kl, rawSide, maxSpreadPct = 3) {
     try {
       const arr = toArray(kl);
       if (!arr || arr.length < 60) return { allowed: false, side: null, reason: '趋势数据不足' };
       const closes = arr.map(k => +k[3]);
       const ema = (list, n) => { const k = 2/(n+1); let e = list[0]; for (let i=1;i<list.length;i++) e = list[i]*k + e*(1-k); return e; };
+      // 4h方向确认(多层周期中取大级别确认方向)
       const e7 = ema(closes, 7), e25 = ema(closes, 25), e99 = ema(closes, 99);
       let dir = 'FLAT';
       if (e7 > e25 && e25 > e99) dir = 'UP';
       else if (e7 < e25 && e25 < e99) dir = 'DOWN';
-      const spread = Math.abs(e7 - e25) / (e25 || 1) * 100;
-      // 方向不明(FLAT)时代布林按震荡处理放行(震荡市高抛低吸), 但强趋势(>max)回避(交给趋势策略)
-      if (spread > maxSpreadPct) return { allowed: false, side: null, dir, spread: +spread.toFixed(2), reason: `${dir}趋势EMA差${spread.toFixed(1)}%>${maxSpreadPct}%, 强趋势由趋势策略接管, 布林回避` };
-      // 顺势: UP只多 / DOWN只空(防逆势); FLAT放行(震荡市布林高抛低吸)
-      if (dir === 'UP' && rawSide === 'LONG') return { allowed: true, side: 'LONG', dir, spread: +spread.toFixed(2), reason: `震荡市顺势开多(4h ${dir}, EMA差${spread.toFixed(1)}%)` };
-      if (dir === 'DOWN' && rawSide === 'SHORT') return { allowed: true, side: 'SHORT', dir, spread: +spread.toFixed(2), reason: `震荡市顺势开空(4h ${dir}, EMA差${spread.toFixed(1)}%)` };
-      if (dir === 'FLAT') return { allowed: true, side: rawSide, dir, spread: +spread.toFixed(2), reason: `震荡市(4h FLAT)按触轨高抛低吸` };
-      const blocked = dir === 'UP' ? 'UP趋势逆势开空' : 'DOWN趋势逆势开多';
-      return { allowed: false, side: null, dir, spread: +spread.toFixed(2), reason: `${blocked}(布林不逆势), 交给趋势策略` };
+      // 开多: 4h不能是DOWN(逆势抄底禁); 开空: 4h不能是UP(逆势摸顶禁)
+      if (rawSide === 'LONG' && dir === 'DOWN') return { allowed: false, side: null, dir, reason: `4h ${dir}趋势, 5min触下轨逆势开多禁(多层周期确认方向)` };
+      if (rawSide === 'SHORT' && dir === 'UP') return { allowed: false, side: null, dir, reason: `4h ${dir}趋势, 5min触上轨逆势开空禁(多层周期确认方向)` };
+      // 4h顺势 或 4h FLAT(高抛低吸) 都允许
+      return { allowed: true, side: rawSide, dir, reason: `4h ${dir}, 5min触轨非逆势, 允${rawSide}` };
     } catch (e) { return { allowed: true }; }
   }
 }
