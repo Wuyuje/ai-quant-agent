@@ -264,27 +264,34 @@ class BollingerStrategy {
 
   // ═══ 趋势方向门禁(与趋势策略配合): 4h大趋势顺势力才允许布林开仓, 防逆势抄底/摸顶 ═══
   // openBollinger: 布林在震荡市顺势, 趋势方向由4h EMA判断, 避免在趋势市中逆势
-  // ═══ 多层周期确认方向(截图四-3): 5min触轨信号 + 4h大方向确认, 不逆大趋势才开 ═══
-  // 开多: 5min触下轨 + 4h不是DOWN(不逆势抄底) → 允many
-  // 开空: 5min触上轨 + 4h不是UP(不逆势摸顶) → 允空
-  // 即: 用4h方向避开逆势, 4h顺势/FLAT都可开(高抛低吸)
+  // ═══ 多层周期确认(截图四-3 + 纯BB策略原始实现): 5min触轨开仓 + RSI超卖/超买作为多层周期权限确认 ═══
+  // 开多(5min触下轨): 需RSI<35超卖确认(多层周期多单权限) → 允多
+  // 开空(5min触上轨): 需RSI>65超买确认(多层周期空单权限) → 允空
+  // 即: 用RSI强弱指标做多层周期方向确认, 只有超卖/超买极致位才给权限(与纯BB策略一致)
   trendDirGate(kl, rawSide, maxSpreadPct = 3) {
     try {
       const arr = toArray(kl);
-      if (!arr || arr.length < 60) return { allowed: false, side: null, reason: '趋势数据不足' };
+      if (!arr || arr.length < 15) return { allowed: false, side: null, reason: '数据不足' };
+      // 用传入K线(5min)计算RSI(14) 作为多层周期确认
       const closes = arr.map(k => +k[3]);
-      const ema = (list, n) => { const k = 2/(n+1); let e = list[0]; for (let i=1;i<list.length;i++) e = list[i]*k + e*(1-k); return e; };
-      // 4h方向确认(多层周期中取大级别确认方向)
-      const e7 = ema(closes, 7), e25 = ema(closes, 25), e99 = ema(closes, 99);
-      let dir = 'FLAT';
-      if (e7 > e25 && e25 > e99) dir = 'UP';
-      else if (e7 < e25 && e25 < e99) dir = 'DOWN';
-      // 开多: 4h不能是DOWN(逆势抄底禁); 开空: 4h不能是UP(逆势摸顶禁)
-      if (rawSide === 'LONG' && dir === 'DOWN') return { allowed: false, side: null, dir, reason: `4h ${dir}趋势, 5min触下轨逆势开多禁(多层周期确认方向)` };
-      if (rawSide === 'SHORT' && dir === 'UP') return { allowed: false, side: null, dir, reason: `4h ${dir}趋势, 5min触上轨逆势开空禁(多层周期确认方向)` };
-      // 4h顺势 或 4h FLAT(高抛低吸) 都允许
-      return { allowed: true, side: rawSide, dir, reason: `4h ${dir}, 5min触轨非逆势, 允${rawSide}` };
-    } catch (e) { return { allowed: true }; }
+      const i = closes.length - 1;
+      let gains = 0, losses = 0;
+      const n = 14;
+      if (i > n) {
+        for (let j = i - n + 1; j <= i; j++) {
+          const d = closes[j] - closes[j-1];
+          if (d > 0) gains += d; else losses -= d;
+        }
+      }
+      const rsi = (gains + losses) === 0 ? 50 : 100 - 100 / (1 + (losses > 0 ? gains/losses : 99));
+      // 开多: 需RSI超卖(<35) 确认多层周期多单权限
+      if (rawSide === 'LONG' && rsi < 35) return { allowed: true, side: 'LONG', rsi: +rsi.toFixed(0), reason: `5min触下轨 + RSI超卖(${rsi.toFixed(0)}<35)多层周期多单权限` };
+      // 开空: 需RSI超买(>65) 确认多层周期空单权限
+      if (rawSide === 'SHORT' && rsi > 65) return { allowed: true, side: 'SHORT', rsi: +rsi.toFixed(0), reason: `5min触上轨 + RSI超买(${rsi.toFixed(0)}>65)多层周期空单权限` };
+      // 无权限(RSI未到超卖/超买): 不开
+      const wantTxt = rawSide === 'LONG' ? `5min触下轨但RSI=${rsi.toFixed(0)}未超卖<35(无多单权限)` : `5min触上轨但RSI=${rsi.toFixed(0)}未超买>65(无空单权限)`;
+      return { allowed: false, side: null, rsi: +rsi.toFixed(0), reason: wantTxt };
+    } catch (e) { return { allowed: false, side: null, reason: '异常' }; }
   }
 }
 
