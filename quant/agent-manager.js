@@ -496,6 +496,17 @@ class QuantAgent {
           }
         }
 
+        if (pos.strategy === 'bollinger') {
+          // ═══ 复利循环(截图九, 记账式): 布林持仓浮盈≥100%时, 记录50%利润保护金, 不真实划转 ═══
+          const totalPnlPct = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice*100 : (pos.entryPrice-price)/pos.entryPrice*100;
+          const reinv = this.boll.checkReinvest(pos, totalPnlPct);
+          if (reinv.reinvest && !pos._reinvested) {
+            pos._reinvested = true;
+            this._protectFund = this._protectFund || {};
+            this._protectFund[this.wallet] = (this._protectFund[this.wallet]||0) + pos.qty * pos.entryPrice * reinv.protectPct;
+            this._log(`💰 ${symbol} 复利循环: 浮盈${totalPnlPct.toFixed(0)}%≥100%, ${reinv.protectPct*100}%入利润保护金(记账)`);
+          }
+        }
         if (closeReason) {
           pnlToCount = this._estimatePnl(pos, price);
           const r = await this.executor.closePosition(symbol, pos.side, pos.qty, pm, closeReason, pnlToCount);
@@ -958,7 +969,17 @@ class QuantAgentManager {
           trendPool.push({sym, ret: basis.ret * 0.5, trRet: 0});   // 无回测样本(严格策略没成交) → 基础分减半排序, 不占奖励
         }
         const bo = this._btBoll(kl);   // 用最新截图版振荡(BollingerStrategy)真实回测
-        if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret, boRet: bo.ret});   // 优胜劣汰: 回测盈利才进震荡池, 亏损剔除
+        // ═══ 截图一-2: 优先选'浮盈±≤1%'的温和币(近20根涨跌幅±1%内=价格平稳适合震荡高抛低吸) ═══
+        let floatScore = 0;
+        try {
+          const cc = kl.map(x => +x.close);
+          if (cc.length >= 21) {
+            const g20 = (cc[cc.length-1]-cc[cc.length-21])/(cc[cc.length-21]||1)*100;
+            if (Math.abs(g20) <= 1.0) floatScore = 0.5;   // 涨跌幅±1%内 → 加分(优先选)
+          }
+        } catch(e){}
+        if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret + floatScore, boRet: bo.ret, floatScore});   // 优胜劣汰: 回测盈利才进震荡池 + 浮盈±1%偏好
+        else if (floatScore > 0 && bo && bo.ret <= 0) bollPool.push({sym, ret: floatScore, boRet: bo.ret||0, floatScore});  // 浮盈±1%内但回测微亏也用基础分排入
       }
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
