@@ -308,7 +308,14 @@ class QuantAgent {
       let strat;
       if (mst === 'shock') { if (this.isAdmin) this._log(`⚡ ${symbol} 剧烈波动(shock)观望`); continue; }
       if (mst === 'trending') strat = 'trend_ma7';     // 趋势市 → 趋势策略(顺势做多/空)
-      else strat = 'bollinger';                         // 震荡市 → 布林(高抛低吸)
+      else {
+        // ═══ 震荡策略只交易优选币池(回测验证正期望14币), 避免亏损山寨币拖累 ═══
+        if (!(this.BOLL_PREFERRED && this.BOLL_PREFERRED.includes(symbol))) {
+          if (this.isAdmin) this._log(`⏭️ ${symbol} 不在优选震荡币池, 震荡策略跳过`);
+          continue;
+        }
+        strat = 'bollinger';                          // 震荡市 → 布林(高抛低吸)
+      }
       if (this.isAdmin) this._log(`🔍分池 ${symbol}: 市场=${mst} 方向=${tdir} → ${strat}`);
       // ═══ 仓位配额: 每策略+总仓位上上限+保证金敞口 由 _exposureOk 统一管控(自动按余额分级, 防超限) ═══
       const rp = this._riskProfile(this.balance);  // 杠杆/资金比例仍按余额自适应
@@ -775,7 +782,9 @@ class QuantAgentManager {
     // 震荡行情交易池(专门给 布林带震荡策略引擎 调用) — 布林回测精选优质币
     // WIF/FIL/ETH/APT/TURBO/STX 等(触轨低买高卖胜率高)
     // 震荡行情交易池(布林带引擎) — 修复NaN bug后最优回测精选(交易≥3+胜率100%)
-    this.BOLLINGER_POOL = ['LINKUSDT','ORDIUSDT','SOLUSDT','OPUSDT','NEARUSDT','TONUSDT','SUIUSDT','AVAXUSDT','INJUSDT','LTCUSDT'];   // 活跃波动币, 提高布林触轨开仓机会
+    this.BOLLINGER_POOL = ['LINKUSDT','ORDIUSDT','SOLUSDT','OPUSDT','NEARUSDT','TONUSDT','SUIUSDT','AVAXUSDT','INJUSDT','LTCUSDT'];
+    // ═══ 优选震荡币池(回测验证正期望14币, 只交易这些避免亏损山寨币): DOGE/ADA/INJ/IMX/SUI/ARB/DOT/XRP/ETH/SOL/LTC/APT/SEI/LINK ═══
+    this.BOLL_PREFERRED = ['DOGEUSDT','ADAUSDT','INJUSDT','IMXUSDT','SUIUSDT','ARBUSDT','DOTUSDT','XRPUSDT','ETHUSDT','SOLUSDT','LTCUSDT','APTUSDT','SEIUSDT','LINKUSDT'];
     // 趋势行情交易池(给趋势策略引擎调用) — 30天趋势回测精选
     // 正期望: LINK/FIL(TIA/ADA等趋势弱负期望不纳入)
     // 趋势行情交易池(给趋势引擎调用) — v6摆动结构90天回测精选(胜率≥50%+正回报)
@@ -860,7 +869,7 @@ class QuantAgentManager {
       const agents = Object.values(this._agents);
       for (const a of agents) { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; a.pauseBoll = !!this.pauseBoll; 
         // ═══ 同步manager的池给agent(MA7/V4/布林各自独立池) + 排名Top ═══
-        a.MA7_POOL = this.MA7_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL;
+        a.MA7_POOL = this.MA7_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL; a.BOLL_PREFERRED = this.BOLL_PREFERRED;
         a.trendTop = this.trendTop || []; a.bollTop = this.bollTop || []; }
       // ═══ 排序后开仓: 先扫描排名Top的优质币, 再扫剩余池子(保证优质币优先占位) ═══
       const rankedPool = [ ...(this.trendTop || []), ...(this.COIN_POOL || []).filter(b => !(this.trendTop||[]).includes(b)) ];
