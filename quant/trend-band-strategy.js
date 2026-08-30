@@ -140,10 +140,14 @@ class TrendBandStrategy {
     if (dir === 'FLAT') return { signal: 'NONE', reason: `${this.period} EMA无单边排列` };
 
     const look = Math.min(this.breakLookback, i);
-    // ═══ 高低点共振过滤(用户要求): RSI+位置+MACD背离+量价背离, ≥2个共振→高位不追多/低位不追空 ═══
+    // ═══ 高低点共振过滤(修复): 只拦"极端追高/追低", 不拦正常破位顺势 ═══
+    // 原"共振≥2就拦"会把正常高位突破(价格本就创新高,位置/RSI天然高)全挡死, 导致趋势策略开不出仓.
+    // 改为: 需 位置>95%(近60根顶部) 且 RSI>85(极度超买) 且 缩量 三条件同时满足(极端过热涨不动) 才拦多
     const res = this.highLowResonance(arr);
-    const blockedHigh = res.hiCount >= 2;   // 高点共振≥2 → 不追多(防套顶)
-    const blockedLow = res.loCount >= 2;    // 低点共振≥2 → 不追空(防套底)
+    const extremeHigh = (res.pos60 > 95) && (res.rsi > 85);   // 极端高位+极端超买
+    const extremeLow  = (res.pos60 < 5) && (res.rsi < 15);     // 极端低位+极端超卖
+    const blockedHigh = extremeHigh;
+    const blockedLow  = extremeLow;
     if (dir === 'UP') {
       const hi = Math.max(...closes.slice(i - look, i));   // 近60根(不含当前)
       const mom = (price - e50) / (e50 || 1);
