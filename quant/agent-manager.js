@@ -869,7 +869,10 @@ class QuantAgentManager {
       const agents = Object.values(this._agents);
       for (const a of agents) {
         // ═══ 按角色暂停: 非管理员用户(白名单/普通)全部暂停开仓, 只管理员交易 ═══
-        if (!a.isAdmin) { a.pauseOpen = true; a.pauseTrend = true; a.pauseBoll = true; }
+        if (!a.isAdmin) {
+          a.pauseOpen = true; a.pauseTrend = true; a.pauseBoll = true;
+          if (a._logPauseOnce !== true) { a._logPauseOnce = true; this._log(`⏸️ 非管理员 ${a.wallet.slice(0,10)} 已暂停开仓(只管理员交易)`); }
+        }
         else { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; a.pauseBoll = !!this.pauseBoll; }
         // ═══ 同步manager的池给agent(MA7/V4/布林各自独立池) + 排名Top ═══
         a.MA7_POOL = this.MA7_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL; a.BOLL_PREFERRED = this.BOLL_PREFERRED;
