@@ -152,16 +152,18 @@ class TrendBandStrategy {
       const hi = Math.max(...closes.slice(i - look, i));   // 近60根(不含当前)
       const mom = (price - e50) / (e50 || 1);
       if (price > hi && mom > this.momentumPct) {
-        // ═══ 高低点共振: 高点共振≥2 → 高位不追高(涨无可涨) ═══
-        if (blockedHigh) return { signal: 'NONE', reason: `${this.period}多头排列但高点共振${res.hiCount}个(RSI${res.rsi.toFixed(0)}/位${res.pos60.toFixed(0)}%)≥2, 高位不追高` };
+        // ═══ 极端追高 + RSI超买(>65)不追多: 防顶部回落被止损 ═══
+        if (blockedHigh) return { signal: 'NONE', reason: `极端高位(RSI${res.rsi.toFixed(0)}>85/位${res.pos60.toFixed(0)}%>95)不追多` };
+        if (res.rsi > 65) return { signal: 'NONE', reason: `多头突破但RSI${res.rsi.toFixed(0)}>65超买, 不追多(防顶部回落)` };
         return { signal: 'LONG', reason: `${this.period}多头排列破${look}前高${hi.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     } else if (dir === 'DOWN') {
       const lo = Math.min(...closes.slice(i - look, i));
       const mom = (price - e50) / (e50 || 1);
       if (price < lo && mom < -this.momentumPct) {
-        // ═══ 高低点共振: 低点共振≥2 → 低位不追空(跌无可跌) ═══
-        if (blockedLow) return { signal: 'NONE', reason: `${this.period}空头排列但低点共振${res.loCount}个(RSI${res.rsi.toFixed(0)}/位${res.pos60.toFixed(0)}%)≥2, 低位不追空` };
+        // ═══ 极端追低 + RSI超卖(<35)不追空: 防下跌末端反弹被止损 ═══
+        if (blockedLow) return { signal: 'NONE', reason: `极端低位(RSI${res.rsi.toFixed(0)}<15/位${res.pos60.toFixed(0)}%<5)不追空` };
+        if (res.rsi < 35) return { signal: 'NONE', reason: `空头突破但RSI${res.rsi.toFixed(0)}<35超卖, 不追空(防下跌末端反弹)` };
         return { signal: 'SHORT', reason: `${this.period}空头排列破${look}前低${lo.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
       }
     }
