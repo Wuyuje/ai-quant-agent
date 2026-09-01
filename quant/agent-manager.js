@@ -72,6 +72,7 @@ class QuantAgent {
     // 中户($200~$500): 3仓/4x杠杆/每仓15%本金 — 均衡
     // 大户($500~$2000): 4仓/3x杠杆/每仓12%本金 — 稳健
     // 超大户(>$2000): 5仓/2x杠杆/每仓10%本金 — 资金充裕, 低杠杆控风险
+    // 管理员特殊: 杠杆固定5x(用户要求配高一档), 仓位/资金仍按余额自适应
     let maxPositions, maxPerStrategy, leverage, posPct, riskPct;
     if (bal < 50) {
       maxPositions = 0; maxPerStrategy = 0; leverage = 1; posPct = 0; riskPct = 0;
@@ -84,7 +85,12 @@ class QuantAgent {
     } else {
       maxPositions = 5; maxPerStrategy = 5; leverage = 2; posPct = 0.10; riskPct = 0.015;
     }
-    this._log(`📊 风控画像: 余额$${bal.toFixed(0)} → ${maxPositions}仓/${leverage}x杠杆/每仓${(posPct*100).toFixed(0)}%本金/风险${(riskPct*100).toFixed(1)}%`);
+    // ═══ 管理员账户: 自动配备基础上杠杆整体调高一档(用户要求适当配高, 用自适应而非固定, 防多仓+高杠杆爆仓) ═══
+    //   小户5→6x / 中户4→5x / 大户3→4x / 超大2→3x; 资金/仓位仍按余额自动分级
+    const isAdmin = !!this.isAdmin && bal >= 50;
+    if (isAdmin) leverage = Math.min(leverage + 1, 6);   // 调高一档, 上限6x
+    const who = isAdmin ? '⚙️管理员(+1档)' : '';
+    this._log(`📊 风控画像: 余额$${bal.toFixed(0)} → ${maxPositions}仓/${leverage}x杠杆/每仓${(posPct*100).toFixed(0)}%本金/风险${(riskPct*100).toFixed(1)}%${who}`);
     return { maxPositions, maxPerStrategy, leverage, posPct, riskPct, balance: bal };
   }
 
