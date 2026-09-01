@@ -391,8 +391,8 @@ class QuantAgent {
           if (this.isAdmin) this._log(`⏸️ ${symbol} 冷却禁开(连续亏损, 解禁时间${new Date(this._bollCooldowns[symbol]).toLocaleTimeString('zh-CN')})`);
           continue;
         }
-        // 布林带策略(1小时级别): 1h K线决策(改 原5m回测亏损→1h胜率53.8-58.8%) ═══
-        const bkl = await this._getKlinesShared(symbol, '1h', 500).catch(() => null);
+        // SuperTrend反转策略(5分钟级别): 5m K线决策(用户要求5分钟执行买卖) ═══
+        const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
         const guard = this.boll.tradingGuardAllowed(bkl);
@@ -403,10 +403,6 @@ class QuantAgent {
         if (!openGate || !openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
         const esig = shSig.esig;
         if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
-        // ═══ 方向保护(关键): 大方向与布林开仓方向冲突则禁开, 防逆势亏损 ═══
-        //    tdir=UP(上涨) 禁做空; tdir=DOWN(下跌) 禁做多; 只有中性时才双向自由
-        if (tdir==='UP' && esig.signal==='SHORT') { if (this.isAdmin) this._log(`⛔ ${symbol} 方向保护: 大方向UP禁做空(防逆势空被打)`) ; continue; }
-        if (tdir==='DOWN' && esig.signal==='LONG') { if (this.isAdmin) this._log(`⛔ ${symbol} 方向保护: 大方向DOWN禁做多`) ; continue; }
         const tg = shSig.gate;
         if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg ? tg.reason : '无门禁'}`); continue; }
         // 用门禁确认的方向开仓(与趋势一致)
@@ -453,8 +449,8 @@ class QuantAgent {
           }
         }
         if (pos.strategy === 'bollinger') {
-          // 布林带策略·纯均值回归出场(1h): 只用回归中轨止盈+固定1.2ATR止损, 去除其他补仓/移动止盈/时间止损逻辑
-          const bkl = await this._getKlinesShared(symbol, '1h', 500).catch(() => null);
+          // SuperTrend反转·出场(5m): SUPER翻转平仓(checkTakeProfit), 仅保留极端兜底
+          const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
           if (bkl && bkl.length >= 30) {
             const spike = this.boll.isSpikeBar(bkl);
             const tp = this.boll.checkTakeProfit(pos, bkl);
