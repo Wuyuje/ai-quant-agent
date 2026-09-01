@@ -403,6 +403,10 @@ class QuantAgent {
         if (!openGate || !openGate.allowed) continue;   // 带宽>90%禁开 / 未解禁
         const esig = shSig.esig;
         if (!esig || (esig.signal !== 'LONG' && esig.signal !== 'SHORT')) continue;
+        // ═══ 方向保护(关键): 大方向与布林开仓方向冲突则禁开, 防逆势亏损 ═══
+        //    tdir=UP(上涨) 禁做空; tdir=DOWN(下跌) 禁做多; 只有中性时才双向自由
+        if (tdir==='UP' && esig.signal==='SHORT') { if (this.isAdmin) this._log(`⛔ ${symbol} 方向保护: 大方向UP禁做空(防逆势空被打)`) ; continue; }
+        if (tdir==='DOWN' && esig.signal==='LONG') { if (this.isAdmin) this._log(`⛔ ${symbol} 方向保护: 大方向DOWN禁做多`) ; continue; }
         const tg = shSig.gate;
         if (!tg || !tg.allowed) { if (this.isAdmin) this._log(`🚫 ${symbol} 布林门禁: ${tg ? tg.reason : '无门禁'}`); continue; }
         // 用门禁确认的方向开仓(与趋势一致)
