@@ -24,6 +24,8 @@ class BollingerStrategy {
     this.moveAct = 1.0; this.moveTrail = 0.7;
     this.lossKillPct = opts.lossKillPct || 50;   // 兜底: 单K浮亏≥50%本金全平
     this.finalLossPct = opts.finalLossPct || 70;  // 终极兜底
+    this.mrSlPct = opts.mrSlPct || 0.012;         // 主动止损: 浮亏达-1.2%立即砍(回测最优)防扛单深亏/盈利回吐
+    this.mrTpPct = opts.mrTpPct || 0.015;         // 主动止盈: 浮盈达+1.5%立即止盈落袋(回测最优)防盈利不落袋
     this.maxHoldBars = opts.maxHoldBars || 288;   // 时间兜底(5m*288=24h)
     this.maxAddRounds = 0; this.riskPct = opts.riskPct || 0.008;
     this.openBandPct = 0.90; this.releaseBandPct = 0.4; this.shrinkBars = 2;
@@ -95,20 +97,24 @@ class BollingerStrategy {
   checkTakeProfit(pos, arr) {
     if (!pos) return { action:'HOLD' };
     const dir = this._stDirArr(arr);
-    if (!dir || dir.length < 3) return { action:'HOLD' };
-    const cur = dir[dir.length-1];
-    const prev = dir[dir.length-2];
-    // 若发生反向翻转 → 平仓(SUPER自然止盈止损). 持仓LONG但转空→平; SHORT但转多→平
-    if (prev !== cur) {
-      const wantLong = cur === 1;
-      if ((pos.side === 'LONG' && !wantLong) || (pos.side === 'SHORT' && wantLong))
-        return { action:'CLOSE', reason:`SUPER翻转平仓(方向${cur===1?'转多':'转空'})` };
-    }
-    // 兜底保险: 单笔极端浮亏(防SUPER失灵止损不触发)
     const price = +toArray(arr)[arr.length-1][3];
-    if (pos.entryPrice) {
+    // ═══ 主动止盈止损(核心) ═══
+    if (pos.entryPrice && pos.entryPrice > 0 && price > 0) {
       const pnl = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice : (pos.entryPrice-price)/pos.entryPrice;
-      if (pnl <= -0.05) return { action:'CLOSE', reason:`SUPER失灵兜底止损(浮亏${(pnl*100).toFixed(1)}%)` };
+      // 1) 止损优先: 浮亏达 SL_PCT 立即砍(防扛单深亏/盈利回吐成亏损)
+      if (pnl <= -this.mrSlPct) return { action:'CLOSE', reason:`主动止损(浮亏${(pnl*100).toFixed(2)}%≤-${(this.mrSlPct*100).toFixed(0)}%)落袋` };
+      // 2) 止盈: 浮盈达 TP_PCT 立即止盈落袋(防盈利不落袋回吐)
+      if (pnl >= this.mrTpPct) return { action:'CLOSE', reason:`主动止盈(浮盈${(pnl*100).toFixed(2)}%≥+${(this.mrTpPct*100).toFixed(0)}%)落袋` };
+    }
+    // 3) 兜底: SUPER反向翻转也平(额外保护)
+    if (dir && dir.length >= 3) {
+      const cur = dir[dir.length-1];
+      const prev = dir[dir.length-2];
+      if (prev !== cur) {
+        const wantLong = cur === 1;
+        if ((pos.side === 'LONG' && !wantLong) || (pos.side === 'SHORT' && wantLong))
+          return { action:'CLOSE', reason:`SUPER翻转兜底平仓(方向${cur===1?'转多':'转空'})` };
+      }
     }
     return { action:'HOLD' };
   }
