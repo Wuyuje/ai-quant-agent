@@ -831,15 +831,12 @@ class QuantAgentManager {
           this._log(`${wallet.slice(0,10)} 智能体启动(${role})`);
         }
       }
-      // 全部用户(普通+管理员/白名单)开放开仓
+      // 全部用户(普通+管理员/白名单)开放开仓, 按引擎统一的风控开关, 不再按角色强制暂停
       const agents = Object.values(this._agents);
       for (const a of agents) {
-        // ═══ 按角色暂停: 非管理员用户(白名单/普通)全部暂停开仓, 只管理员交易 ═══
-        if (!a.isAdmin) {
-          a.pauseOpen = true; a.pauseTrend = true; a.pauseBoll = true;
-          if (a._logPauseOnce !== true) { a._logPauseOnce = true; this._log(`⏸️ 非管理员 ${a.wallet.slice(0,10)} 已暂停开仓(只管理员交易)`); }
-        }
-        else { a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; a.pauseBoll = !!this.pauseBoll; }
+        // 所有用户统一按引擎全局开关 (不再强制非管理员暂停)
+        a.pauseOpen = !!this.pauseOpen; a.pauseTrend = !!this.pauseTrend; a.pauseBoll = !!this.pauseBoll;
+        if (a._logPauseOnce !== true && !a.isAdmin) { a._logPauseOnce = true; this._log(`ℹ️ 非管理员 ${a.wallet.slice(0,10)} 开仓权限: 按全局开关(不再强制暂停)`); }
         // ═══ 同步manager的池给agent(MA7/V4/布林各自独立池) + 排名Top ═══
         a.MA7_POOL = this.MA7_POOL; a.BOLLINGER_POOL = this.BOLLINGER_POOL; a.TREND_POOL = this.TREND_POOL; a.BOLL_PREFERRED = this.BOLL_PREFERRED;
         a.trendTop = this.trendTop || []; a.bollTop = this.bollTop || []; }
