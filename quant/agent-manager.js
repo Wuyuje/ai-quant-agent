@@ -453,40 +453,17 @@ class QuantAgent {
           }
         }
         if (pos.strategy === 'bollinger') {
-          // 布林带策略止盈/风控(5分钟级别): 5m K线(截图: 5min级别) ═══
+          // 布林带策略·纯均值回归出场(1h): 只用回归中轨止盈+固定1.2ATR止损, 去除其他补仓/移动止盈/时间止损逻辑
           const bkl = await this._getKlinesShared(symbol, '1h', 500).catch(() => null);
           if (bkl && bkl.length >= 30) {
-            // 截图: 插针击穿止损/补仓点位但收盘回归 → 不执行风控
             const spike = this.boll.isSpikeBar(bkl);
             const tp = this.boll.checkTakeProfit(pos, bkl);
-            if (tp.action === 'CLOSE' && !spike) closeReason = tp.reason;   // 插针不触发止盈
-            else if (!spike) {
-              // 前置风控: 单K浮亏≥单笔本金20%全平
-              const eq = this.balance;  // 单笔本金近似用可用资金
-              const hs = this.boll.checkHardStop(pos, bkl, eq);
-              if (hs.stop) closeReason = hs.reason;
-              else {
-                // 终极风控: 3次补仓完成 + 总浮亏≥70%强制全平
-                const totalPnlPct = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice*100 : (pos.entryPrice-price)/pos.entryPrice*100;
-                const fs = this.boll.checkFinalStop(pos, totalPnlPct);
-                if (fs.stop) closeReason = fs.reason;
-                else {
-                  // 补仓: 已有同向持仓走补仓, 收口后3根+未到3次
-                  if (pos._addRound < 3) {
-                    const preCloseIdx = bkl.length - (pos._lastAddIdxFrom0 || 0);
-                    const candd = this.boll.checkAdd(bkl, pos);
-                    // 补仓时序: 收口后间隔3根K线(简化: 用K线数量近似, 持续多轮后允许)
-                    if (candd.canAdd && pos._lastAddRoundTick != null && (bkl.length - pos._lastAddRoundTick) >= 3) {
-                      // 执行补仓(同向加仓) — 真实补仓通过增量下单实现, 这里标记轮次
-                      pos._addRound = (pos._addRound || 0) + 1;
-                      pos._lastAddRoundTick = bkl.length;
-                      this._log(`📈 ${symbol} 布林第${pos._addRound}次补仓(收口后3根)持仓${(candd.pct*100).toFixed(0)}%`);
-                    } else if (candd.canAdd && pos._lastAddRoundTick == null) {
-                      pos._lastAddRoundTick = bkl.length;
-                    }
-                  }
-                }
-              }
+            if (tp.action === 'CLOSE' && !spike) closeReason = tp.reason;   // 插针不触发(防毛刺假平)
+            else if (spike) closeReason = null;  // 插针K线不平仓(收盘回归)
+            // 极简保险: 总浮亏≥50%强平(唯一兜底, 防极端行情失控)
+            if (!closeReason) {
+              const tpn = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice*100 : (pos.entryPrice-price)/pos.entryPrice*100;
+              if (Math.abs(tpn) >= 50) closeReason = `极端兜底强平(浮亏${tpn.toFixed(0)}%)`;
             }
           }
         }
@@ -507,17 +484,6 @@ class QuantAgent {
           }
         }
 
-        if (pos.strategy === 'bollinger') {
-          // ═══ 复利循环(截图九, 记账式): 布林持仓浮盈≥100%时, 记录50%利润保护金, 不真实划转 ═══
-          const totalPnlPct = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice*100 : (pos.entryPrice-price)/pos.entryPrice*100;
-          const reinv = this.boll.checkReinvest(pos, totalPnlPct);
-          if (reinv.reinvest && !pos._reinvested) {
-            pos._reinvested = true;
-            this._protectFund = this._protectFund || {};
-            this._protectFund[this.wallet] = (this._protectFund[this.wallet]||0) + pos.qty * pos.entryPrice * reinv.protectPct;
-            this._log(`💰 ${symbol} 复利循环: 浮盈${totalPnlPct.toFixed(0)}%≥100%, ${reinv.protectPct*100}%入利润保护金(记账)`);
-          }
-        }
         if (closeReason) {
           pnlToCount = this._estimatePnl(pos, price);
           const r = await this.executor.closePosition(symbol, pos.side, pos.qty, pm, closeReason, pnlToCount);

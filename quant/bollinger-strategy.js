@@ -102,13 +102,12 @@ class BollingerStrategy {
     return { signal:'NONE', reason: rsi>=30?`(价${price.toFixed(4)} 未触发RSI反转)`:`(价${price.toFixed(4)} 未触轨)`, rsi:rsi };
   }
 
-  // 高盈亏比止盈: 止盈3ATR / 移动止盈; 止损1.2ATR
+  // 纯均值回归出场: 止盈=回归布林中轨(均值), 止损=固定1.2ATR. 去除移动止盈/时间止损/多级逻辑
   checkTakeProfit(pos, arr) {
     if (!pos) return { action:'HOLD' };
     const price = +toArray(arr)[arr.length-1][3];
     const b = this.calcBands(arr);
     if (!b) return { action:'HOLD' };
-    const fe = this.fe;
     const high = toArray(arr);
     let atr = 0, n=14;
     const hArr=high.map(k=>+k[2]), lArr=high.map(k=>+k[3]), cArr=high.map(k=>+k[3]);
@@ -116,28 +115,13 @@ class BollingerStrategy {
     atr = atr/n || 1;
     const entry = pos.entryPrice;
     const pnl = pos.side==='LONG' ? (price-entry)/entry*100 : (entry-price)/entry*100;
-    // 止损1.2ATR
+    const mid = b.mid;   // 布林中轨 = 均值回归目标
+    // 止损(固定1.2ATR): 回归失败反向走太远则砍
     if (pos.side==='LONG' && price <= entry - this.slMul*atr) return { action:'CLOSE', reason:`止损(${this.slMul}ATR, pnl=${pnl.toFixed(1)}%)` };
     if (pos.side==='SHORT' && price >= entry + this.slMul*atr) return { action:'CLOSE', reason:`止损(${this.slMul}ATR, pnl=${pnl.toFixed(1)}%)` };
-    // 止盈3ATR
-    if (pos.side==='LONG' && price >= entry + this.tpMul*atr) return { action:'CLOSE', reason:`止盈(${this.tpMul}ATR) pnl=${pnl.toFixed(1)}%` };
-    if (pos.side==='SHORT' && price <= entry - this.tpMul*atr) return { action:'CLOSE', reason:`止盈(${this.tpMul}ATR) pnl=${pnl.toFixed(1)}%` };
-    // 移动止盈: 盈利>1ATR后回撤0.7ATR平(锁定利润)
-    if (pos.side==='LONG') {
-      if (price > (pos._peak||entry)) pos._peak = price;
-      if ((pos._peak-entry) > this.moveAct*atr && price < pos._peak - this.moveTrail*atr) return { action:'CLOSE', reason:`移动止盈(峰值${pos._peak.toFixed(4)}回撤${this.moveTrail}ATR)` };
-    } else {
-      if (price < (pos._low||entry)) pos._low = price;
-      if ((entry-pos._low) > this.moveAct*atr && price > pos._low + this.moveTrail*atr) return { action:'CLOSE', reason:`移动止盈(谷值${pos._low.toFixed(4)}回撤${this.moveTrail}ATR)` };
-    }
-    // 时间止损: 持仓超maxHoldBars根K线(1h一根)强制平仓, 防套死. 盈利则按止盈收益, 亏损则按止损
-    if (pos.openTime) {
-      const heldBars = (Date.now() - pos.openTime) / (3600*1000); // 按1h=1根
-      if (heldBars >= this.maxHoldBars) {
-        if (pnl > 0) return { action:'CLOSE', reason:`时间出仓(持仓${heldBars.toFixed(0)}h>${this.maxHoldBars}, pnl=${pnl.toFixed(1)}%)` };
-        return { action:'CLOSE', reason:`时间止损(持仓${heldBars.toFixed(0)}h>${this.maxHoldBars}未回归, pnl=${pnl.toFixed(1)}%)` };
-      }
-    }
+    // 止盈: 回归到布林中轨(均值)即平
+    if (pos.side==='LONG' && price >= mid) return { action:'CLOSE', reason:`回归中轨止盈(mid=${mid.toFixed(4)}, pnl=${pnl.toFixed(1)}%)` };
+    if (pos.side==='SHORT' && price <= mid) return { action:'CLOSE', reason:`回归中轨止盈(mid=${mid.toFixed(4)}, pnl=${pnl.toFixed(1)}%)` };
     return { action:'HOLD' };
   }
 
