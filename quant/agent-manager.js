@@ -391,8 +391,8 @@ class QuantAgent {
           if (this.isAdmin) this._log(`⏸️ ${symbol} 冷却禁开(连续亏损, 解禁时间${new Date(this._bollCooldowns[symbol]).toLocaleTimeString('zh-CN')})`);
           continue;
         }
-        // 布林带策略(5分钟级别): 5m K线决策(截图: 5min触轨) ═══
-        const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
+        // 布林带策略(1小时级别): 1h K线决策(改 原5m回测亏损→1h胜率53.8-58.8%) ═══
+        const bkl = await this._getKlinesShared(symbol, '1h', 500).catch(() => null);
         if (!bkl || bkl.length < 40) continue;
         // 截图: 特殊时间(资金费率结算前15min等)禁新开/补
         const guard = this.boll.tradingGuardAllowed(bkl);
@@ -450,7 +450,7 @@ class QuantAgent {
         }
         if (pos.strategy === 'bollinger') {
           // 布林带策略止盈/风控(5分钟级别): 5m K线(截图: 5min级别) ═══
-          const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
+          const bkl = await this._getKlinesShared(symbol, '1h', 500).catch(() => null);
           if (bkl && bkl.length >= 30) {
             // 截图: 插针击穿止损/补仓点位但收盘回归 → 不执行风控
             const spike = this.boll.isSpikeBar(bkl);

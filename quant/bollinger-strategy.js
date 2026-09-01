@@ -24,12 +24,13 @@ class BollingerStrategy {
     this.rsiShort = opts.rsiShort || 70;      // RSI>70超买开空
     this.touchAtr = 0.0;                      // 触轨(价格≤下轨/−≥上轨)
     // ═══ 高盈亏比出场 ═══
-    this.tpMul = opts.tpMul || 3.0;           // 止盈3ATR
-    this.slMul = opts.slMul || 1.2;           // 止损1.2ATR (盈亏比2.5:1)
+    this.tpMul = opts.tpMul || 2.0;           // 止盈2ATR(改) 回测1h: TP2/SL1.2胜率53.8%回报最高; 原3ATR胜率40%只亏不赚
+    this.slMul = opts.slMul || 1.2;           // 止损1.2ATR (盈亏比1.7:1)
     this.moveAct = opts.moveAct || 1.0;       // 盈利>1ATR后激活移动止盈
     this.moveTrail = opts.moveTrail || 0.7;   // 移动止盈回撤0.7ATR
     this.lossKillPct = opts.lossKillPct || 20;  // 前置风控: 单K浮亏≥20%本金全平
     this.finalLossPct = opts.finalLossPct || 40; // 终极风控: 总浮亏≥40%强平(严止损缩短)
+    this.maxHoldBars = opts.maxHoldBars || 72;    // 时间止损: 持仓>72根K线(1h≈72h)强制平仓, 防套死
     this.maxAddRounds = 0;                    // 率先回测: 不回补(防大亏)
     this.riskPct = opts.riskPct || 0.008;     // 单笔风险0.8%本金
     // 兼容旧接口字段
@@ -128,6 +129,14 @@ class BollingerStrategy {
     } else {
       if (price < (pos._low||entry)) pos._low = price;
       if ((entry-pos._low) > this.moveAct*atr && price > pos._low + this.moveTrail*atr) return { action:'CLOSE', reason:`移动止盈(谷值${pos._low.toFixed(4)}回撤${this.moveTrail}ATR)` };
+    }
+    // 时间止损: 持仓超maxHoldBars根K线(1h一根)强制平仓, 防套死. 盈利则按止盈收益, 亏损则按止损
+    if (pos.openTime) {
+      const heldBars = (Date.now() - pos.openTime) / (3600*1000); // 按1h=1根
+      if (heldBars >= this.maxHoldBars) {
+        if (pnl > 0) return { action:'CLOSE', reason:`时间出仓(持仓${heldBars.toFixed(0)}h>${this.maxHoldBars}, pnl=${pnl.toFixed(1)}%)` };
+        return { action:'CLOSE', reason:`时间止损(持仓${heldBars.toFixed(0)}h>${this.maxHoldBars}未回归, pnl=${pnl.toFixed(1)}%)` };
+      }
     }
     return { action:'HOLD' };
   }
