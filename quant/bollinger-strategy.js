@@ -24,7 +24,7 @@ class BollingerStrategy {
     this.moveAct = 1.0; this.moveTrail = 0.7;
     this.lossKillPct = opts.lossKillPct || 50;   // 兜底: 单K浮亏≥50%本金全平
     this.finalLossPct = opts.finalLossPct || 70;  // 终极兜底
-    this.mrSlPct = opts.mrSlPct || 0.012;         // 主动止损: 浮亏达-1.2%立即砍(回测最优)防扛单深亏/盈利回吐
+    this.mrSlPct = opts.mrSlPct || 0.010;         // 主动止损: 浮亏达-1.0%立即砍(回测最优: 比0.4-0.8%更不易被毛刺扫, 比1.2%更紧控亏)
     this.mrTpPct = opts.mrTpPct || 0.015;         // 主动止盈: 浮盈达+1.5%立即止盈落袋(回测最优)防盈利不落袋
     this.maxHoldBars = opts.maxHoldBars || 288;   // 时间兜底(5m*288=24h)
     this.maxAddRounds = 0; this.riskPct = opts.riskPct || 0.008;
