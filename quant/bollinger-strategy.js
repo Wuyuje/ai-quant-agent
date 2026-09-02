@@ -24,8 +24,8 @@ class BollingerStrategy {
     this.moveAct = 1.0; this.moveTrail = 0.7;
     this.lossKillPct = opts.lossKillPct || 50;   // 兜底: 单K浮亏≥50%本金全平
     this.finalLossPct = opts.finalLossPct || 70;  // 终极兜底
-    this.mrSlPct = opts.mrSlPct || 0.010;         // 主动止损: 浮亏达-1.0%立即砍(回测最优: 比0.4-0.8%更不易被毛刺扫, 比1.2%更紧控亏)
-    this.mrTpPct = opts.mrTpPct || 0.015;         // 主动止盈: 浮盈达+1.5%立即止盈落袋(回测最优)防盈利不落袋
+    this.mrSlPct = opts.mrSlPct || 0.10;         // 主动止损(回报率): 浮亏回报达-10%立即砍(含杠杆, 回报率=价格%×杠杆)
+    this.mrTpPct = opts.mrTpPct || 0.15;         // 主动止盈(回报率): 浮盈回报达+15%立即止盈落袋(含杠杆)
     this.maxHoldBars = opts.maxHoldBars || 288;   // 时间兜底(5m*288=24h)
     this.maxAddRounds = 0; this.riskPct = opts.riskPct || 0.008;
     this.openBandPct = 0.90; this.releaseBandPct = 0.4; this.shrinkBars = 2;
@@ -100,11 +100,13 @@ class BollingerStrategy {
     const price = +toArray(arr)[arr.length-1][3];
     // ═══ 主动止盈止损(核心) ═══
     if (pos.entryPrice && pos.entryPrice > 0 && price > 0) {
-      const pnl = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice : (pos.entryPrice-price)/pos.entryPrice;
-      // 1) 止损优先: 浮亏达 SL_PCT 立即砍(防扛单深亏/盈利回吐成亏损)
-      if (pnl <= -this.mrSlPct) return { action:'CLOSE', reason:`主动止损(浮亏${(pnl*100).toFixed(2)}%≤-${(this.mrSlPct*100).toFixed(0)}%)落袋` };
-      // 2) 止盈: 浮盈达 TP_PCT 立即止盈落袋(防盈利不落袋回吐)
-      if (pnl >= this.mrTpPct) return { action:'CLOSE', reason:`主动止盈(浮盈${(pnl*100).toFixed(2)}%≥+${(this.mrTpPct*100).toFixed(0)}%)落袋` };
+      const lev = pos.leverage || 1;   // 实际杠杆
+      const pricePnl = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice : (pos.entryPrice-price)/pos.entryPrice;
+      const roi = pricePnl * lev;      // 回报率 = 价格变动% × 杠杆
+      // 1) 止损优先: 回报率达 -SL% 立即砍(防扛单深亏/盈利回吐成亏损)
+      if (roi <= -this.mrSlPct) return { action:'CLOSE', reason:`主动止损(回报${(roi*100).toFixed(1)}%[${lev}x]≤-${(this.mrSlPct*100).toFixed(0)}%)落袋` };
+      // 2) 止盈: 回报率达 +TP% 立即止盈落袋(防盈利不落袋回吐)
+      if (roi >= this.mrTpPct) return { action:'CLOSE', reason:`主动止盈(回报${(roi*100).toFixed(1)}%[${lev}x]≥+${(this.mrTpPct*100).toFixed(0)}%)落袋` };
     }
     // 3) 兜底: SUPER反向翻转也平(额外保护)
     if (dir && dir.length >= 3) {
