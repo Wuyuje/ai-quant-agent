@@ -24,8 +24,8 @@ class BollingerStrategy {
     this.moveAct = 1.0; this.moveTrail = 0.7;
     this.lossKillPct = opts.lossKillPct || 50;   // 兜底: 单K浮亏≥50%本金全平
     this.finalLossPct = opts.finalLossPct || 70;  // 终极兜底
-    this.mrSlPct = opts.mrSlPct || 0.20;         // 移动止损(回报率): 亏损宽限到-20%才平(按用户思路: 亏损不随便单平, 避免正常波动扫掉; 给盈利空间)
-    this.mrTrail = opts.mrTrail || 0.005;         // 移动止盈(回报率): 盈利后才锁利, 盈吐-0.5%即平(回测:C/损20/盈吐0.5 → +6.8%/5币盈利 最优)
+    this.mrSlPct = opts.mrSlPct || 0.30;         // 极端兜底(回报率): 未盈利不平, 仅-30%回报防爆(盈利后才止盈止损的严格逻辑; 回测回撤5%/兜底30% 平均+8.49%/6币盈利最优)
+    this.mrTrail = opts.mrTrail || 0.05;          // 移动止盈(回报率): 盈利后峰值回撤5%才平(锁利; 未盈利不触发, 积极等回本)
     this.maxHoldBars = opts.maxHoldBars || 288;   // 时间兜底(5m*288=24h)
     this.maxAddRounds = 0; this.riskPct = opts.riskPct || 0.008;
     this.openBandPct = 0.90; this.releaseBandPct = 0.4; this.shrinkBars = 2;
