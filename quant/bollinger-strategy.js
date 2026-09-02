@@ -25,7 +25,7 @@ class BollingerStrategy {
     this.lossKillPct = opts.lossKillPct || 50;   // 兜底: 单K浮亏≥50%本金全平
     this.finalLossPct = opts.finalLossPct || 70;  // 终极兜底
     this.mrSlPct = opts.mrSlPct || 0.30;         // 极端兜底(回报率): 未盈利不平, 仅-30%回报防爆(盈利后才止盈止损的严格逻辑; 回测回撤5%/兜底30% 平均+8.49%/6币盈利最优)
-    this.mrTrail = opts.mrTrail || 0.05;          // 移动止盈(回报率): 盈利后峰值回撤5%才平(锁利; 未盈利不触发, 积极等回本)
+    this.mrTrail = opts.mrTrail || 0.005;         // 移动止盈(回报率): 盈利后回报率从峰值回撤0.5%(0.005)即止盈锁利(用户指定, 0.5%回撤)
     this.maxHoldBars = opts.maxHoldBars || 288;   // 时间兜底(5m*288=24h)
     this.maxAddRounds = 0; this.riskPct = opts.riskPct || 0.008;
     this.openBandPct = 0.90; this.releaseBandPct = 0.4; this.shrinkBars = 2;
@@ -98,27 +98,30 @@ class BollingerStrategy {
     if (!pos) return { action:'HOLD' };
     const dir = this._stDirArr(arr);
     const price = +toArray(arr)[arr.length-1][3];
-    // ═══ 主动止盈止损(移动回报率核心) ═══
-    if (pos.entryPrice && pos.entryPrice > 0 && price > 0) {
-      const lev = pos.leverage || 1;   // 实际杠杆
-      const pricePnl = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice : (pos.entryPrice-price)/pos.entryPrice;
-      const roi = pricePnl * lev;      // 当前回报率 = 价格变动% × 杠杆
-      // 1) 止损优先: 回报率达 -SL% 立即砍(防扛单深亏)
-      if (roi <= -this.mrSlPct) return { action:'CLOSE', reason:`移动止损(回报${(roi*100).toFixed(1)}%[${lev}x]≤-${(this.mrSlPct*100).toFixed(0)}%)` };
-      // 2) 移动止盈: 记录峰值回报, 从峰值回撤达mrTrail%才平(上涨拿着, 回撤才止盈)
-      if (pos._peakRoi == null) pos._peakRoi = 0;
-      if (roi > pos._peakRoi) pos._peakRoi = roi;   // 更新峰值回报
-      if (pos._peakRoi > 0 && roi <= pos._peakRoi - this.mrTrail)
-        return { action:'CLOSE', reason:`移动止盈(峰值回报${(pos._peakRoi*100).toFixed(1)}%回撤${(this.mrTrail*100).toFixed(0)}%→现${(roi*100).toFixed(1)}%[${lev}x])落袋` };
-    }
-    // 3) 兜底: SUPER反向翻转也平(额外保护)
+    if (!(pos.entryPrice && pos.entryPrice > 0 && price > 0)) return { action:'HOLD' };
+    const lev = pos.leverage || 1;
+    const pricePnl = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice : (pos.entryPrice-price)/pos.entryPrice;
+    const roi = pricePnl * lev;   // 当前回报率
+    // ═══ 严格核心规则: 当前roi>0(正在盈利)才允许止盈/翻转平仓; roi<=0绝不因止盈/翻转平仓 ═══
+    // 1) 极端兜底(唯一允许亏损平仓): 回报<-30%防爆
+    if (roi <= -this.mrSlPct) return { action:'CLOSE', reason:`极端兜底(回报${(roi*100).toFixed(1)}%≤-${(this.mrSlPct*100).toFixed(0)}%)` };
+    // 2) 未盈利/亏损(roi<=0): 绝不因止盈/翻转平仓, 积极等回本
+    if (roi <= 0) return { action:'HOLD' };
+    // ─── 以下仅在 当前roi>0(正在盈利) 时才执行 ───
+    // 3) 移动止盈: 峰值回撤5%锁利
+    if (pos._peakRoi == null) pos._peakRoi = 0;
+    if (roi > pos._peakRoi) pos._peakRoi = roi;
+    const drop = pos._peakRoi - roi;
+    if (pos._peakRoi > 0 && drop >= this.mrTrail)
+      return { action:'CLOSE', reason:`移动止盈(峰值${(pos._peakRoi*100).toFixed(1)}%回撤${(drop*100).toFixed(1)}%→现${(roi*100).toFixed(1)}%[${lev}x])锁利` };
+    // 4) SUPER翻转兜底: 仅在盈利中(roi>0)才锁利平仓
     if (dir && dir.length >= 3) {
       const cur = dir[dir.length-1];
       const prev = dir[dir.length-2];
       if (prev !== cur) {
         const wantLong = cur === 1;
         if ((pos.side === 'LONG' && !wantLong) || (pos.side === 'SHORT' && wantLong))
-          return { action:'CLOSE', reason:`SUPER翻转兜底平仓(方向${cur===1?'转多':'转空'})` };
+          return { action:'CLOSE', reason:`SUPER翻转锁利(现盈利${(roi*100).toFixed(1)}%[${lev}x])` };
       }
     }
     return { action:'HOLD' };
