@@ -195,7 +195,8 @@ class QuantAgent {
   async _syncPositions() {
     try {
       const acc = await this.api._request('GET', '/fapi/v2/positionRisk').catch(() => null);
-      if (!Array.isArray(acc)) return;
+      if (!Array.isArray(acc)) { if(this.isAdmin&&this._diagOnce!==1){this._diagOnce=1;this._log(`⚠️sync诊断: positionRisk非数组/null(拉取失败), 无法载入真实持仓`);} return; }
+      if(this.isAdmin&&this._diagOnce!==2){this._diagOnce=2;this._log(`✅sync诊断: positionRisk拉到${acc.length}条, 真实持仓${acc.filter(p=>Math.abs(+p.positionAmt)>0).length}个`);}
       const real = acc.filter(p => p.symbol && p.positionAmt && Math.abs(+p.positionAmt) > 0);
       this._unrealizedPnl = real.reduce((s, p) => s + (+p.unRealizedProfit || 0), 0);
       for (const p of real) {
@@ -486,6 +487,29 @@ class QuantAgent {
           }
         }
 
+        if (closeReason) {
+          const isExtreme = /极端|兜底|强平/.test(closeReason || '');   // 极端保护类平仓不受净回报拦截(否则极端没法止损)
+          let estPnl = this._estimatePnl(pos, price);
+          if (!isExtreme) {
+            // ═══ 平仓前净回报校验: 扣除全部费用后回报率>0才允许平仓, 否则继续持有等回报率最大化 ═══
+            const takerFeeRate = 0.0004;   // 合约手续费约0.04%名义(开+平双边taker)
+            const grossNotional = Math.abs(pos.entryPrice * (pos.qty || 0));   // 名义价值(保证金×杠杆)
+            const tradingFee = grossNotional * takerFeeRate;                   // 开+平手续费
+            const isComputeFeeUser = !this.isAdmin && !this.isWhitelist;       // 普通用户才扣算力费
+            let computeFee = 0;
+            if (isComputeFeeUser && estPnl > 0) {
+              // 算力费 = 盈利 × (平台0.20+生态0.10)=30% (普通用户)
+              const cfRate = PLATFORM_FEE_RATE + ECO_FUND_RATE;                 // 0.30
+              computeFee = estPnl * cfRate;
+            }
+            const netReturnUsd = estPnl - tradingFee - computeFee;   // 扣手续费+算力费后的净回报(USD)
+            if (netReturnUsd <= 0) {
+              // 净回报不超费用 → 取消平仓, 持有等更大盈利(回报率最大化)
+              if (this.isAdmin) this._log(`⏸️ ${symbol} 平仓拦截: 净回报$${netReturnUsd.toFixed(3)}(毛利$${estPnl.toFixed(3)}-手续费$${tradingFee.toFixed(4)}${computeFee?`-算力费$${computeFee.toFixed(3)}`:''})≤0, 暂不平继续持有`);
+              closeReason = null;   // 取消这次平仓
+            }
+          }
+        }
         if (closeReason) {
           pnlToCount = this._estimatePnl(pos, price);
           const r = await this.executor.closePosition(symbol, pos.side, pos.qty, pm, closeReason, pnlToCount);
