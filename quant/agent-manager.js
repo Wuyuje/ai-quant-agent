@@ -756,7 +756,7 @@ class QuantAgentManager {
     // 震荡行情交易池(布林带引擎) — 修复NaN bug后最优回测精选(交易≥3+胜率100%)
     this.BOLLINGER_POOL = ['LINKUSDT','ORDIUSDT','SOLUSDT','OPUSDT','NEARUSDT','TONUSDT','SUIUSDT','AVAXUSDT','INJUSDT','LTCUSDT'];
     // ═══ 优选震荡币池(回测验证正期望14币, 只交易这些避免亏损山寨币): DOGE/ADA/INJ/IMX/SUI/ARB/DOT/XRP/ETH/SOL/LTC/APT/SEI/LINK ═══
-    this.BOLL_PREFERRED = ['DOGEUSDT','ADAUSDT','INJUSDT','IMXUSDT','SUIUSDT','ARBUSDT','DOTUSDT','XRPUSDT','ETHUSDT','SOLUSDT','LTCUSDT','APTUSDT','SEIUSDT','LINKUSDT'];
+    this.BOLL_PREFERRED = ['DOGEUSDT','INJUSDT','DOTUSDT','XRPUSDT','ETHUSDT','SOLUSDT','APTUSDT','LINKUSDT'];  // 震荡优选池: 排除弱币(IMX/ARB/SUI/LTC/ADA/SEI 回测亏损), 只留8个回测盈利强币
     // 趋势行情交易池(给趋势策略引擎调用) — 30天趋势回测精选
     // 正期望: LINK/FIL(TIA/ADA等趋势弱负期望不纳入)
     // 趋势行情交易池(给趋势引擎调用) — v6摆动结构90天回测精选(胜率≥50%+正回报)
