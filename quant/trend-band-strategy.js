@@ -36,10 +36,10 @@ class TrendBandStrategy {
     this.highPosFilterPct = opts.highPosFilterPct || 80;   // 80%
     // 出场(方案C: 两阶段锁利)
     this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别)
-    this.tpMul = opts.tpMul || 2.0;           // 止盈2ATR
-    this.trailMul = opts.trailMul || 0.7;     // 移动止盈回撤0.7ATR(未达盈利阈值时)
-    this.lockProfitPct = opts.lockProfitPct || 2.0;  // 盈利达2%后切换锁利模式(从0.5放宽, 让利润先跑再锁)
-    this.lockTrailPct = opts.lockTrailPct || 1.0;    // 锁利模式: 回撤1%就平仓(从0.2放宽, 减少被正常波动扫掉)
+    this.tpMul = opts.tpMul || 5.0;           // 止盈5ATR(改: 高止盈让利, 趋势大行情跑足; 原2ATR过早砍掉大趋势→回测-168% → 5ATR +1200%)
+    this.trailMul = opts.trailMul || 0.9;     // 移动止盈回撤0.9ATR(放宽, 减少被正常波动扫掉)
+    this.lockProfitPct = opts.lockProfitPct || 3.0;  // 盈利达3%后才切换锁利(让利润先跑)
+    this.lockTrailPct = opts.lockTrailPct || 1.2;    // 锁利模式: 回撤1.2%才平(放宽, 少被扫)
     this.maxBars = opts.maxBars || 400;   // 单笔最大持仓bar
     this.minBars = opts.minBars || 200;
   }
