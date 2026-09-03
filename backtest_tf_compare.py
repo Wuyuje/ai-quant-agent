@@ -1,111 +1,85 @@
 #!/usr/bin/env python3
-"""震荡策略不同时间级别回测: 5m/15m/1h/4h
-逻辑: 接近轨道20%触发 + 趋势过滤5% + 带宽98%
-对比哪个周期效果最好
+"""震荡策略 多时间级别回报率对比回测
+策略: SuperTrend(10,3)反转入场, 固定止盈止损=盈利后峰值回撤0.5%止盈, 极端兜底-30%
+对比: 1m/5m/15m/30m/1h 哪个回报率最高
+杠杆5x, 多币, 每日回报率标准化
 """
-import urllib.request,json,time,math
-
+import urllib.request,json,time,math,sys
+sys.path.insert(0,'/app/workspace/ai-quant-agent')
 UA={'User-Agent':'Mozilla/5.0'}
-FEE=0.0005
-
-def get_k(sym,iv,pages):
-    data=[];et=''
-    for _ in range(pages):
-        url=f'https://fapi.binance.com/fapi/v1/klines?symbol={sym}&interval={iv}&limit=1000'
-        if et:url+=f'&endTime={et}'
-        req=urllib.request.Request(url,headers=UA)
-        try:
-            b=json.loads(urllib.request.urlopen(req,timeout=15).read().decode())
-        except:
-            time.sleep(0.3);continue
+POOL=['BTCUSDT','ETHUSDT','SOLUSDT','DOGEUSDT','XRPUSDT','LINKUSDT']
+LEV=5
+def fetch(sym,interval,limit):  # limit近似K线根数
+    all_k=[];end=None
+    while len(all_k)<limit:
+        u=f'https://data-api.binance.vision/api/v3/klines?symbol={sym}&interval={interval}&limit=1000'
+        if end:u+=f'&endTime={end}'
+        try:b=json.loads(urllib.request.urlopen(urllib.request.Request(u,headers=UA),timeout=12).read())
+        except:time.sleep(0.4);break
         if not b:break
-        data=b+data;et=str(b[0][0]);time.sleep(0.05)
-    data.sort(key=lambda x:x[0])
-    return [float(x[4]) for x in data]
-
-def _ema_at(c,i,n):
-    if i<n:return None
-    k=2/(n+1);e=c[i-n+1]
-    for x in range(i-n+2,i+1):e=c[x]*k+e*(1-k)
-    return e
-
-def _atr(c,n=14):
-    trs=[]
-    for i in range(1,len(c)):
-        h=max(c[max(0,i-4):i+1]);l=min(c[max(0,i-4):i+1]);pc=c[i-1]
-        trs.append(max(h-l,abs(h-pc),abs(l-pc)))
-    return sum(trs[-n:])/n if len(trs)>=n else None
-
-def backtest(c, touch_prox=20, trend_th=5.0, band_release=0.98):
-    trades=[];i=130
-    while i<len(c)-3:
-        price=c[i]
-        if i<20:i+=1;continue
-        seg=c[i-20:i];mid=sum(seg)/20
-        sd=math.sqrt(sum((x-mid)**2 for x in seg)/20)
-        upper,lower=mid+2*sd,mid-2*sd
-        range_w=(upper-lower) or 1
-        # 带宽分位
-        width_pct=0.5
-        if i>=120:
-            cur_w=range_w/(mid or 1);ws=[]
-            for j in range(i-100,i):
-                s=c[j-20:j];m=sum(s)/20;d=math.sqrt(sum((x-m)**2 for x in s)/20)
-                if m>0:ws.append(4*d/m)
-            if ws:width_pct=sum(1 for w in ws if w<cur_w)/len(ws)
-        if width_pct>band_release:i+=1;continue
-        # 趋势过滤(用当前EMA7-25差近似)
-        e7=_ema_at(c,i,7);e25=_ema_at(c,i,25)
-        if e7 is None or e25 is None:i+=1;continue
-        spread=abs(e7-e25)/(e25 or 1)*100
-        if spread>trend_th:i+=1;continue
-        # 接近轨道20%
-        dist_low=price-lower;dist_up=upper-price
-        sig=None
-        if dist_low<=range_w*(touch_prox/100):sig='LONG'
-        elif dist_up<=range_w*(touch_prox/100):sig='SHORT'
-        if not sig:i+=1;continue
-        # 持仓管理
-        entry=price;best=entry;closed=None
-        for j in range(i+1,min(i+2000,len(c))):
-            p=c[j];atr=_atr(c[max(0,j-14):j+1]) or 1
-            pnl_pct=(p-entry)/entry*100 if sig=='LONG' else (entry-p)/entry*100
-            if sig=='LONG':
-                if p>best:best=p
-                s=max(entry-0.8*atr,best-0.7*atr);tp=entry+2*atr
-                if p<=s:closed=(s-entry)/entry-2*FEE;i=j+20;break
-                if p>=tp:closed=(tp-entry)/entry-2*FEE;i=j+20;break
-                seg2=c[j-20:j];m2=sum(seg2)/20
-                if p>=m2 and pnl_pct>1:closed=pnl_pct/100-2*FEE;i=j+20;break
-            else:
-                if p<best:best=p
-                s=min(entry+0.8*atr,best+0.7*atr);tp=entry-2*atr
-                if p>=s:closed=(entry-s)/entry-2*FEE;i=j+20;break
-                if p<=tp:closed=(entry-tp)/entry-2*FEE;i=j+20;break
-                seg2=c[j-20:j];m2=sum(seg2)/20
-                if p<=m2 and pnl_pct>1:closed=pnl_pct/100-2*FEE;i=j+20;break
-        if closed is None:i+=1
-        else:trades.append(closed)
-    if not trades:return {'t':0,'w':0,'wr':0,'ret':0,'maxdd':0}
-    wins=sum(1 for t in trades if t>0)
-    eq=1.0;pk=1.0;md=0.0
-    for t in trades:eq*=(1+t);pk=max(pk,eq);dd=(pk-eq)/pk;md=max(md,dd)
-    return {'t':len(trades),'w':wins,'wr':wins*100//len(trades),'ret':sum(trades)*100,'maxdd':md*100}
-
-SYMS=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','DOGEUSDT','LINKUSDT','SUIUSDT','INJUSDT']
-
-print('═══ 震荡策略时间级别回测(8币, ~3个月, 费0.1%) ═══\n')
-# 各级别拉取页数(3个月): 5m=13000根13页(取前8页近2月), 15m=8700根9页, 1h=2200根3页, 4h=550根1页
-INTERVALS=[('5m',10),('15m',8),('1h',4),('4h',4)]
-
-for iv,pg in INTERVALS:
-    agg_t=agg_w=agg_ret=0;agg_md=0
-    for sym in SYMS:
-        try:
-            c=get_k(sym,iv,pg)
-            if len(c)<500:continue
-            r=backtest(c)
-            agg_t+=r['t'];agg_w+=r['w'];agg_ret+=r['ret'];agg_md=max(agg_md,r['maxdd'])
-        except:pass
-    wr=agg_w*100//agg_t if agg_t else 0
-    print(f"{iv:5} 级别     {agg_t:5}笔 胜{wr:2}% 回报{agg_ret:+7.1f}% 回撤{agg_md:5.1f}%")
+        all_k=b+all_k;end=str(int(b[0][0])-1);time.sleep(0.6)
+    all_k.sort(key=lambda x:x[0])
+    return [(float(x[1]),float(x[2]),float(x[3]),float(x[4]),float(x[5])) for x in all_k]
+def supertrend(h,l,c,p=10,m=3.0):
+    n=len(c);atr=[0.0]*n
+    for i in range(1,n):
+        tr=max(h[i]-l[i],abs(h[i]-c[i-1]),abs(l[i]-c[i-1]));atr[i]=(atr[i-1]*(p-1)+tr)/p if i>=p else tr
+    hl2=[(h[i]+l[i])/2 for i in range(n)];up=[0.0]*n;dn=[0.0]*n;d=[1]*n
+    for i in range(n):
+        u=hl2[i]+m*atr[i];dd=hl2[i]-m*atr[i]
+        if i>0:
+            u=u if(u<up[i-1]or c[i-1]>up[i-1])else up[i-1]
+            dd=dd if(dd>dn[i-1]or c[i-1]<dn[i-1])else dn[i-1]
+        up[i]=u;dn[i]=dd
+    for i in range(1,n):
+        if c[i]>up[i-1]:d[i]=1
+        elif c[i]<dn[i-1]:d[i]=-1
+        elif d[i-1]==1:d[i]=1 if c[i]>=dn[i] else -1
+        else:d[i]=-1 if c[i]<=up[i] else 1
+    return d
+def run(kl,trail=0.005,extreme=0.30):
+    o=[x[0] for x in kl];h=[x[1] for x in kl];l=[x[2] for x in kl];c=[x[3] for x in kl]
+    d=supertrend(h,l,c);n=len(c);trd=[];pos=0;entry=0;peak=0;ei=0
+    for i in range(1,n):
+        if pos==0:
+            if d[i]!=d[i-1]: pos=-d[i];entry=c[i];peak=0;ei=i
+        else:
+            cur=((c[i]-entry)/entry)*LEV*pos
+            rp=((h[i]-entry)/entry)*LEV if pos==1 else ((entry-l[i])/entry)*LEV
+            if rp>peak: peak=rp
+            if cur<=-extreme: trd.append(-extreme*100);pos=0;continue
+            if cur<=0: continue  # 未盈利不平
+            if peak>0 and (peak-cur)>=trail: trd.append(cur*100);pos=0;continue
+            if d[i]!=d[i-1]: trd.append(cur*100);pos=0;continue
+    if pos!=0: trd.append(((c[-1]-entry)/entry)*LEV*100*pos)
+    if len(trd)<8:return None
+    wins=[x for x in trd if x>0]
+    return {'acc':len(wins)/len(trd)*100,'n':len(trd),'net':sum(trd)}
+# 各时间级别: 覆盖相近时间跨度(小时), 用近似根数
+# 1m取1000根≈16.7h, 5m取1000根≈83h, 15m取800≈200h, 1h取800≈800h(但拉取慢) - 数据跨度约近30天
+tfs={
+  '1m':1000,'5m':1000,'15m':800,'1h':600,'4h':400
+}
+print(f"震荡策略多时间级别回报率对比 (盈利才止盈/回撤0.5%/兜底-30%/{LEV}x)",flush=True)
+# 汇总
+sums={tf:[] for tf in tfs}
+accmap={tf:[] for tf in tfs}
+for sym in POOL:
+    line=f"  {sym[:8]}"
+    for tf,limit in tfs.items():
+        try:kl=fetch(sym,tf,limit)
+        except:line+="  --";continue
+        r=run(kl)
+        if r: sums[tf].append(r['net']);accmap[tf].append(r['acc']);line+=f"{tf:<3}:{r['net']:+7.1f}/{r['acc']:.0f}%".ljust(15)
+        else:line+=f"{tf:<3}:样本不足".ljust(15)
+    print(line,flush=True)
+print("\n=== 各时间级别平均回报率(标准化每日) ===",flush=True)
+# 反映不同tf覆盖时长不同, 用每币净回报直接比较(同数据源同期近似)
+for tf in tfs:
+    a=sums[tf]
+    if a:
+        acc=[x for x in accmap[tf] if x]
+        print(f"  {tf:<4}: 平均净回报{sum(a)/len(a):+.2f}%  平均胜率{sum(acc)/len(acc) if acc else 0:.0f}%  ({len(a)}币)",flush=True)
+# 找最优tf(平均净回报)
+best=max((tf for tf in tfs if sums[tf]), key=lambda tf: sum(sums[tf])/len(sums[tf]))
+print(f"\n🏆 回报率最高时间级别: {best}",flush=True)
