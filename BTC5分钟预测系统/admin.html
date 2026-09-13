@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>管理员仪表盘 · Polymarket-BTC5</title>
+<style>
+ :root{--bg:#05070e;--panel:#0c111d;--line:#1b2740;--txt:#e7eefb;--mut:#8fa0bf;--up:#ff5a5a;--dn:#1fdd8b;--acc:#f4a340}
+ *{box-sizing:border-box;margin:0;padding:0;font-family:Segoe UI,system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
+ body{background:radial-gradient(1000px 560px at 12% -10%,#16263f,#05070e 62%);color:var(--txt);min-height:100vh;padding:20px}
+ .w{max-width:1150px;margin:0 auto}
+ header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+ .card{background:linear-gradient(180deg,#0f1829,#0a0f1a);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+ .lbl{font-size:11px;letter-spacing:1px;color:var(--mut);text-transform:uppercase;margin-bottom:8px}
+ .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+ .tag{font-size:12px;padding:3px 9px;border-radius:99px;background:#12203a;border:1px solid var(--line);color:var(--mut)}
+ .btn{cursor:pointer;border:0;border-radius:9px;padding:8px 13px;font-weight:600}
+ .b_acc{background:var(--acc);color:#221300}.b_ghost{background:#16233b;color:var(--txt)}.b_dn{background:var(--dn);color:#042}.b_up{background:var(--up);color:#120}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th,td{text-align:left;padding:8px;border-bottom:1px solid #14203a}
+ th{color:var(--mut);font-weight:400}
+ .wiz{border:1px dashed var(--line);border-radius:10px;padding:11px 14px;line-height:1.85;background:#0b1220}
+ .scrolly{max-height:320px;overflow:auto}
+ input{background:#0b1120;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px}
+</style></head><body><div class="w">
+<header>
+ <h1 style="font-size:20px">管理员仪表盘 · <span style="color:var(--acc)">Polymarket-BTC5</span></h1>
+ <div><span class="tag" id="astate">未绑定管理员钱包</span> <span class="tag" id="live">…</span></div>
+</header>
+
+<div class="card">
+ <div class="lbl">管理员钱包绑定（你后期用新钱包绑定预测系统+Polymarket；密码私钥留在你本机）</div>
+ <div class="wiz">
+  ① 点“连接管理员钱包”→ 在你的钱包（MetaMask等）中确认连接（系统只读地址）；<br/>
+  ② 点“授权验证”→ 钱包签名一条消息（不含私钥），系统记录此地址为管理员；<br/>
+  ③ 绑定后即可在下方管理全部用户的入金/启用/自动买卖。
+  <div class="row" style="margin-top:10px">
+   <button class="btn b_acc" id="conn">连接管理员钱包</button>
+   <button class="btn b_ghost" id="auth" disabled>授权验证</button>
+   <span class="tag" id="addr">未连接</span>
+  </div>
+ </div>
+</div>
+
+<div class="card">
+ <div class="row" style="justify-content:space-between"><div class="lbl">全局设置</div></div>
+ <div class="row">
+  <label class="tag">总开关 <input type="checkbox" id="gAuto" checked/></label>
+  <label class="tag">共振阈值 <input id="gTh" type="number" step="0.01" value="0.08" style="width:90px"/></label>
+  <label class="tag">默认每单(USDC) <input id="gSize" type="number" value="5" style="width:90px"/></label>
+  <button class="btn b_ghost" id="saveG">保存全局</button>
+ </div>
+</div>
+
+<div class="card">
+ <div class="lbl">用户账户（钱包绑定 → 入金标记 → 启用 → 自动买卖）</div>
+ <table class="scrolly"><thead><tr>
+  <th>钱包地址</th><th>入金</th><th>授权</th><th>自动</th><th>胜/负</th><th>净值USDC</th><th>启用</th><th>操作</th>
+ </tr></thead><tbody id="tb"><tr><td colspan="8" class="mut">连接管理员钱包并授权后加载…</td></tr></tbody></table>
+ <div class="mut" style="margin-top:8px">提示：用户入金标记=该地址已向 Polymarket 充值/授权；自动=该用户已开自动买卖(信号触发时按其本机授权执行)。</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let acct=null, admin=false;
+function isAdmin(addr){return false;} // 由后端判定(ADMIN env)
+$('conn').onclick=async()=>{ if(!window.ethereum){alert('未检测到浏览器钱包（MetaMask等），请安装/打开后重试。');return;} try{ const a=await window.ethereum.request({method:'eth_requestAccounts'}); acct=a[0]; $('addr').textContent=acct.slice(0,10)+'…'; $('auth').disabled=false; $('astate').textContent='已连接·未授权'; }catch(e){alert('连接取消:'+e.message);} };
+$('auth').onclick=async()=>{ if(!acct)return; try{ await window.ethereum.request({method:'personal_sign',params:['Polymarket-BTC5 管理员授权',acct]}); admin=true; $('astate').textContent='管理员已授权 ✓'; fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:acct})}); loadUsers(); }catch(e){alert('授权未完成:'+e.message);} };
+$('saveG').onclick=()=>{ fetch('/api/admin/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:acct, global:{auto_enabled:$('gAuto').checked, threshold:+$('gTh').value, size_usdc:+$('gSize').value}})}).then(r=>r.json()).then(x=>alert('已保存全局')).catch(()=>alert('保存失败')); };
+function loadUsers(){ if(!acct)return; fetch('/api/admin/users?addr='+acct).then(r=>r.json()).then(d=>{ if(d.err){$('tb').innerHTML='<tr><td colspan=8 class=mut>'+d.err+'</td></tr>';return;} const trs=(d.users||[]).map(u=>`<tr>
+   <td>${u.addr.slice(0,10)}…</td>
+   <td><span class="tag">${u.deposit?'已入金':'—'}</span></td>
+   <td><span class="tag">${u.authorized?'已授权':'未授权'}</span></td>
+   <td><span class="tag">${u.auto?'ON':'OFF'}</span></td>
+   <td>${u.wins||0}/${u.loss||0}</td>
+   <td>${u.equity||0}</td>
+   <td><input type="checkbox" ${u.enabled?'checked':''} onchange="setU('${u.addr}', this.checked)"/></td>
+   <td><button class="btn b_ghost" onclick="togAuto('${u.addr}',${!u.auto})">切换自动</button></td>
+  </tr>`).join(''); $('tb').innerHTML=trs||'<tr><td colspan=8 class=mut>暂无用户</td></tr>'; }); }
+function setU(a,c){ fetch('/api/admin/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:acct,target:a,enabled:c})}); }
+function togAuto(a,v){ fetch('/api/admin/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:acct,target:a,auto:v})}); }
+setInterval(loadUsers, 4000);
+</script></body></html>

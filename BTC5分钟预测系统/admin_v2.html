@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>管理员控制台 · BTC5</title>
+<style>
+:root{--bg:#05070e;--panel:#0c111d;--line:#1b2740;--txt:#e7eefb;--mut:#8fa0bf;--up:#ff5a5a;--dn:#1fdd8b;--acc:#f4a340}
+*{box-sizing:border-box;margin:0;padding:0;font-family:Segoe UI,system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
+body{background:radial-gradient(1000px 560px at 12% -10%,#16263f,#05070e 62%);color:var(--txt);min-height:100vh;padding:16px}
+.w{max-width:1250px;margin:auto}
+.card{background:linear-gradient(180deg,#0f1829,#0a0f1a);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.lbl{font-size:11px;letter-spacing:1px;color:var(--mut);text-transform:uppercase;margin-bottom:6px}
+.big{font-size:40px;font-weight:750}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{cursor:pointer;border:0;border-radius:9px;padding:8px 13px;font-weight:600}
+.acc{background:var(--acc);color:#221300}.ghost{background:#16233b;color:var(--txt)}.go{background:var(--dn);color:#042}.st{background:var(--up);color:#120}
+.tag{font-size:12px;padding:3px 9px;border-radius:99px;background:#12203a;border:1px solid var(--line);color:var(--mut)}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px solid #14203a;padding:7px;text-align:left}th{color:var(--mut);font-weight:400}
+.scrolly{max-height:320px;overflow:auto}
+input,select{background:#0b1120;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px}
+.up{color:var(--up)}.dn{color:var(--dn)}.mut{color:var(--mut);font-size:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:800px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="w">
+<h1 style="font-size:20px">管理员控制台 · <span style="color:var(--acc)">BTC5 预测平台</span></h1>
+
+<div class="card">
+  <div class="lbl">管理员钱包绑定</div>
+  <div class="row">
+    <button class="btn acc" id="conn">连接管理员钱包</button>
+    <button class="btn ghost" id="auth" disabled>授权验证</button>
+    <span class="tag" id="addr">未连接</span>
+    <span class="tag" id="role">—</span>
+    <button class="btn ghost" id="vox">语音开</button> <button class="btn ghost" id="testVoice">测试语音</button>
+  </div>
+  <div class="mut" id="conntip"></div>
+</div>
+
+<div class="card">
+<div class="card">
+  <div class="lbl">管理员地址直接绑定（跳过钱包弹窗）</div>
+  <div class="row">
+    <input id="bindAddr" placeholder="粘贴你的钱包地址 0x..." style="flex:1;min-width:200px">
+    <input id="bindKey" type="password" placeholder="该地址的Polymarket钱包私钥" style="width:220px">
+    <button class="btn acc" id="bindBtn">绑定为管理员</button>
+  </div>
+  <div class="mut" id="bindTip"></div>
+</div>
+
+  <div class="lbl">管理员本人资金</div>
+  <div class="row">
+    <span class="tag">充值 <b id="adDep">—</b></span>
+    <span class="tag">净值 <b id="adEq">—</b></span>
+    <span class="tag">收益 <b id="adPnl">—</b></span>
+    <span class="tag">Poly持仓 <b id="adPolyN">—</b></span>
+    <span class="tag">Poly盈亏 <b id="adPolyPnl">—</b></span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="lbl">Polymarket 真实账户资金（实时）</div>
+  <div class="row">
+    <span class="tag">可用余额 <b id="rbColl" class="up">—</b></span>
+    <span class="tag">持仓价值 <b id="rbPort">—</b></span>
+    <span class="tag">总净值 <b id="rbNet" class="up">—</b></span>
+  </div>
+  <div class="mut">数据源：Polymarket 真实账户（签名读取），与交易所一致</div>
+</div>
+
+<div class="card">
+  <div class="lbl">新策略盈利（轮中动量 · 排除历史旧仓）</div>
+  <div class="row">
+    <span class="tag">已结算 <b id="mSettled">—</b></span>
+    <span class="tag">胜率 <b id="mWr">—</b></span>
+    <span class="tag">投入 <b id="mInv">—</b></span>
+    <span class="tag">净盈亏 <b id="mPnl">—</b></span>
+    <span class="tag">ROI <b id="mRoi">—</b></span>
+  </div>
+</div>
+
+<div class="card">
+<div class="card">
+<div class="card">
+<div class="card">
+  <div class="lbl">当前在途持仓（本轮真实持仓 · 结算后自动切下一轮）</div>
+  <div class="row" id="posRow">
+    <span class="tag" id="rNoPos">无在途持仓（策略等待信号）</span>
+    <span class="tag">方向 <b id="rDir">-</b></span>
+    <span class="tag">金额 <b id="rUsd">-</b></span>
+    <span class="tag">轮起点 <b id="rStart">-</b></span>
+    <span class="tag">当前BTC <b id="rNow">-</b></span>
+    <span class="tag">偏离 <b id="rDev">-</b></span>
+    <span class="tag">浮动盈亏 <b id="rFloat" class="up">-</b></span>
+    <span class="tag">剩余 <b id="rRemain">-</b>s</span>
+  </div>
+  <div class="mut">浮动盈亏按币安实时价估算（买UP:BTC涨则正;买DOWN:BTC跌则正）</div>
+</div>
+
+  <div class="row"><div class="big" id="dev">—</div><span class="tag" id="twsig">—</span></div>
+  <div>轮 <span id="tslug">—</span> · 剩余 <b id="trem">—</b>s · 起始TWAP <b id="tbase">—</b> · 当前 <b id="tlast">—</b> · ask <b id="task">—</b></div>
+</div>
+
+<div class="card">
+  <div class="lbl">我的设置（管理员）</div>
+  <div class="row">
+    <label class="tag">自动开仓 <input type="checkbox" id="myAuto"></label>
+    <label class="tag">每单金额 <input id="mySize" type="number" value="1" style="width:80px"></label>
+    <button class="btn ghost" id="saveMy">保存我的设置</button>
+    <span class="mut" id="myTip"></span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="lbl">系统运行控制（管理所有用户）</div>
+  <div class="row">
+    <button class="btn go" id="startSys">▶ 启动预测系统</button>
+    <button class="btn st" id="stopSys">⏹ 停止预测系统</button>
+    <span class="tag" id="sysRunner">系统:—</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="lbl">手动交易 · 管理员实盘（真实下单 Polymarket）</div>
+  <div class="row">
+    <label class="tag">金额$ <input id="mUsd" type="number" value="1" step="1" min="1" style="width:70px"></label>
+    <button class="btn go" id="buyUp">▲ 买涨 UP</button>
+    <button class="btn st" id="buyDown">▼ 买跌 DOWN</button>
+    <button class="btn ghost" id="sellPos">✕ 卖出</button>
+    <span class="tag" id="mTip">就绪</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="lbl">交易记录 · 管理员实盘
+    <select id="trDate" style="margin-left:8px"></select>
+    <span class="mut" id="trSum"></span>
+  </div>
+  <table class="scrolly"><thead><tr><th>时间</th><th>方向</th><th>金额</th><th>成交价</th><th>结果</th><th>盈亏</th></tr></thead>
+  <tbody id="trb"><tr><td colspan="6" class="mut">加载中…</td></tr></tbody></table>
+</div>
+
+<div class="card grid2">
+  <div>
+    <div class="lbl">用户账户管理</div>
+    <table class="scrolly"><thead><tr><th>地址</th><th>授</th><th>自动</th><th>每单</th><th>胜/负</th><th>充值</th><th>收益</th><th>交易</th><th>启用</th><th>操作</th></tr></thead>
+    <tbody id="ub"><tr><td colspan="10" class="mut">连接管理员后加载…</td></tr></tbody></table>
+    <div class="lbl" style="margin-top:8px">用户交易明细 <span id="utAddr" class="mut"></span></div>
+    <table class="scrolly"><thead><tr><th>时间</th><th>方向</th><th>金额</th><th>偏离%</th><th>BTC价</th></tr></thead><tbody id="utb"><tr><td colspan="5" class="mut">点击用户交易列查看明细</td></tr></tbody></table>
+  </div>
+  <div>
+    <div class="lbl">收益排行榜</div>
+    <table class="scrolly"><thead><tr><th>#</th><th>地址</th><th>收益</th><th>胜率</th></tr></thead>
+    <tbody id="lb"><tr><td colspan="4" class="mut">—</td></tr></tbody></table>
+    <div class="lbl" style="margin-top:8px">平台统计（TWAP vs 结算）</div>
+    <div class="row"><span class="tag">样本 <b id="ss">—</b></span><span class="tag">整体 <b id="ow">—</b></span></div>
+    <table><thead><tr><th>阈值</th><th>胜率</th><th>样本</th></tr></thead><tbody id="stt"></tbody></table>
+  </div>
+</div>
+
+<div class="card">
+<div class="card">
+  <div class="lbl">BTC K线 · 阴/阳蜡烛 + BOLL(20,2) + SUPER(10,3)（滚轮缩放 / 拖动平移）</div>
+  <canvas id="kline" width="1200" height="300" style="width:100%;height:300px;background:#070c15;border-radius:8px;cursor:grab"></canvas>
+  <div class="mut">红=阳(涨) 绿=阴(跌) 橙=BOLL 绿线=SUPER · 周期 <select id="tf"><option>5m</option><option>15m</option><option>1h</option></select></div>
+</div>
+
+  <div class="lbl">实时日志</div>
+  <div id="log" style="font-family:monospace;font-size:12px;color:#9fe8b0;max-height:160px;overflow:auto;background:#070a10;border:1px solid var(--line);border-radius:8px;padding:8px;white-space:pre-wrap">等待…</div>
+</div>
+</div><!-- /w -->
+
+<script>
+var acct=null, isAdmin=false, voiceOn=true, lastSig='';
+// 管理员地址(与后端 ADMIN 一致): 管理员台可直接管理, 无需连接钱包
+const ADMIN_ADDR='0x9999c0fc24d4468afa840fc5c1b5f01775b5ee79';
+function adminAddr(){return (acct||'').trim()||ADMIN_ADDR;}
+function $(id){return document.getElementById(id);}
+var _zhVoice=null, _unlocked=false;
+function _loadVoice(){
+  try{
+    var vs=speechSynthesis.getVoices()||[];
+    _zhVoice=vs.filter(function(x){return /xiaoxiao|xiaoyi|yaoyao|tingting|huihui|siri/i.test(x.name);})[0]
+      ||vs.filter(function(x){return x.lang&&x.lang.indexOf('zh')===0;})[0]||null;
+  }catch(e){}
+}
+if('speechSynthesis'in window){_loadVoice();speechSynthesis.onvoiceschanged=_loadVoice;}
+// 首次触摸/点击: 解锁手机音频策略(必须用户手势后才能自动发声)
+function _unlockAudio(){
+  if(_unlocked||!('speechSynthesis'in window))return;
+  _unlocked=true;
+  try{var u=new SpeechSynthesisUtterance('');u.volume=0;speechSynthesis.speak(u);}catch(e){}
+  try{speechSynthesis.resume();}catch(e){}
+}
+document.addEventListener('pointerdown',_unlockAudio,{once:true});
+document.addEventListener('touchstart',_unlockAudio,{once:true});
+document.addEventListener('click',_unlockAudio,{once:true});
+function speak(t){if(!voiceOn||!('speechSynthesis'in window))return;try{
+  speechSynthesis.cancel();
+  var u=new SpeechSynthesisUtterance(t);u.lang='zh-CN';u.rate=1.0;u.pitch=1.0;
+  if(_zhVoice)u.voice=_zhVoice;
+  u.onend=function(){_unlocked=false;};
+  speechSynthesis.speak(u);
+  setTimeout(function(){try{speechSynthesis.resume();}catch(e){}},100);
+}catch(e){}}
+
+function connectWallet(){
+  if(!window.ethereum){$('conntip').textContent='未检测到钱包：请在 TP DApp 浏览器或电脑 MetaMask 中打开本页面';return;}
+  window.ethereum.request({method:'eth_requestAccounts'}).then(function(a){
+    acct=a[0];$('addr').textContent=acct.slice(0,10)+'…';$('auth').disabled=false;
+    $('conntip').textContent='已连接: '+acct.slice(0,10)+'…';
+  }).catch(function(e){$('conntip').textContent='连接失败: '+(e.code||'')+' '+String(e.message).slice(0,80);});
+}
+function authAdmin(){
+  if(!acct)return;
+  var msg='管理员授权';
+  var hex='0x'+Array.prototype.map.call(new TextEncoder().encode(msg),function(x){return x.toString(16).padStart(2,'0');}).join('');
+  window.ethereum.request({method:'personal_sign',params:[hex,acct]}).then(function(){
+    isAdmin=true;$('role').textContent='管理员';$('conntip').textContent='已授权为管理员';
+    fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:acct})});
+    loadUsers();myBal();
+  }).catch(function(e){$('conntip').textContent='授权失败: '+String(e.message).slice(0,80);});
+}
+$('conn').onclick=connectWallet;
+$('auth').onclick=authAdmin;
+$('testVoice').onclick=function(){speak('语音测试，声音正常');};
+$('vox').onclick=function(){voiceOn=!voiceOn;this.textContent=voiceOn?'语音开':'语音关';};
+$('bindBtn').onclick=function(){
+  var a=$('bindAddr').value.trim(), k=$('bindKey').value.trim();
+  if(!a||!k){$('bindTip').textContent='请填写地址和KEY';return;}
+  fetch('/api/admin/bind',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:a,key:k})})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d.ok){$('bindTip').textContent='绑定成功: '+a.slice(0,10)+'… (已是管理员)';$('role').textContent='管理员';acct=a.toLowerCase();}
+      else $('bindTip').textContent='失败: '+(d.err||'');
+    }).catch(function(e){$('bindTip').textContent='失败: '+String(e.message).slice(0,60);});
+};
+$('saveMy').onclick=function(){
+  fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:adminAddr(),auto:$('myAuto').checked,size_usdc:+$('mySize').value})})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d.user){$('myTip').textContent='已保存: 自动'+($('myAuto').checked?'开':'关')+', 每单 $'+$('mySize').value;}
+      else $('myTip').textContent='保存失败: '+(d.err||'');
+    }).catch(function(e){$('myTip').textContent='保存失败: '+String(e.message).slice(0,60);});
+};
+$('startSys').onclick=function(){fetch('/api/start').then(function(r){return r.json();}).then(function(d){$('sysRunner').textContent='系统:'+(d.enabled?'运行':'停止');$('myTip').textContent='已启动预测系统';});};
+$('stopSys').onclick=function(){fetch('/api/stop').then(function(r){return r.json();}).then(function(d){$('sysRunner').textContent='系统:'+(d.enabled?'运行':'停止');$('myTip').textContent='已停止预测系统';});};
+function manualOrder(action,side){
+  var tip=$('mTip'); tip.textContent='提交中...';
+  fetch('/api/manual_order',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({addr:adminAddr(),action:action,side:side,usd:parseFloat($('mUsd').value)||1})})
+  .then(function(r){return r.json();}).then(function(d){
+    if(d.ok){tip.textContent='✓ '+action+' '+side+' 成功 id='+(d.order_id||'').slice(0,10);}
+    else{tip.textContent='✗ '+(d.err||'失败');}
+  }).catch(function(e){tip.textContent='请求失败:'+String(e).slice(0,40);});
+}
+$('buyUp').onclick=function(){manualOrder('buy','UP');};
+$('buyDown').onclick=function(){manualOrder('buy','DOWN');};
+$('sellPos').onclick=function(){manualOrder('sell','UP');};
+var ALLTR=[];
+function renderTrades(){
+  var day=$('trDate').value;
+  var trs=ALLTR.filter(function(x){return (x.t||'').indexOf(day)===0;});
+  var settled=trs.filter(function(x){return x.pnl!=null;});
+  var wins=settled.filter(function(x){return x.result=='WIN';}).length;
+  var pnl=settled.reduce(function(a,x){return a+(x.pnl||0);},0);
+  var wr=settled.length?Math.round(wins/settled.length*100):0;
+  $('trSum').textContent='('+day+') 已结算'+settled.length+'笔 胜'+wins+' 胜率'+wr+'% 净盈亏'+(pnl>=0?'+':'')+pnl.toFixed(2);
+  $('trb').innerHTML=trs.map(function(x){
+    var rc=x.result=='WIN'?'up':(x.result=='LOSS'?'dn':'');
+    var pc=(x.pnl==null)?'-':((x.pnl>=0?'+':'')+x.pnl);
+    return '<tr><td>'+x.t+'</td><td class="'+(x.side=='UP'?'up':'dn')+'">'+x.side+'</td><td>$'+x.usd+'</td><td>'+x.price+'</td><td class="'+rc+'">'+x.result+'</td><td class="'+rc+'">'+pc+'</td></tr>';
+  }).join('')||'<tr><td colspan="6" class="mut">该日无交易</td></tr>';
+}
+function loadTrades(){
+  fetch('/api/trade_records').then(function(r){return r.json();}).then(function(d){
+    ALLTR=d.trades||[];
+    // 收集日期
+    var days={};
+    ALLTR.forEach(function(x){var dt=(x.t||'').slice(0,5); if(dt) days[dt]=1;});
+    var dl=Object.keys(days).sort().reverse();
+    var sel=$('trDate');
+    var cur=sel.value;
+    if(!cur && dl.length) cur=dl[0];
+    sel.innerHTML=dl.map(function(x){return '<option value="'+x+'"'+(x==cur?' selected':'')+'>'+x+'</option>';}).join('');
+    if(!cur && dl.length) sel.value=dl[0];
+    sel.onchange=renderTrades;
+    renderTrades();
+  }).catch(function(){});
+}
+setInterval(loadTrades,15000);loadTrades();
+
+function delU(a){if(!confirm('确认注销？'))return;fetch('/api/admin/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:adminAddr(),target:a})}).then(function(r){return r.json();}).then(function(d){if(d.err&&d.err!=='no user')alert('注销失败: '+d.err);loadUsers();});}
+function setU(a,c){fetch('/api/admin/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:adminAddr(),target:a,enabled:c})});}
+function togA(a,v){fetch('/api/admin/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:adminAddr(),target:a,auto:v})});}
+
+function loadUsers(){
+  fetch('/api/users').then(function(r){return r.json();}).then(function(d){
+    var us=d.users||[];
+    $('ub').innerHTML=us.map(function(u){
+      var pnl=(u.equity||0)-(u.deposit||0);
+      var nt=(u.trades||[]).length;
+      return '<tr><td>'+u.addr.slice(0,12)+'…</td><td>'+((u.authorized)?'✓':'—')+'</td><td>'+((u.auto)?'ON':'OFF')+'</td><td>$'+(u.size_usdc||1)+'</td><td>'+(u.wins||0)+'/'+(u.loss||0)+'</td><td>$'+(u.deposit||0)+'</td><td class="'+(pnl<0?'dn':'up')+'">'+pnl.toFixed(2)+'</td>'+
+      '<td><a href="javascript:void(0)" onclick="viewUT(\''+u.addr+'\')" class="up">'+nt+'笔</a></td>'+
+      '<td><input type="checkbox" '+((u.enabled)?'checked':'')+' onclick="setU(\''+u.addr+'\',this.checked)"></td>'+
+      '<td><button class="btn ghost" onclick="togA(\''+u.addr+'\','+((!u.auto)?'true':'false')+')">自动</button> <button class="btn st" onclick="delU(\''+u.addr+'\')">注销</button></td></tr>';
+    }).join('')||'<tr><td colspan="10" class="mut">暂无用户</td></tr>';
+    var rank=us.slice().sort(function(a,b){return (b.equity||0)-(a.equity||0);}).slice(0,10);
+    $('lb').innerHTML=rank.map(function(u,i){
+      var wl=(u.wins&&u.loss)?Math.round(u.wins/(u.wins+u.loss)*100)+'%':'-';
+      return '<tr><td>'+(i+1)+'</td><td>'+u.addr.slice(0,10)+'…</td><td class="'+(((u.equity||0)-(u.deposit||0))<0?'dn':'up')+'">'+((u.equity||0)-(u.deposit||0)).toFixed(2)+'</td><td>'+wl+'</td></tr>';
+    }).join('')||'<tr><td colspan="4" class="mut">—</td></tr>';
+    var g=d.global||{};
+    // 加载管理员个人设置(我的设置卡片)
+    fetch('/api/me?addr='+encodeURIComponent(adminAddr())).then(function(r){return r.json();}).then(function(md){
+      var mu=md.user||{};
+      $('myAuto').checked=!!mu.auto;
+      if(mu.size_usdc!=null)$('mySize').value=mu.size_usdc;
+      else $('mySize').value=g.size_usdc||1;
+    }).catch(function(){});
+  }).catch(function(){});
+}
+function viewUT(addr){
+  fetch('/api/me?addr='+encodeURIComponent(addr)).then(function(r){return r.json();}).then(function(d){
+    var tr=(d.user&&d.user.trades)||[];
+    $('utAddr').textContent='— '+addr.slice(0,12)+'…（'+tr.length+'笔）';
+    $('utb').innerHTML=tr.slice(0,30).map(function(x){
+      return '<tr><td>'+x.t+'</td><td class="'+(x.side=='UP'?'up':'dn')+'">'+x.side+'</td><td>$'+x.usd+'</td><td>'+((x.tech!=null)?x.tech+'%':'')+'</td><td>'+x.price+'</td></tr>';
+    }).join('')||'<tr><td colspan="5" class="mut">该用户暂无交易</td></tr>';
+  }).catch(function(){});
+}
+
+
+
+function realBal(){
+  fetch('/api/real_balance').then(function(r){return r.json();}).then(function(b){
+    if(b.error){return;}
+    $('rbColl').textContent='$'+(b.collateral!=null?b.collateral:'-');
+    $('rbPort').textContent='$'+(b.portfolioValue!=null?b.portfolioValue:'-');
+    $('rbNet').textContent='$'+(b.netWorth!=null?b.netWorth:'-');
+    $('rbNet').className='tag '+(b.netWorth>=0?'up':'dn');
+  }).catch(function(){});
+}
+function momPnl(){
+  fetch('/api/mom_pnl').then(function(r){return r.json();}).then(function(m){
+    $('mSettled').textContent=m.settled||'-';
+    $('mWr').textContent=(m.winrate!=null)?(m.winrate+'%'):'-';
+    $('mInv').textContent='$'+(m.invested||0);
+    $('mPnl').textContent=(m.pnl!=null)?((m.pnl>0?'+':'')+m.pnl):'-';
+    $('mPnl').style.color=(m.pnl>=0)?'#1fdd8b':'#ff5a5a';
+    $('mRoi').textContent=(m.roi!=null)?(m.roi+'%'):'-';
+  }).catch(function(){});
+}
+function myBal(){
+  var a=adminAddr();
+  fetch('/api/me?addr='+a).then(function(r){return r.json();}).then(function(d){
+    // 管理员本人资金: 用真实账户数据
+    fetch('/api/real_balance').then(function(r){return r.json();}).then(function(b){
+      if(!b.error){
+        $('adDep').textContent='$'+(b.collateral!=null?b.collateral:'-');
+        $('adEq').textContent='$'+(b.netWorth!=null?b.netWorth:'-');
+      }
+    }).catch(function(){});
+    fetch('/api/mom_pnl').then(function(r){return r.json();}).then(function(m){
+      $('adPnl').textContent=(m.pnl!=null)?((m.pnl>0?'+':'')+m.pnl):'-';
+      $('adPnl').style.color=(m.pnl>=0)?'#1fdd8b':'#ff5a5a';
+    }).catch(function(){});
+    fetch('/api/poly').then(function(r){return r.json();}).then(function(d){
+      var p=d.poly||{};
+      $('adPolyN').textContent=(p.positions!=null)?p.positions:'-';
+      $('adPolyPnl').textContent=(p.totalPnl!=null)?((p.totalPnl>0?'+':'')+p.totalPnl):'-';
+    }).catch(function(){});
+  }).catch(function(){});
+  fetch('/api/current_position').then(function(r){return r.json();}).then(function(d){
+    if(d.hasPosition){
+      var p=d.position||{};
+      $('rNoPos').style.display='none';
+      $('rDir').textContent=p.side; $('rDir').className='tag '+(p.side=='UP'?'up':'dn');
+      $('rUsd').textContent='$'+p.usd; $('rStart').textContent=p.start;
+      $('rNow').textContent=p.now; $('rDev').textContent=(p.dev>0?'+':'')+p.dev+'%';
+      var fp=p.floatPnlUsd||0;
+      $('rFloat').textContent=(fp>0?'+':'')+fp+'$'; $('rFloat').className=(fp>=0?'up':'dn');
+      $('rRemain').textContent=p.remain;
+    } else {
+      $('rNoPos').style.display='';
+      $('rDir').textContent='—'; $('rUsd').textContent='—'; $('rStart').textContent='—';
+      $('rNow').textContent='—'; $('rDev').textContent='—'; $('rFloat').textContent='—'; $('rRemain').textContent='—';
+    }
+  }).catch(function(){});
+}
+
+function ref(){
+  fetch('/api/twap').then(function(r){return r.json();}).then(function(s){
+    if(!s||!s.ts)return;
+    $('dev').textContent=(s.dev>0?'+':'')+s.dev+'%';$('dev').className='big '+(s.dev>0?'up':'dn');
+    $('tslug').textContent=(s.round&&s.round.slug)||'-';$('trem').textContent=s.remain||'-';
+    $('tbase').textContent=s.base;$('tlast').textContent=s.last;
+    $('task').textContent=(s.round&&s.round.ask)||'-';$('twsig').textContent=s.signal||'-';
+    if(s.signal&&s.signal!=='观察'&&s.signal!==lastSig){speak('建议买'+(s.signal==='UP'?'涨':'跌'));lastSig=s.signal;}
+    if(s.remain!=null&&s.remain<=20&&s.remain>=0&&s.remain%10===0){speak('本轮剩余'+s.remain+'秒');}
+  }).catch(function(){});
+}
+
+function stateOnly(){
+  fetch('/api/state').then(function(r){return r.json();}).then(function(d){
+    $('sysRunner').textContent='系统:'+((d.runner&&d.runner.enabled)?'运行':'停止');
+    var st=d.stats||{};$('ss').textContent=(st.samples!=null)?st.samples:'-';
+    $('ow').textContent=(st.overall!=null)?(st.overall+'%'):'-';
+    var bt=st.by_thr||{};$('stt').innerHTML=Object.keys(bt).map(function(k){return '<tr><td>'+k+'%</td><td>'+((bt[k][0]!=null)?bt[k][0]+'%':'-')+'</td><td>'+bt[k][1]+'</td></tr>';}).join('');
+  }).catch(function(){});
+}
+
+
+var kdata=[],viewStart=0,viewN=100;
+$('tf').onchange=function(){drawK();};
+function drawK(){
+  fetch('/api/klines?interval='+($('tf').value||'5m')+'&limit=120').then(function(r){return r.json();}).then(function(k){
+    if(!Array.isArray(k)||k.length<30)return;
+    kdata=k;viewN=Math.min(120,kdata.length);viewStart=Math.max(0,kdata.length-viewN);renderK();
+  }).catch(function(){});
+}
+function renderK(){
+  var cv=$('kline');if(!cv)return;var g=cv.getContext('2d'),W=cv.width,H=cv.height;g.clearRect(0,0,W,H);
+  var end=Math.min(viewStart+viewN,kdata.length),seg=kdata.slice(viewStart,end),n=seg.length;if(n<2)return;
+  var c=seg.map(function(x){return x[4];});
+  var lo=seg.map(function(x){return x[3];}),hi=seg.map(function(x){return x[2];});
+  var mn=Math.min.apply(null,lo),mx=Math.max.apply(null,hi);
+  var mid=[],bup=[],bdn=[],i,s,m,sd;
+  for(i=0;i<n;i++){if(i<19){mid.push(null);bup.push(null);bdn.push(null);continue;}
+    s=c.slice(i-19,i+1);m=s.reduce(function(a,b){return a+b;},0)/20;sd=Math.sqrt(s.reduce(function(a,b){return a+(b-m)*(b-m);},0)/20);
+    mid.push(m);bup.push(m+2*sd);bdn.push(m-2*sd);}
+  var su=[],atr=0,ub=null,db=null,dir=1;
+  for(i=0;i<n;i++){if(i===0){su.push(null);continue;}
+    var h=seg[i][2],l=seg[i][3],pc=c[i-1],tr=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));atr=atr?((atr*9+tr)/10):tr;
+    var hl=(h+l)/2,u=hl+3*atr,d=hl-3*atr;
+    if(ub!==null){u=(u<ub||pc>ub)?u:ub;d=(d>db||pc<db)?d:db;}
+    if(pc>ub)dir=1;else if(pc<db)dir=-1;ub=u;db=d;su.push(dir===1?db:u);}
+  var all=c.concat(bup.filter(Boolean)).concat(bdn.filter(Boolean)).concat(su.filter(Boolean));
+  mn=Math.min.apply(null,[mn].concat(all));mx=Math.max.apply(null,[mx].concat(all));
+  var dd=mx-mn||1;
+  function X(i){return i/(n-1)*(W-40)+4;}
+  function Y(v){return H-(v-mn)/dd*(H-24)-8;}
+  var bw=Math.max(2,(W-40)/n*0.6);
+  seg.forEach(function(x,i){var o=x[1],cl=x[4],h=x[2],l=x[3],upc=cl>=o;g.strokeStyle=g.fillStyle=upc?'#ff5a5a':'#1fdd8b';
+    g.beginPath();g.moveTo(X(i),Y(h));g.lineTo(X(i),Y(l));g.stroke();
+    var y1=Y(o),y2=Y(cl);g.fillRect(X(i)-bw/2,Math.min(y1,y2),bw,Math.max(1,Math.abs(y2-y1)));});
+  function line(arr,col){g.strokeStyle=col;g.beginPath();var st=false;arr.forEach(function(v,i){if(v==null){st=false;return;}if(!st){g.moveTo(X(i),Y(v));st=true;}else g.lineTo(X(i),Y(v));});g.stroke();}
+  line(bup,'#f4a340');line(mid,'#8fa0bf');line(bdn,'#f4a340');line(su,'#1fdd8b');
+}
+$('kline').addEventListener('wheel',function(e){e.preventDefault();viewN=Math.max(20,Math.min(200,viewN+(e.deltaY>0?8:-8)));viewStart=Math.max(0,Math.min(kdata.length-viewN,viewStart));renderK();});
+var kdrag=null;
+$('kline').addEventListener('mousedown',function(e){kdrag={x:e.clientX,s:viewStart};});
+window.addEventListener('mousemove',function(e){if(kdrag){viewStart=Math.max(0,Math.min(kdata.length-viewN,kdrag.s-Math.round((e.clientX-kdrag.x)/6)));renderK();}});
+window.addEventListener('mouseup',function(){kdrag=null;});
+setInterval(drawK,20000);drawK();
+
+setInterval(stateOnly,5000);setInterval(loadUsers,8000);setInterval(myBal,6000);setInterval(momPnl,8000);setInterval(realBal,6000);setInterval(ref,1000);
+ref();loadUsers();myBal();stateOnly();momPnl();realBal();
+</script>
+</body>
+</html>

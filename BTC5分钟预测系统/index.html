@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Polymarket-BTC5 自动交易台</title>
+<style>
+ :root{--bg:#050810;--panel:#0d1220;--line:#1d2a40;--txt:#e8effa;--mut:#93a1c0;--up:#ff5a5a;--dn:#1fdd8b;--acc:#f4a340}
+ *{box-sizing:border-box;margin:0;padding:0;font-family:Segoe UI,system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
+ body{background:radial-gradient(900px 520px at 15% -10%,#182a47 0%,#050810 60%);color:var(--txt);min-height:100vh;padding:20px}
+ .w{max-width:1120px;margin:0 auto}
+ header{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+ .card{background:linear-gradient(180deg,#101a2c,#0a101c);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+ .lbl{font-size:11px;letter-spacing:1px;color:var(--mut);text-transform:uppercase;margin-bottom:6px}
+ .big{font-size:40px;font-weight:750}
+ .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+ .btn{cursor:pointer;border:0;border-radius:9px;padding:9px 14px;font-size:14px;font-weight:600}
+ .b_up{background:var(--up);color:#100}.b_dn{background:var(--dn);color:#042}.b_acc{background:var(--acc);color:#210}
+ .b_ghost{margin-left:8px;background:#16233b;color:var(--txt)}
+ .mut{color:var(--mut);font-size:12px}
+ .wiz{background:linear-gradient(90deg,#111d33,#0c1220);border:1px dashed var(--line);border-radius:12px;padding:12px 16px;line-height:1.9}
+ .tag{font-size:12px;padding:3px 9px;border-radius:99px;background:#12203a;border:1px solid var(--line);color:var(--mut)}
+ .dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px}
+ .ok{background:var(--dn)}.no{background:var(--up)}.mid{background:var(--acc)}
+ .bar{height:9px;background:#131e33;border-radius:6px;overflow:hidden;margin:6px 0}
+ .bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--dn),var(--up))}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #14203a}
+ th{color:var(--mut);font-weight:400}
+ .scrolly{max-height:260px;overflow:auto}
+ canvas{width:100%;height:150px;display:block;background:#070c15;border-radius:8px}
+ a.pill{color:var(--acc);text-decoration:none}
+</style></head><body><div class="w">
+<header>
+  <h1 style="font-size:21px">Polymarket<b style="color:var(--up)">·</b>BTC5 自动交易台</h1>
+  <div><span class="tag" id="wstate">未绑定钱包</span> <span class="tag" id="live">…</span></div>
+</header>
+
+<!-- 绑定向导 -->
+<div class="card">
+  <div class="lbl">如何授权你的钱包（用户自行绑定，私钥永远留在你本机）</div>
+  <div class="wiz">
+   <b>请按顺序完成：</b><br/>
+   ① 用你的<b>加密货币钱包（如 MetaMask / 支持浏览器钱包）</b>点击下方“连接钱包”——这是能<b>签名（下单）</b>的钱包，不是 Polymarket 只读地址。<br/>
+   ② 在弹出的钱包里<b>连接/确认</b>。系统只读取你的<b>地址</b>，不会、也看不到你的私钥。<br/>
+   ③ 点“授权验证”——在钱包里<b>签名一条短消息</b>（不给任何人你的私钥），证明这是你的地址，系统即标记你为“已授权”。<br/>
+   ④ 开启下方 <b>自动买卖</b>：之后本系统按 BTC 信号与 Up/Down 共振，在你的本地/授权端执行下单（私钥不经服务器）。
+   <div class="row" style="margin-top:8px">
+     <span class="tag">选择网络：</span>
+     <select id="net" style="background:#0b1120;border:1px solid #1d2a40;color:#e8effa;border-radius:8px;padding:6px">
+       <option value="Polygon">Polygon（正确·Polymarket）</option>
+       <option value="BSC">BNB Chain / BSC（不可直接用）</option>
+       <option value="Ethereum">Ethereum</option>
+     </select>
+     <span class="tag" id="netTip">需 Polygon USDC + 少量 MATIC(gas)</span>
+   </div>
+   <div class="row" style="margin-top:10px">
+     <button class="btn b_acc" id="conn">连接钱包</button>
+     <button class="btn b_ghost" id="authBtn" disabled>①→② 授权验证</button>
+     <span class="tag" id="addr">未连接</span>
+   </div>
+  </div>
+</div>
+
+<!-- 事件卡：Up/Down + 概率 + 倒计时 -->
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <div><div class="lbl">BTC · 5分钟 涨跌事件</div><div class="big" id="pu" style="font-size:30px">—</div><small>Up(YES)概率</small></div>
+    <div style="text-align:right"><div class="tag" id="timer">…</div><div class="big" id="price" style="font-size:30px">—</div><small>现价</small></div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <button class="btn b_up" id="buyUp" disabled>买 涨 UP</button>
+    <button class="btn b_dn" id="buyDn" disabled>买 跌 DOWN</button>
+    <span class="tag">共振建议：<b id="reco">观望</b></span>
+    <button class="btn b_ghost" id="vox">语音播报</button>
+  </div>
+  <div class="lbl" style="margin-top:10px">自动买卖</div>
+  <label class="row"><span>开启后按信号自动下单</span>
+    <input type="checkbox" id="auto"/><span class="mut">（需先完成钱包授权）</span></label>
+  <div class="lbl" style="margin-top:9px">每单金额(USDC)</div><input type="number" id="size" value="5" min="1" style="width:140px;background:#0c1322;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:7px"/>
+</div>
+
+<!-- 底部：表格统计 + 迷你图 -->
+<div class="card"><div class="lbl">最近注单流水（仅本钱包）</div>
+ <table class="scrolly"><thead><tr><th>TIME</th><th>TECH</th><th>SUPER</th><th>RSI</th><th>BOLL</th><th>p_u/p_d</th><th>SIDE</th><th>结果</th><th>PNL</th></tr></thead>
+ <tbody id="tb"></tbody></table></div>
+<div class="card"><div class="lbl">BTC / SUPER / BOLL 迷你图</div><canvas id="cv"></canvas>
+ <div class="row"><span class="tag" id="wins">胜0</span><span class="tag" id="loss">负0</span><span class="tag" id="equity">净值 —</span></div></div>
+
+<script>
+ const $=id=>document.getElementById(id);
+ let acct=null, signed=false, uid=Math.random().toString(36).slice(2,7);
+ function log(x){console.log(x)}
+ const netSel=$('net');
+ if(netSel){ netSel.onchange=async()=>{ try{ const r=await fetch('/api/onboard?net='+encodeURIComponent(netSel.value)); const d=await r.json(); $('netTip').textContent=(d.msg||'') + (d.need?(' 需要: '+d.need.join(' + ')):''); }catch(e){} }; }
+ $('conn').onclick=async()=>{ if(!window.ethereum){alert('未检测到浏览器钱包(如MetaMask)。请安装/打开钱包后重试。');return;} try{
+   const acc=await window.ethereum.request({method:'eth_requestAccounts'}); acct=acc[0]; $('addr').textContent=acct.slice(0,8)+'…'; $('wstate').textContent='已连接·未授权'; $('authBtn').disabled=false; $('authBtn').classList.remove('disabled'); $('authBtn').textContent='③ 授权验证'; }catch(e){alert('连接被取消：'+e.message);}};
+ $('authBtn').onclick=async()=>{ if(!acct)return; try{ const msg='Polymarket-BTC5 授权(单条消息,不含私钥)'; await window.ethereum.request({method:'personal_sign',params:[msg,acct]}); signed=true; $('wstate').textContent='已授权 ✓'; fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:acct})}); $('buyUp').disabled=false; $('buyDn').disabled=false; $('auto').disabled=false; }catch(e){alert('授权未完成：'+e.message);}};
+ $('auto').onchange=()=>{ if(!signed){alert('请先完成钱包授权'); $('auto').checked=false; return;} fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:acct, auto:$('auto').checked, size_usdc:+$('size').value}))};};
+ $('buyUp').onclick=()=>demo('YES'); $('buyDn').onclick=()=>demo('NO');
+ function demo(side){ $('reco').textContent='BUY '+side; speak('买'+ (side==='YES'?'涨':'跌') ); }
+ $('vox').onclick=()=> speak($('reco').textContent);
+ function speak(t){ if('speechSynthesis' in window){const u=new SpeechSynthesisUtterance('建议'+t);u.lang='zh-CN';speechSynthesis.cancel();speechSynthesis.speak(u);} }
+ async function poll(){ try{ const r=await fetch('/state.json',{cache:'no-store'}); const d=await r.json(); $('price').textContent=d.price!=null?d.price.toFixed(2):'—'; $('pu').textContent=(d.pu??.5).toFixed(2); $('reco').textContent=d.reco||'观望'; $('sysuper')||null; const tb=$('tb'); tb.innerHTML=(d.history||[]).slice(-20).reverse().map(x=>`<tr><td>${x.t||''}</td><td>${x.tech||''}</td><td>${x.super||'-'}</td><td>${x.rsi??'-'}</td><td>${x.boll||''}</td><td>${x.pu? x.pu.toFixed(2)+'/'+x.pd.toFixed(2):''}</td><td>${x.side||'-'}</td><td>${x.res||''}</td><td>${x.pnl??'-'}</td></tr>`).join(''); draw(d.kl||[]); }catch(e){ setTimeout(poll,2500); } setTimeout(poll,2500);}
+ function draw(kl){ const c=$('cv'),g=c.getContext('2d'); g.clearRect(0,0,c.width,c.height); if(!kl||kl.length<2)return; const W=c.width,H=c.height,d=Math.max(Math.max(...kl)-Math.min(...kl),1e-9),mn=Math.min(...kl); g.beginPath();g.strokeStyle='#ff5a5a'; kl.forEach((v,i)=>{const x=i/(kl.length-1)*W,y=H-(v-mn)/d*H*0.9-6; i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke(); }
+ $('conn'); poll();
+</script></body></html>

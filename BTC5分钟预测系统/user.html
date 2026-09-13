@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BTC5 预测交易台 · 用户</title>
+<style>
+:root{--bg:#05070e;--panel:#0c111d;--line:#1b2740;--txt:#e7eefb;--mut:#8fa0bf;--up:#ff5a5a;--dn:#1fdd8b;--acc:#f4a340}
+*{box-sizing:border-box;margin:0;padding:0;font-family:Segoe UI,system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
+body{background:radial-gradient(1000px 560px at 12% -10%,#16263f,#05070e 62%);color:var(--txt);min-height:100vh;padding:16px}
+.w{max-width:1120px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.card{background:linear-gradient(180deg,#0f1829,#0a0f1a);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.lbl{font-size:11px;letter-spacing:1px;color:var(--mut);text-transform:uppercase;margin-bottom:6px}
+.big{font-size:32px;font-weight:750}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{cursor:pointer;border:0;border-radius:9px;padding:8px 13px;font-weight:600;font-size:14px}
+.go{background:var(--dn);color:#042}.st{background:var(--up);color:#120}.acc{background:var(--acc);color:#221300}.ghost{background:#16233b;color:var(--txt)}
+.tag{font-size:12px;padding:3px 9px;border-radius:99px;background:#12203a;border:1px solid var(--line);color:var(--mut)}
+.up{color:var(--up)}.dn{color:var(--dn)}.mut{color:var(--mut);font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px solid #14203a;padding:6px;text-align:left}th{color:var(--mut);font-weight:400}
+.scrolly{max-height:240px;overflow:auto}
+input,select{background:#0b1120;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px}
+#kline{width:100%;height:340px;background:#070c15;border-radius:8px;cursor:grab;display:block}
+.log{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#9fe8b0;max-height:150px;overflow:auto;white-space:pre-wrap;background:#070a10;border:1px solid var(--line);border-radius:8px;padding:8px}
+</style>
+</head>
+<body>
+<div class="w">
+<header><h1 style="font-size:20px">Polymarket<b class="up">·</b>BTC5 预测交易台</h1>
+<div><span class="tag" id="wstate">未绑定</span><span class="tag" id="live">…</span></div></header>
+
+<div class="card">
+  <div class="lbl">钱包绑定</div>
+  <div class="row">
+    <button class="btn acc" id="conn">连接钱包</button>
+    <button class="btn ghost" id="auth" disabled>授权验证</button>
+    <span class="tag" id="addr">未连接</span>
+    <button class="btn ghost" id="vox">语音开</button>
+  </div>
+  <div class="mut" id="conntip"></div>
+</div>
+
+<div class="card">
+  <div class="lbl">我的资金 · Polymarket 实盘（Deposit Wallet）</div>
+  <div class="row">
+    <span class="tag">可用 <b id="myDep">—</b></span>
+    <span class="tag">净值 <b id="myEq">—</b></span>
+    <span class="tag">收益 <b id="myPnl">—</b></span>
+    <span class="tag">胜/负 <b id="myWl">—</b></span>
+  </div>
+  <div class="mut" id="myNote">读取 Polymarket Deposit Wallet 实盘…</div>
+</div>
+
+<div class="card">
+  <div class="lbl">实时持仓（当前在途 · 结算后自动切下一轮）</div>
+  <div class="row" id="posRow">
+    <span class="tag" id="rNoPos">无在途持仓（策略等待信号）</span>
+    <span class="tag">方向 <b id="rDir">-</b></span>
+    <span class="tag">金额 <b id="rUsd">-</b></span>
+    <span class="tag">轮起点 <b id="rStart">-</b></span>
+    <span class="tag">当前BTC <b id="rNow">-</b></span>
+    <span class="tag">偏离 <b id="rDev">-</b></span>
+    <span class="tag">浮动盈亏 <b id="rFloat" class="up">-</b></span>
+    <span class="tag">剩余 <b id="rRemain">-</b>s</span>
+  </div>
+  <div class="mut">浮动盈亏按币安实时价估算（买UP:BTC涨则正;买DOWN:BTC跌则正）</div>
+</div>
+
+<div class="card">
+<div class="card">
+  <div class="lbl">本机私钥（可选，本机签名用）</div>
+  <div class="row">
+    <input id="pk" type="password" placeholder="0x... 仅本机保存" style="flex:1">
+    <button class="btn ghost" id="savePk">保存私钥</button>
+  </div>
+  <div class="mut">私钥只存在服务器，用于本机自动签名下单；不填则无法自动下单</div>
+</div>
+<div class="card">
+  <div class="lbl">充值入账（填入USDC金额后登记，按USDC记账）</div>
+  <div class="row">
+    <input id="depAddr" placeholder="你的钱包地址 0x...（连接后自动填充）" style="flex:1;min-width:200px">
+  </div>
+  <div class="row" style="margin-top:8px">
+    <input id="depAmt" type="number" value="10" min="0" style="width:110px">
+    <span class="tag">USDC</span>
+    <button class="btn acc" id="depBtn">登记充值</button>
+  </div>
+  <div class="mut" id="depTip"></div>
+</div>
+
+  <div class="lbl">实时行情 · TWAP（结算源）</div>
+  <div class="row"><div class="big" id="dev">—</div><span class="tag" id="dir">—</span></div>
+  <div>当前轮 <span id="slug">—</span> · 剩余 <b id="rem">—</b>s · 起始TWAP <b id="base">—</b> · 当前 <b id="last">—</b></div>
+  <div>信号 <b id="sig">—</b> · 盘口ask <b id="ask">—</b></div>
+</div>
+
+<div class="card">
+  <div class="lbl">自动买卖</div>
+  <div class="row">
+    <button class="btn go" id="start">▶ 启动</button>
+    <button class="btn st" id="stop">⏸ 停止</button>
+    <label class="tag">每单USDC <input id="size" type="number" value="1" step="0.1" min="0.1" style="width:70px"><button class="btn ghost" id="saveSize" style="padding:4px 8px;margin-left:4px">保存</button></label>
+    <label class="tag">周期 <select id="tf"><option value="5m">5m</option><option value="15m">15m</option><option value="1h">1h</option></select></label>
+  </div>
+</div>
+
+<div class="card">
+  <div class="lbl">BTC K线 · 阴/阳蜡烛 + BOLL(20,2) + SUPER(10,3)（滚轮缩放 / 拖动平移）</div>
+  <canvas id="kline" width="1200" height="340"></canvas>
+  <div class="mut" id="kleg">红=阳(涨) 绿=阴(跌) 橙=BOLL 绿线=SUPER · 滚轮缩放 · 拖动平移</div>
+</div>
+
+<div class="card">
+  <div class="lbl">交易记录 & 胜率</div>
+  <div class="row"><span class="tag">样本 <b id="ss">—</b></span><span class="tag">整体胜率 <b id="ow">—</b></span><span class="tag">系统 <b id="sysRunner">—</b></span></div>
+  <table class="scrolly"><thead><tr><th>时间</th><th>方向</th><th>金额</th><th>信号</th><th>BTC价</th></tr></thead><tbody id="tb"></tbody></table>
+</div>
+
+<div class="card"><div class="lbl">实时日志</div><div class="log" id="log">等待…</div></div>
+</div>
+
+<script>
+var acct=null, isAdmin=false, voiceOn=true, lastSig='';
+function $(id){return document.getElementById(id);}
+function log(m){var el=$('log');if(el)el.textContent=new Date().toLocaleTimeString()+' '+m+'\n'+el.textContent;}
+var _zhVoice=null, _unlocked=false;
+function _loadVoice(){
+  try{
+    var vs=speechSynthesis.getVoices()||[];
+    _zhVoice=vs.filter(function(x){return /xiaoxiao|xiaoyi|yaoyao|tingting|huihui|siri/i.test(x.name);})[0]
+      ||vs.filter(function(x){return x.lang&&x.lang.indexOf('zh')===0;})[0]||null;
+  }catch(e){}
+}
+if('speechSynthesis'in window){_loadVoice();speechSynthesis.onvoiceschanged=_loadVoice;}
+// 首次触摸/点击: 解锁手机音频策略(必须用户手势后才能自动发声)
+function _unlockAudio(){
+  if(_unlocked||!('speechSynthesis'in window))return;
+  _unlocked=true;
+  try{var u=new SpeechSynthesisUtterance('');u.volume=0;speechSynthesis.speak(u);}catch(e){}
+  try{speechSynthesis.resume();}catch(e){}
+}
+document.addEventListener('pointerdown',_unlockAudio,{once:true});
+document.addEventListener('touchstart',_unlockAudio,{once:true});
+document.addEventListener('click',_unlockAudio,{once:true});
+function speak(t){if(!voiceOn||!('speechSynthesis'in window))return;try{
+  speechSynthesis.cancel();
+  var u=new SpeechSynthesisUtterance(t);u.lang='zh-CN';u.rate=1.0;u.pitch=1.0;
+  if(_zhVoice)u.voice=_zhVoice;else{u.voice=_zhVoice;}
+  u.onend=function(){_unlocked=false;};
+  speechSynthesis.speak(u);
+  // 部分手机需在 speak 后恢复
+  setTimeout(function(){try{speechSynthesis.resume();}catch(e){}},100);
+}catch(e){}}
+
+$('conn').onclick=function(){
+  if(!window.ethereum){$('conntip').textContent='未检测到钱包：请在 TP DApp 浏览器或电脑 MetaMask 中打开本页面';return;}
+  window.ethereum.request({method:'eth_requestAccounts'}).then(function(a){
+    acct=a[0];$('addr').textContent=acct.slice(0,10)+'…';$('auth').disabled=false;
+    $('wstate').textContent='已连接·未授权';$('conntip').textContent='已连接: '+acct;
+    if($('depAddr')&&!$('depAddr').value)$('depAddr').value=acct;
+    myBal();loadUsers();
+  }).catch(function(e){$('conntip').textContent='连接失败: '+(e.code||'')+' '+String(e.message).slice(0,80);});
+};
+$('auth').onclick=function(){
+  if(!acct){$('conntip').textContent='请先连接钱包';return;}
+  var hex='0x'+Array.prototype.map.call(new TextEncoder().encode('BTC5授权'),function(x){return x.toString(16).padStart(2,'0');}).join('');
+  window.ethereum.request({method:'personal_sign',params:[hex,acct]}).then(function(){
+    $('wstate').textContent='已授权 ✓';$('conntip').textContent='已授权';
+    fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:acct})}).then(myBal);
+  }).catch(function(e){$('conntip').textContent='授权失败: '+String(e.message).slice(0,80);});
+};
+$('vox').onclick=function(){voiceOn=!voiceOn;this.textContent=voiceOn?'语音开':'语音关';};
+$('start').onclick=function(){fetch('/api/start').then(function(){ref();});};
+$('stop').onclick=function(){fetch('/api/stop').then(function(){ref();});};
+$('saveSize').onclick=function(){
+  if(!acct){$('conntip').textContent='请先连接钱包';return;}
+  fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:acct,size_usdc:parseFloat($('size').value)||1})}).then(function(r){return r.json();}).then(function(){log('每单改为 $'+$('size').value);});
+};
+$('savePk').onclick=function(){
+  var addr=(acct||$('depAddr').value||'').trim().toLowerCase();
+  if(!addr||addr.length!==42||addr.indexOf('0x')!==0){$('conntip').textContent='请先连接钱包或填地址再保存私钥';return;}
+  var pk=$('pk').value.trim();
+  if(!pk||pk.length<10){$('conntip').textContent='请输入有效的Polymarket钱包私钥(0x...)';return;}
+  if(!acct){acct=addr;$('addr').textContent=addr.slice(0,10)+'…';}
+  // 确保用户存在
+  fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:addr})})
+    .then(function(){return fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:addr,pk:pk,pk_on:true})});})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d.user&&d.user.pk){$('conntip').textContent='✓ 已保存该钱包私钥，独立自动开仓已启用';log('已保存钱包私钥 '+addr.slice(0,8)+'…');$('pk').value='';}
+      else $('conntip').textContent='保存私钥失败: '+((d.err)||'未知');
+    }).catch(function(e){$('conntip').textContent='保存失败: '+String(e.message).slice(0,60);});
+};
+$('depBtn').onclick=function(){
+  var addr=(acct||$('depAddr').value||'').trim().toLowerCase();
+  if(!addr||addr.length!==42||addr.indexOf('0x')!==0){$('depTip').textContent='请填写有效的钱包地址(0x...)或先连接钱包';return;}
+  var amt=parseFloat($('depAmt').value)||0;
+  if(amt<=0){$('depTip').textContent='请输入有效充值金额';return;}
+  if(!acct){acct=addr;$('addr').textContent=addr.slice(0,10)+'…';}
+  // 确保用户存在(未授权也能充值): 先注册再入账
+  fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:addr})})
+    .then(function(){return fetch('/api/deposit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({addr:addr,amount:amt,currency:'USDC'})});})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d.user){$('depTip').textContent='✓ 已登记充值 $'+amt+' USDC，当前余额 $'+d.user.deposit;log('充值登记 '+addr.slice(0,8)+'… $'+amt+' USDC');myBal();}
+      else $('depTip').textContent='充值失败: '+((d.err)||'未知错误');
+    }).catch(function(e){$('depTip').textContent='充值失败: '+String(e.message).slice(0,60);});
+};
+$('tf').onchange=function(){drawK();};
+
+var kdata=[],viewStart=0,viewN=100;
+function drawK(){
+  fetch('/api/klines?interval='+($('tf').value||'5m')+'&limit=300').then(function(r){return r.json();}).then(function(k){
+    if(!Array.isArray(k)||k.length<30)return;
+    kdata=k;viewN=Math.min(120,kdata.length);viewStart=Math.max(0,kdata.length-viewN);renderK();
+  }).catch(function(){});
+}
+function renderK(){
+  var cv=$('kline');if(!cv)return;var g=cv.getContext('2d'),W=cv.width,H=cv.height;g.clearRect(0,0,W,H);
+  var end=Math.min(viewStart+viewN,kdata.length),seg=kdata.slice(viewStart,end),n=seg.length;if(n<2)return;
+  var c=seg.map(function(x){return x[4];});
+  var hi=seg.map(function(x){return x[2];}),lo=seg.map(function(x){return x[3];});
+  var mn=Math.min.apply(null,lo),mx=Math.max.apply(null,hi);
+  var mid=[],bup=[],bdn=[],i,j,s,m,sd;
+  for(i=0;i<n;i++){if(i<19){mid.push(null);bup.push(null);bdn.push(null);continue;}
+    s=c.slice(i-19,i+1);m=s.reduce(function(a,b){return a+b;},0)/20;sd=Math.sqrt(s.reduce(function(a,b){return a+(b-m)*(b-m);},0)/20);
+    mid.push(m);bup.push(m+2*sd);bdn.push(m-2*sd);}
+  var su=[],atr=0,ub=null,db=null,dir=1;
+  for(i=0;i<n;i++){if(i===0){su.push(null);continue;}
+    var h=seg[i][2],l=seg[i][3],pc=c[i-1],tr=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));atr=atr?((atr*9+tr)/10):tr;
+    var hl=(h+l)/2,u=hl+3*atr,d=hl-3*atr;
+    if(ub!==null){u=(u<ub||pc>ub)?u:ub;d=(d>db||pc<db)?d:db;}
+    if(pc>ub)dir=1;else if(pc<db)dir=-1;ub=u;db=d;su.push(dir===1?db:u);}
+  var all=c.concat(bup.filter(Boolean)).concat(bdn.filter(Boolean)).concat(su.filter(Boolean));
+  mn=Math.min.apply(null,[mn].concat(all));mx=Math.max.apply(null,[mx].concat(all));
+  var dd=mx-mn||1;
+  function X(i){return i/(n-1)*(W-40)+4;}
+  function Y(v){return H-(v-mn)/dd*(H-24)-8;}
+  var bw=Math.max(2,(W-40)/n*0.6);
+  seg.forEach(function(x,i){var o=x[1],cl=x[4],h=x[2],l=x[3],upc=cl>=o;g.strokeStyle=g.fillStyle=upc?'#ff5a5a':'#1fdd8b';
+    g.beginPath();g.moveTo(X(i),Y(h));g.lineTo(X(i),Y(l));g.stroke();
+    var y1=Y(o),y2=Y(cl);g.fillRect(X(i)-bw/2,Math.min(y1,y2),bw,Math.max(1,Math.abs(y2-y1)));});
+  function line(arr,col){g.strokeStyle=col;g.beginPath();var st=false;arr.forEach(function(v,i){if(v==null){st=false;return;}if(!st){g.moveTo(X(i),Y(v));st=true;}else g.lineTo(X(i),Y(v));});g.stroke();}
+  line(bup,'#f4a340');line(mid,'#8fa0bf');line(bdn,'#f4a340');line(su,'#1fdd8b');
+}
+$('kline').addEventListener('wheel',function(e){e.preventDefault();viewN=Math.max(20,Math.min(200,viewN+(e.deltaY>0?8:-8)));viewStart=Math.max(0,Math.min(kdata.length-viewN,viewStart));renderK();});
+var drag=null;
+$('kline').addEventListener('mousedown',function(e){drag={x:e.clientX,s:viewStart};});
+window.addEventListener('mousemove',function(e){if(drag){viewStart=Math.max(0,Math.min(kdata.length-viewN,drag.s-Math.round((e.clientX-drag.x)/6)));renderK();}});
+window.addEventListener('mouseup',function(){drag=null;});
+
+function myBal(){
+  var a=acct||'0x9999c0fc24d4468afa840fc5c1b5f01775b5ee79';
+  fetch('/api/me?addr='+a).then(function(r){return r.json();}).then(function(d){
+    var u=d.user||{}, real=u.real||{};
+    var note=$('myNote');
+    // 实盘 = 各用户资金所在的 Deposit Wallet 真实余额(与管理员台一致)
+    var coll=real.collateral, net=real.netWorth;
+    if(coll!=null||net!=null){
+      $('myDep').textContent='$'+(coll!=null?coll:'-');
+      $('myEq').textContent='$'+(net!=null?net:'-');
+      if(note)note.textContent='Polymarket 实盘（Deposit Wallet）：可用 '+((coll!=null)?'$'+coll:'-')+' / 净值 '+((net!=null)?'$'+net:'-');
+    } else if(real&&real.loading){
+      $('myDep').textContent='—';$('myEq').textContent='—';
+      if(note)note.textContent='（读取 Polymarket 实盘…）';
+    } else {
+      $('myDep').textContent=u.deposit||0;$('myEq').textContent=u.equity||0;
+      if(note)note.textContent='（实盘待更新）';
+    }
+    $('myPos').textContent='—';
+    $('myPnl').textContent=((u.equity||0)-(u.deposit||0)).toFixed(2);
+    $('myWl').textContent=(u.wins||0)+'/'+(u.loss||0);
+    if(u.size_usdc)$('size').value=u.size_usdc;
+  }).catch(function(){});
+
+  fetch('/api/current_position').then(function(r){return r.json();}).then(function(d){
+    if(d.hasPosition&&d.position){
+      var p=d.position;
+      $('rNoPos').style.display='none';
+      $('rDir').textContent=p.side; $('rDir').className='tag '+(p.side=='UP'?'up':'dn');
+      $('rUsd').textContent='$'+p.usd; $('rStart').textContent=p.start;
+      $('rNow').textContent=p.now; $('rDev').textContent=(p.dev>0?'+':'')+p.dev+'%';
+      var fp=p.floatPnlUsd||0;
+      $('rFloat').textContent=(fp>0?'+':'')+fp+'$'; $('rFloat').className=(fp>=0?'up':'dn');
+      $('rRemain').textContent=p.remain;
+    } else {
+      $('rNoPos').style.display='';
+      $('rDir').textContent='—'; $('rUsd').textContent='—'; $('rStart').textContent='—';
+      $('rNow').textContent='—'; $('rDev').textContent='—'; $('rFloat').textContent='—'; $('rRemain').textContent='—';
+    }
+  }).catch(function(){});
+}
+function loadUsers(){}
+function ref(){
+  fetch('/api/state').then(function(r){return r.json();}).then(function(d){
+    $('live').textContent=(d.runner&&d.runner.enabled)?'运行中':'已停止';
+    $('sysRunner').textContent=(d.runner&&d.runner.enabled)?'运行':'停止';
+    var st=d.stats||{};$('ss').textContent=(st.samples!=null)?st.samples:'-';
+    $('ow').textContent=(st.overall!=null)?(st.overall+'%'):'-';
+  }).catch(function(){});
+  // 交易记录: 只显示当前用户自己的(按充值池归属)
+  var ua=acct||$('depAddr').value||'';
+  if(ua){
+    fetch('/api/me?addr='+encodeURIComponent(ua)).then(function(r){return r.json();}).then(function(d){
+      var tr=(d.user&&d.user.trades)||[];
+      $('tb').innerHTML=tr.slice(0,30).map(function(x){
+        return '<tr><td>'+x.t+'</td><td class="'+(x.side=='UP'?'up':'dn')+'">'+x.side+'</td><td>$'+x.usd+'</td><td>'+(x.tech||'')+'</td><td>'+x.price+'</td></tr>';
+      }).join('')||'<tr><td colspan="5" class="mut">暂无交易记录</td></tr>';
+    }).catch(function(){ $('tb').innerHTML='<tr><td colspan="5" class="mut">加载失败</td></tr>'; });
+  } else {
+    $('tb').innerHTML='<tr><td colspan="5" class="mut">连接钱包或输入地址后查看自己的交易记录</td></tr>';
+  }
+  fetch('/api/twap').then(function(r){return r.json();}).then(function(s){
+    if(!s||!s.ts)return;
+    $('dev').textContent=(s.dev>0?'+':'')+s.dev+'%';$('dev').className='big '+(s.dev>0?'up':'dn');
+    $('slug').textContent=(s.round&&s.round.slug)||'-';$('rem').textContent=s.remain||'-';
+    $('base').textContent=s.base;$('last').textContent=s.last;
+    $('sig').textContent=s.signal||'-';$('ask').textContent=(s.round&&s.round.ask)||'-';$('dir').textContent=s.signal||'-';
+    if(s.signal&&s.signal!=='观察'&&s.signal!==lastSig){speak('建议买'+(s.signal==='UP'?'涨':'跌'));lastSig=s.signal;log('信号: '+s.signal);}
+    if(s.remain!=null&&s.remain<=20&&s.remain>=0&&s.remain%10===0)speak('本轮剩余'+s.remain+'秒');
+  }).catch(function(){});
+}
+setInterval(ref,1000);setInterval(drawK,20000);setInterval(myBal,8000);
+ref();drawK();myBal();
+</script>
+</body>
+</html>
