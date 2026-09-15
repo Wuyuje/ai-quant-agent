@@ -1,8 +1,8 @@
 量化机器人系统 — 版本信息
 ═══════════════════════════════════════
-版本号:     v11 (趋势策略优化版)
+版本号:     v11.1 (趋势优化 + 重启保护)
 打包时间:   2026-09-15
-Git提交:    (见commit记录)
+Git提交:    11d31c4 (最新)
 
 部署目标:
   服务器:   65.20.73.24
@@ -13,32 +13,45 @@ Git提交:    (见commit记录)
   ai-quant-saas   -> 10010/10020 (用户仪表盘+SaaS API)
 
 策略版本:
-  趋势策略(MA7):      lib/trend-strategy.js
-  震荡策略(bollinger): lib/bb-strategy.js (v10优化)
+  趋势策略(真趋势波段MA7): quant/trend-band-strategy.js  v11
+  震荡策略(布林+SUPERTREND): lib/bb-strategy.js         v10
 
-v10 改动:
-  lib/bb-strategy.js CONFIG:
-    atrStopMultiplier: 2.0 -> 1.5
-    totalLossPct:      8   -> 10
-    maxHoldHours:      2   -> 3
-  回测(125天12币): 盈亏 +0.63 -> +2.43 (+286%), 回撤 1.50 -> 1.02
+═══════════════════════════════════════
+变更历史
+═══════════════════════════════════════
 
-包含文件:
+v11.1 (2026-09-15) — 重启误平仓修复
+  文件: quant/agent-manager.js
+  问题: 引擎重启后,币安存量仓被判为"接管仓"(_managed=true),
+        走接管分支用真趋势波段宽ATR止损砍掉。
+        实际事故: HYPE 做空 1.99@76.99 → 被平 -3.00% (-0.92U)
+  修复:
+    1. 同步仓增加 _adoptGrace = now + 30分钟
+    2. _manageOnly 检查宽限期: 未过期只更新价格,不执行任何平仓
+    3. 启动日志显示 ⏳宽限N分
+  验证: 重启后5持仓全部进入宽限期,零误平
+
+v11 (2026-09-15) — 趋势策略优化
+  文件: quant/trend-band-strategy.js
+  tpMul:    5.0 -> 3.0   (止盈3ATR)
+  trailMul: 0.9 -> 2.0   (移动止盈放宽)
+  stopMul:  0.8 (保持)
+  回测(3.4年4h真实数据): 盈亏 +17.11 -> +27.35 (+60%), 回撤 5.00 -> 5.27
+  根因: 移动止盈0.9ATR太紧, 4h趋势刚启动就被扫出
+
+v10 (2026-09-15) — 震荡策略优化
+  文件: lib/bb-strategy.js
+  atrStopMultiplier: 2.0 -> 1.5
+  totalLossPct:      8   -> 10
+  maxHoldHours:      2   -> 3
+  回测(125天15m真实数据): 盈亏 +0.63 -> +2.43 (+286%), 回撤 1.50 -> 1.02
+
+═══════════════════════════════════════
+包内文件
+═══════════════════════════════════════
+  README.md                       系统总览(策略/架构/用户/运维)
+  VERSION.txt                     本文件
+  deploy.sh                       一键部署脚本
+  迁移待修清单.md                 安全加固清单(P0/P1)
   ai-quant-agent-20260915.tar.gz  完整源码(含data/和.env)
-  deploy.sh                        一键部署脚本
-  systemd/                         systemd服务定义
-  README.md                        系统说明
-
-v11 改动 (2026-09-15):
-  quant/trend-band-strategy.js:
-    tpMul:    5.0 -> 3.0   (止盈3ATR)
-    trailMul: 0.9 -> 2.0   (移动止盈放宽)
-    stopMul:  0.8 (不变)
-  回测(3.4年4h): 盈亏 +17.11 -> +27.35 (+60%), 回撤 5.00 -> 5.27
-
-v10 改动:
-  lib/bb-strategy.js CONFIG:
-    atrStopMultiplier: 2.0 -> 1.5
-    totalLossPct:      8   -> 10
-    maxHoldHours:      2   -> 3
-  回测(125天15m): 盈亏 +0.63 -> +2.43 (+286%), 回撤 1.50 -> 1.02
+  systemd/                        systemd服务定义
