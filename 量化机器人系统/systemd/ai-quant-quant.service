@@ -1,0 +1,18 @@
+[Unit]
+Description=AI Quant Agent - Quant Engine (10060)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/ai-quant-agent
+Environment=TZ=Asia/Shanghai
+Environment=QUANT_PORT=10060
+ExecStart=/usr/bin/node /root/ai-quant-agent/quant/start.js
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/ai-quant-agent/logs/quant.log
+StandardError=append:/root/ai-quant-agent/logs/quant.err.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,30 @@
+量化机器人系统 — 版本信息
+═══════════════════════════════════════
+版本号:     v10 (震荡策略优化版)
+打包时间:   2026-09-15
+Git提交:    (见commit记录)
+
+部署目标:
+  服务器:   65.20.73.24
+  目录:     /root/ai-quant-agent/
+
+服务:
+  ai-quant-quant  -> 10060 (量化引擎+管理员面板)
+  ai-quant-saas   -> 10010/10020 (用户仪表盘+SaaS API)
+
+策略版本:
+  趋势策略(MA7):      lib/trend-strategy.js
+  震荡策略(bollinger): lib/bb-strategy.js (v10优化)
+
+v10 改动:
+  lib/bb-strategy.js CONFIG:
+    atrStopMultiplier: 2.0 -> 1.5
+    totalLossPct:      8   -> 10
+    maxHoldHours:      2   -> 3
+  回测(125天12币): 盈亏 +0.63 -> +2.43 (+286%), 回撤 1.50 -> 1.02
+
+包含文件:
+  ai-quant-agent-20260915.tar.gz  完整源码(含data/和.env)
+  deploy.sh                        一键部署脚本
+  systemd/                         systemd服务定义
+  README.md                        系统说明

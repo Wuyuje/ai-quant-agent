@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Quant Agent - User Dashboard (10010/10020)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/ai-quant-agent
+Environment=TZ=Asia/Shanghai
+ExecStart=/usr/bin/node /root/ai-quant-agent/saas/start.js
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/ai-quant-agent/logs/saas.log
+StandardError=append:/root/ai-quant-agent/logs/saas.err.log
+
+[Install]
+WantedBy=multi-user.target
