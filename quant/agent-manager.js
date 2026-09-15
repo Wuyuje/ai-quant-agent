@@ -218,12 +218,17 @@ class QuantAgent {
           }
           // 将兜底'trend'归一: 趋势接管统一为ma7(管理分支一致), 且仅当确无持久化记录才允许
           if (strat === 'trend' && !persisted) strat = 'ma7';
+          // ═══ v11修复: 重启后同步到的仓标记 adoptGraceUntil(宽限期) ═══
+          // 原因: HYPE 亏损平仓事故 — 重启后无持久记录 → 标 _managed=true → 被接管分支用
+          //       真趋势波段止损砍掉(-3.00%)。现改为: 同步仓 30 分钟内不检查止损,
+          //       避免重启瞬间被宽ATR判定/边缘价格扫掉。
           this.positions[sym] = {
             symbol: sym, side, qty: Math.abs(amt), entryPrice: +p.entryPrice,
             currentPrice: +p.markPrice, margin: Math.abs(+p.entryPrice)*(+p.markPrice)/lev,
             leverage: lev, _peak: +p.entryPrice, openTime: Date.now(),
             strategy: strat,
-            _managed: !persisted   // 有持久化策略记录=引擎自己开的仓,正常策略管理; 无记录才标接管不平仓
+            _managed: !persisted,                       // 无记录=接管仓
+            _adoptGrace: Date.now() + 1800000          // v11: 接管仓30分钟止损宽限期
           };
           // 同步回持久化, 防止重复误判
           this._posStrategy[sym] = { strategy: strat, side, qty: Math.abs(amt), entryPrice: +p.entryPrice, leverage: lev };
@@ -430,16 +435,40 @@ class QuantAgent {
     for (const symbol of Object.keys(this.positions)) {
       const pos = this.positions[symbol];
       try {
-        // ⛔ 接管仓(启动时从币安同步的存量仓,_managed=true): 一律不平仓, 保护用户存量持仓
-        //    只允许本引擎自己新开的仓(非_managed)按策略管理. 用户明确要求启动不平仓.
-        if (pos._managed) { continue; }
+        // 接管仓(启动时从币安同步的存量仓,_managed=true): 参与正常止盈/止损管理
+        //  (原逻辑"接管仓一律不平仓"导致深套仓如 ENA -107% 一直不平; 现改为正常管理)
+        // 保留: 不做无谓的频繁平仓, 但止损/止盈规则正常生效
         const kl = await this._getKlinesShared(symbol, '15m', 60).catch(() => null);
         if (!kl || kl.length < 20) continue;
         const price = +toArray(kl)[kl.length-1][3];
         pos.currentPrice = price;
         const pm = this.sharedMarket ? await this.sharedMarket.getExchangeInfo().catch(()=>null) : await this.api.getExchangeInfo().catch(()=>null);
-      
+
+        // ═══ v11修复: 接管仓宽限期 — 重启后30分钟内不检查止损/止盈 ═══
+        // 原因: HYPE 亏损平仓事故 — 引擎重启后同步到的存量仓被立即用宽ATR判定扫出(-3.00%)。
+        // 宽限期内只更新价格, 不执行任何平仓逻辑, 避免重启瞬间误平。
+        if (pos._adoptGrace && Date.now() < pos._adoptGrace) {
+          if (this.isAdmin && !pos._graceLogged) {
+            pos._graceLogged = true;
+            const left = Math.round((pos._adoptGrace - Date.now())/60000);
+            this._log(`⏳ ${symbol}${pos._managed?'[接管]':''} 重启宽限期(${left}分), 暂不检查止损`);
+          }
+          continue;
+        }
         let closeReason = null, pnlToCount = null;
+
+        // ═══ 硬止损兵底: 持仓 ROI ≤ -40% 时强制平仓(防深套/爆仓) ═══
+        //  ROI = 价格变动% × 杠杆; 例: 5x 杠杆价格跌8% → ROI -40% → 平仓
+        {
+          const _lev = pos.leverage || 1;
+          const _pxPct = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice*100 : (pos.entryPrice-price)/pos.entryPrice*100;
+          const _roi = _pxPct * _lev;
+          const HARD_SL_ROI = -40;
+          // 仅在未被其他规则平仓时兜底
+          if (!closeReason && _roi <= HARD_SL_ROI) {
+            closeReason = `止损(硬止损ROI${_roi.toFixed(0)}%≤${HARD_SL_ROI}%)`;
+          }
+        }
 
         // V4策略已物理删除: v4持仓不再单独管理(不应存在v4仓; 若历史遗留则交由trendBand兜底不平)
         if (pos.strategy === 'ma7') {
@@ -488,7 +517,8 @@ class QuantAgent {
         }
 
         if (closeReason) {
-          const isExtreme = /极端|兜底|强平/.test(closeReason || '');   // 极端保护类平仓不受净回报拦截(否则极端没法止损)
+          // 止损/极端保护类平仓不受净回报拦截(否则亏损没法止损); 仅"止盈/锁利"需要净回报>0校验
+          const isExtreme = /极端|兜底|强平|止损/.test(closeReason || '');
           let estPnl = this._estimatePnl(pos, price);
           if (!isExtreme) {
             // ═══ 平仓前净回报校验: 扣除全部费用后回报率>0才允许平仓, 否则继续持有等回报率最大化 ═══
@@ -780,7 +810,8 @@ class QuantAgentManager {
     // 震荡行情交易池(布林带引擎) — 修复NaN bug后最优回测精选(交易≥3+胜率100%)
     this.BOLLINGER_POOL = ['LINKUSDT','ORDIUSDT','SOLUSDT','OPUSDT','NEARUSDT','TONUSDT','SUIUSDT','AVAXUSDT','INJUSDT','LTCUSDT'];
     // ═══ 优选震荡币池(回测验证正期望14币, 只交易这些避免亏损山寨币): DOGE/ADA/INJ/IMX/SUI/ARB/DOT/XRP/ETH/SOL/LTC/APT/SEI/LINK ═══
-    this.BOLL_PREFERRED = ['DOGEUSDT','INJUSDT','DOTUSDT','XRPUSDT','ETHUSDT','SOLUSDT','APTUSDT','LINKUSDT'];  // 震荡优选池: 排除弱币(IMX/ARB/SUI/LTC/ADA/SEI 回测亏损), 只留8个回测盈利强币
+    // v4(布林均值回归+SUPER): 回测验证核心3币池最优(胜率59%/+15.5%), 只用主流大市值币
+    this.BOLL_PREFERRED = ['ETHUSDT','DOGEUSDT','INJUSDT','UNIUSDT'];  // v5: 15m盈利币池(剔除NEAR/APT)
     // 趋势行情交易池(给趋势策略引擎调用) — 30天趋势回测精选
     // 正期望: LINK/FIL(TIA/ADA等趋势弱负期望不纳入)
     // 趋势行情交易池(给趋势引擎调用) — v6摆动结构90天回测精选(胜率≥50%+正回报)
@@ -883,7 +914,7 @@ class QuantAgentManager {
         const ma7 = pos.filter(p=>p.strategy==='ma7').length;
         const managed = pos.filter(p=>p._managed).length;
         this._log(`📊 持仓检查[管理员]: 总${pos.length} (趋势${trend}/布林${boll}/MA7${ma7}/接管${managed})${pos.length>12?' ⚠️超9上限':''}`);
-        for (const p of pos) this._log(`   ${p.symbol} ${p.side} ${p.strategy}${p._managed?'[接管]':''} 入@${p.entryPrice}`);
+        for (const p of pos) this._log(`   ${p.symbol} ${p.side} ${p.strategy}${p._managed?'[接管]':''} 入@${p.entryPrice}` + (p._adoptGrace && Date.now()<p._adoptGrace ? ` ⏳宽限${Math.round((p._adoptGrace-Date.now())/60000)}分` : ''));
       }
       // ═══ 趋势减弱提醒: 检测4h趋势从强变弱, 震荡策略可进场 ═══
       this._checkTrendWeakening().catch(()=>{});
