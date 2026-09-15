@@ -1,6 +1,6 @@
 量化机器人系统 — 版本信息
 ═══════════════════════════════════════
-版本号:     v10 (震荡策略优化版)
+版本号:     v11 (趋势策略优化版)
 打包时间:   2026-09-15
 Git提交:    (见commit记录)
 
@@ -28,3 +28,17 @@ v10 改动:
   deploy.sh                        一键部署脚本
   systemd/                         systemd服务定义
   README.md                        系统说明
+
+v11 改动 (2026-09-15):
+  quant/trend-band-strategy.js:
+    tpMul:    5.0 -> 3.0   (止盈3ATR)
+    trailMul: 0.9 -> 2.0   (移动止盈放宽)
+    stopMul:  0.8 (不变)
+  回测(3.4年4h): 盈亏 +17.11 -> +27.35 (+60%), 回撤 5.00 -> 5.27
+
+v10 改动:
+  lib/bb-strategy.js CONFIG:
+    atrStopMultiplier: 2.0 -> 1.5
+    totalLossPct:      8   -> 10
+    maxHoldHours:      2   -> 3
+  回测(125天15m): 盈亏 +0.63 -> +2.43 (+286%), 回撤 1.50 -> 1.02
