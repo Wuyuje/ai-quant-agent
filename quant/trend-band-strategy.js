@@ -2,8 +2,10 @@
 // trend-band-strategy.js — 真趋势波段策略 (4h, 低胜率+高盈亏比)
 // 核心模型(已用币安4h回测验证: 16币全正, 胜率48%, 每笔+2.8%):
 //  开仓: EMA(7>25>99)排列 + 价格突破近60根高低 + 相对EMA50偏移>1%(强单边确认)
-//  止损: 2.5 ATR (宽, 扛噪声)
-//  止盈: 5.0 ATR (高, 让利润奔跑) + 移动止盈(峰值回撤2ATR锁定利润)
+//  止损: 0.8 ATR (回测3.4年: 回撤最小5.00; 原参数2.5ATR回撤5.65)
+//  止盈: 3.0 ATR (v11回测: +20.41 > 5ATR的+16.38)
+//  移动止盈: 2.0 ATR (v11优化: 0.9→2.0 盈亏+48%, 胜率35.6%→44.1%)
+//  两阶段锁利: 盈利≥3%后回撤1.2%锁定
 // 周期: 固定4h(摩擦小, 避免15m高频被手续费吃)
 // ═══════════════════════════════════════════════════════════
 
@@ -35,9 +37,9 @@ class TrendBandStrategy {
     // ═══ 高位位置过滤: 价格处于近20根高位区(>80%)时不追多, 避免买在顶部被回调止损 ═══
     this.highPosFilterPct = opts.highPosFilterPct || 80;   // 80%
     // 出场(方案C: 两阶段锁利)
-    this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别)
-    this.tpMul = opts.tpMul || 5.0;           // 止盈5ATR(改: 高止盈让利, 趋势大行情跑足; 原2ATR过早砍掉大趋势→回测-168% → 5ATR +1200%)
-    this.trailMul = opts.trailMul || 0.9;     // 移动止盈回撤0.9ATR(放宽, 减少被正常波动扫掉)
+    this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别, 回测3.4年: 0.8回撤最小5.00)
+    this.tpMul = opts.tpMul || 3.0;           // 止盈3ATR(v11优化: 回测3.4年 3ATR+20.41 > 5ATR+16.38; 高止盈让利跑足趋势)
+    this.trailMul = opts.trailMul || 2.0;     // 移动止盈回撤2.0ATR(v11优化: 0.9→2.0 盈亏+16.38→+24.34(+48%), 胜率35.6%→44.1%, 回撤5.65→6.22)
     this.lockProfitPct = opts.lockProfitPct || 3.0;  // 盈利达3%后才切换锁利(让利润先跑)
     this.lockTrailPct = opts.lockTrailPct || 1.2;    // 锁利模式: 回撤1.2%才平(放宽, 少被扫)
     this.maxBars = opts.maxBars || 400;   // 单笔最大持仓bar
