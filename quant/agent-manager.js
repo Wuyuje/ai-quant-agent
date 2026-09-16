@@ -524,8 +524,11 @@ class QuantAgent {
           const isExtreme = /极端|兜底|强平|止损/.test(closeReason || '');
           let estPnl = this._estimatePnl(pos, price);
           if (!isExtreme) {
-            // ═══ 平仓前净回报校验: 扣除全部费用后回报率>0才允许平仓, 否则继续持有等回报率最大化 ═══
-            const takerFeeRate = 0.0004;   // 合约手续费约0.04%名义(开+平双边taker)
+            // ═══ 平仓前净回报校验(v11.4修正): 扣除全部费用后净回报>MIN_NET_PROFIT才允许平仓 ═══
+            // 修正原因(UNI事故): 原费率0.04%低估2.6倍(实际~0.103%), 导致"移动止盈锁利"时
+            //   毛利$0.07看起来>手续费$0.035, 实际净亏-$0.02。
+            const takerFeeRate = 0.0011;   // v11.4: 实际双边费率约0.11%(0.055%×2, 含滑点余量)
+            const MIN_NET_PROFIT = 0.03;   // v11.4: 最小净盈利$0.03, 低于此不平仓(等更大利润或反向止损)
             const grossNotional = Math.abs(pos.entryPrice * (pos.qty || 0));   // 名义价值(保证金×杠杆)
             const tradingFee = grossNotional * takerFeeRate;                   // 开+平手续费
             const isComputeFeeUser = !this.isAdmin && !this.isWhitelist;       // 普通用户才扣算力费
@@ -536,9 +539,9 @@ class QuantAgent {
               computeFee = estPnl * cfRate;
             }
             const netReturnUsd = estPnl - tradingFee - computeFee;   // 扣手续费+算力费后的净回报(USD)
-            if (netReturnUsd <= 0) {
-              // 净回报不超费用 → 取消平仓, 持有等更大盈利(回报率最大化)
-              if (this.isAdmin) this._log(`⏸️ ${symbol} 平仓拦截: 净回报$${netReturnUsd.toFixed(3)}(毛利$${estPnl.toFixed(3)}-手续费$${tradingFee.toFixed(4)}${computeFee?`-算力费$${computeFee.toFixed(3)}`:''})≤0, 暂不平继续持有`);
+            if (netReturnUsd < MIN_NET_PROFIT) {
+              // 净回报不足 → 取消平仓, 持有等更大盈利或反向止损
+              if (this.isAdmin) this._log(`⏸️ ${symbol} 平仓拦截: 净回报$${netReturnUsd.toFixed(3)}<$${MIN_NET_PROFIT}(毛利$${estPnl.toFixed(3)}-手续费$${tradingFee.toFixed(4)}${computeFee?`-算力费$${computeFee.toFixed(3)}`:''}), 暂不平继续持有`);
               closeReason = null;   // 取消这次平仓
             }
           }
