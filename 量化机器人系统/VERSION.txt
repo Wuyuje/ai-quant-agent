@@ -72,3 +72,13 @@ v11.2 (2026-09-15) — undefined幽灵仓修复
   文件: quant/agent-manager.js
   问题: 日志显示 'undefined SHORT ma7' (实为LINKUSDT的symbol丢失)
   修复: 显示时过滤无效symbol + _syncPositions清理undefined/null/空key
+
+v11.5 (2026-09-16) — 持仓明细浮动盈亏修复
+  文件: quant/agent-manager.js + quant/admin.html
+  问题: 管理员面板「持仓明细」浮动盈亏不准确
+        做空的仓显示亏损(实际盈利), 且只有%没有金额
+  根因: 前端只按做多公式算(现价-入场)/入场, 未区分方向
+  修复:
+    1. 后端新增 pnlPct/pnlUsd/roi 字段(按side区分多空)
+    2. 前端改用后端字段, 新增"回报率"列
+  验证: ONDO做空+3.09%/+$5.26/roi+15.47% ✅, ETH做多-3.09%/-$3.75 ✅
