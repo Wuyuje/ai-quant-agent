@@ -697,7 +697,18 @@ class QuantAgent {
       totalEquity: +(this.totalWalletBalance || ((this.balance||0)+(this._unrealizedPnl||0))).toFixed(2),  // 总资金 = 币安合约账户总余额
       unrealizedPnl: +((this._unrealizedPnl||0)).toFixed(2),
       positionCount: Object.keys(this.positions).length,
-      positions: Object.entries(this.positions).map(([s,p]) => ({ symbol: s, side: p.side, strategy: p.strategy, entryPrice: p.entryPrice, currentPrice: p.currentPrice, leverage: p.leverage })),
+      positions: Object.entries(this.positions).map(([s,p]) => {
+        // v11.5修复: 计算浮动盈亏(区分多空方向) — 原前端只算做多方向, 做空显示反了
+        const e0 = +p.entryPrice || 0, c0 = +p.currentPrice || 0;
+        const isLong = p.side === 'LONG';
+        const pct = e0 > 0 ? ((isLong ? (c0-e0) : (e0-c0)) / e0 * 100) : 0;
+        const lev = +p.leverage || 1;
+        const notional = e0 * (+p.qty || 0);       // 名义价值
+        const usd = notional * pct / 100;          // 浮动盈亏(USD)
+        return { symbol: s, side: p.side, strategy: p.strategy, entryPrice: p.entryPrice,
+                 currentPrice: p.currentPrice, leverage: p.leverage, qty: p.qty,
+                 pnlPct: +pct.toFixed(2), pnlUsd: +usd.toFixed(2), roi: +(pct*lev).toFixed(2) };
+      }),
       trades: this.closedHistory.length, wins, losses: this.closedHistory.length - wins,
       realizedPnl: this.closedHistory.reduce((a,c) => a + (c.pnl||0), 0),
       // ═══ 币安真实30天已实现盈亏(与币安App实时同步) ═══
