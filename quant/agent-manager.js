@@ -243,7 +243,10 @@ class QuantAgent {
       // 币安已平的仓(本地还有) → 移除
       const realSyms = new Set(real.map(p=>p.symbol));
       for (const sym of Object.keys(this.positions)) {
-        if (!realSyms.has(sym)) { delete this.positions[sym]; delete this._stratLock[sym]; }
+        // v11.2: 清理无效 symbol(undefined/null/空) + 币安已平的仓
+        if (!sym || sym === 'undefined' || sym === 'null' || !realSyms.has(sym)) {
+          delete this.positions[sym]; delete this._stratLock[sym];
+        }
       }
 
       // ═══ 币安真实已实现盈亏(30天): 缓存每5分钟拉一次, 避免频繁命中币安限速 ═══
@@ -914,7 +917,7 @@ class QuantAgentManager {
         const ma7 = pos.filter(p=>p.strategy==='ma7').length;
         const managed = pos.filter(p=>p._managed).length;
         this._log(`📊 持仓检查[管理员]: 总${pos.length} (趋势${trend}/布林${boll}/MA7${ma7}/接管${managed})${pos.length>12?' ⚠️超9上限':''}`);
-        for (const p of pos) this._log(`   ${p.symbol} ${p.side} ${p.strategy}${p._managed?'[接管]':''} 入@${p.entryPrice}` + (p._adoptGrace && Date.now()<p._adoptGrace ? ` ⏳宽限${Math.round((p._adoptGrace-Date.now())/60000)}分` : ''));
+        for (const p of pos) { if(!p||!p.symbol) continue; this._log(`   ${p.symbol} ${p.side} ${p.strategy}${p._managed?'[接管]':''} 入@${p.entryPrice}` + (p._adoptGrace && Date.now()<p._adoptGrace ? ` ⏳宽限${Math.round((p._adoptGrace-Date.now())/60000)}分` : '')); }
       }
       // ═══ 趋势减弱提醒: 检测4h趋势从强变弱, 震荡策略可进场 ═══
       this._checkTrendWeakening().catch(()=>{});
