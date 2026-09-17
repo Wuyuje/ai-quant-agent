@@ -49,6 +49,16 @@ class QuantAgent {
     this._stratLock = {};      // symbol → 锁定的策略(trend/bollinger), 防双引擎互博
     this.pauseOpen = false;
     this.BLACKLIST = ['ATOMUSDT', 'STXUSDT', 'LITUSDT', 'INJUSDT'];   // ═══ 黑名单: ATOM/STX/LIT/INJ 高频秒仓或高波动连亏, 禁交易 ═══
+    // ═══ v11.6: 实盘亏损币黑名单(基于closedTrades累计统计, 用户要求剔除) ═══
+    // 震荡策略实盘亏损币: NEAR/UNI/ETH/XRP/TRUMP/SEI/APT/ADA/PENDLE
+    // 依据: 341笔实盘统计, 这9个币震荡策略累计亏损, 踢出后只保留盈利币
+    this.BOLL_LOSS_BLACKLIST = ['NEARUSDT','UNIUSDT','ETHUSDT','XRPUSDT','TRUMPUSDT','SEIUSDT','APTUSDT','ADAUSDT','PENDLEUSDT'];
+    // 震荡策略实盘盈利币白名单(SOL/LINK/DOT/DOGE), 优先开仓
+    this.BOLL_WIN_WHITELIST = ['SOLUSDT','LINKUSDT','DOTUSDT','DOGEUSDT'];
+    // ═══ v11.6: 趋势策略回测亏损币黑名单(4h回测268天, 22个亏损币) ═══
+    this.TREND_LOSS_BLACKLIST = ['TIAUSDT','ATOMUSDT','XLMUSDT','APEUSDT','LITUSDT','STXUSDT','JUPUSDT',
+      'BTCUSDT','PENDLEUSDT','AAVEUSDT','SOLUSDT','LTCUSDT','SUIUSDT','LINKUSDT','TAOUSDT','HYPEUSDT',
+      'INJUSDT','BCHUSDT','FILUSDT','APTUSDT','KASUSDT','ONDOUSDT'];
     // ═══ 震荡策略风控: 单日熔断 + 单币连续亏损禁开 ═══
     this._dailyLossTotal = 0;      // 当日已实现盈亏累计(用于熔断)
     this._dailyLossDate = null;    // 当前累计日期(重置用)
@@ -343,6 +353,8 @@ class QuantAgent {
       let sig;
       if (strat === 'trend_ma7') {
         if (this.pauseTrend) continue;   // 趋势引擎暂停开仓
+        // ═══ v11.6: 趋势策略回测亏损币黑名单(踢出UNI/ONDO等22个回测亏损币) ═══
+        if (this.TREND_LOSS_BLACKLIST && this.TREND_LOSS_BLACKLIST.includes(symbol)) continue;
         if (this.positions[symbol]) continue;   // 同币已持单, 不再开
         // ═══ 分开选池: 币在MA7池只跑MA7(15m), 在V4池只跑V4(日线) ═══
         let sig = null, stg = 'ma7';
@@ -405,6 +417,10 @@ class QuantAgent {
         if (this._bollCooldowns[symbol] && Date.now() < this._bollCooldowns[symbol]) {
           if (this.isAdmin) this._log(`⏸️ ${symbol} 冷却禁开(连续亏损, 解禁时间${new Date(this._bollCooldowns[symbol]).toLocaleTimeString('zh-CN')})`);
           continue;
+        }
+        // ═══ v11.6: 震荡策略实盘亏损币黑名单(用户要求剔除UNI等亏损币) ═══
+        if (this.BOLL_LOSS_BLACKLIST && this.BOLL_LOSS_BLACKLIST.includes(symbol)) {
+          continue;   // 静默跳过(不刷日志)
         }
         // SuperTrend反转策略(5分钟级别): 5m K线决策(用户要求5分钟执行买卖) ═══
         const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
@@ -992,7 +1008,12 @@ class QuantAgentManager {
     try {
       this._log('🧠 动态选币开始...');
       const apiInst = new BinanceAPI(this.adminApiKey, this.adminApiSecret);
-      const CANDIDATES = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT','HYPEUSDT','TAOUSDT','BCHUSDT','ENAUSDT','1000SHIBUSDT','AAVEUSDT','ONDOUSDT','TRUMPUSDT','XLMUSDT','1000BONKUSDT','LITUSDT'];   // 补充适合布林带的主流流动性币(波动适中+流动性好)
+      // ═══ v11.6: 全局策略亏损币黑名单(实盘+回测双依据, 用户要求踢出) ═══
+      // 震荡策略实盘亏损: NEAR/UNI/ETH/XRP/TRUMP/SEI/APT/ADA/PENDLE (341笔实盘统计)
+      const BOLL_LOSS = ['NEARUSDT','UNIUSDT','ETHUSDT','XRPUSDT','TRUMPUSDT','SEIUSDT','APTUSDT','ADAUSDT','PENDLEUSDT'];
+      // 趋势策略回测亏损: 22币 (4h×268天回测)
+      const TREND_LOSS = new Set(['TIAUSDT','ATOMUSDT','XLMUSDT','APEUSDT','LITUSDT','STXUSDT','JUPUSDT','BTCUSDT','PENDLEUSDT','AAVEUSDT','SOLUSDT','LTCUSDT','SUIUSDT','LINKUSDT','TAOUSDT','HYPEUSDT','INJUSDT','BCHUSDT','FILUSDT','APTUSDT','KASUSDT','ONDOUSDT']);
+      const CANDIDATES = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','LTCUSDT','DOTUSDT','UNIUSDT','APEUSDT','FILUSDT','NEARUSDT','ATOMUSDT','INJUSDT','OPUSDT','ARBUSDT','SUIUSDT','TIAUSDT','SEIUSDT','STXUSDT','KASUSDT','APTUSDT','WLDUSDT','ORDIUSDT','1000PEPEUSDT','JUPUSDT','PENDLEUSDT','HYPEUSDT','TAOUSDT','BCHUSDT','ENAUSDT','1000SHIBUSDT','AAVEUSDT','ONDOUSDT','TRUMPUSDT','XLMUSDT','1000BONKUSDT','LITUSDT'];
       const trendPool=[], bollPool=[];
       for (const sym of CANDIDATES) {
         // ═══ 自动识别低波动横盘币并踢出(不手动拉黑) ═══
@@ -1019,8 +1040,10 @@ class QuantAgentManager {
         const tr = this._btTrend(kl);                     // 严格MA7真实回测收益
         // ═══ 核心: 真实回测亏损(ret<0)的币剔除(用户要求), 无样本(n<=0)用基础分, 正收益优先 ═══
         if (tr && tr.n > 0) {
-          if (tr.ret > 0) trendPool.push({sym, ret: basis.ret + tr.ret, trRet: tr.ret});  // 真实盈利 → 基础分+奖励
-          // 真实亏损(tr.ret<0) → 剔除, 不进趋势池
+          // ═══ v11.6: 趋势回测亏损币直接剔除 ═══
+          if (tr.ret > 0 && !TREND_LOSS.has(sym)) trendPool.push({sym, ret: basis.ret + tr.ret, trRet: tr.ret});
+        } else if (TREND_LOSS.has(sym)) {
+          // 趋势黑名单币, 不补进
         } else {
           trendPool.push({sym, ret: basis.ret * 0.5, trRet: 0});   // 无回测样本(严格策略没成交) → 基础分减半排序, 不占奖励
         }
@@ -1034,8 +1057,11 @@ class QuantAgentManager {
             if (Math.abs(g20) <= 1.0) floatScore = 0.5;   // 涨跌幅±1%内 → 加分(优先选)
           }
         } catch(e){}
-        if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret + floatScore, boRet: bo.ret, floatScore});   // 优胜劣汰: 回测盈利才进震荡池 + 浮盈±1%偏好
-        else if (floatScore > 0 && bo && bo.ret <= 0) bollPool.push({sym, ret: floatScore, boRet: bo.ret||0, floatScore});  // 浮盈±1%内但回测微亏也用基础分排入
+        // ═══ v11.6: 震荡亏损币直接剔除(实盘统计亏损) ═══
+        if (BOLL_LOSS.includes(sym)) {
+          // 静默剔除(不加震荡池)
+        } else if (bo && bo.n > 0 && bo.ret > 0) bollPool.push({sym, ret: bo.ret + floatScore, boRet: bo.ret, floatScore});
+        else if (floatScore > 0 && bo && bo.ret <= 0) bollPool.push({sym, ret: floatScore, boRet: bo.ret||0, floatScore});
       }
       trendPool.sort((a,b)=> b.ret - a.ret);
       bollPool.sort((a,b)=> b.ret - a.ret);
