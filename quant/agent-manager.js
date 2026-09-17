@@ -504,14 +504,27 @@ class QuantAgent {
           }
         }
         if (pos.strategy === 'bollinger') {
-          // SuperTrend反转·出场(5m): SUPER翻转平仓(checkTakeProfit), 仅保留极端兜底
+          // ═══ v11.7 修复(UNI事故): 震荡策略补回缺失的止损! ═══
+          // 旧代码只调 checkTakeProfit(止盈), 亏损时直接HOLD → 无止损一路扛到-30.9%(UNI亏$9.26)
+          // 现改为: ①ATR止损 ②总浮亏止损 ③时间止损 优先级高于止盈
           const bkl = await this._getKlinesShared(symbol, '5m', 500).catch(() => null);
           if (bkl && bkl.length >= 30) {
-            const spike = this.boll.isSpikeBar(bkl);
-            const tp = this.boll.checkTakeProfit(pos, bkl);
-            if (tp.action === 'CLOSE' && !spike) closeReason = tp.reason;   // 插针不触发(防毛刺假平)
-            else if (spike) closeReason = null;  // 插针K线不平仓(收盘回归)
-            // 极简保险: 总浮亏≥50%强平(唯一兜底, 防极端行情失控)
+            const spike = this.boll.isSpikeBar ? this.boll.isSpikeBar(bkl) : false;
+            // ① 止损优先(按SIG风险高低)
+            const liq = this.boll.checkLiquidationWarning ? this.boll.checkLiquidationWarning(pos) : { action: 'HOLD' };
+            const ult = this.boll.checkUltimateStopLoss ? this.boll.checkUltimateStopLoss(pos) : { action: 'HOLD' };
+            const atrSL = this.boll.checkAtrStopLoss ? this.boll.checkAtrStopLoss(bkl, pos) : { action: 'HOLD' };
+            const totSL = this.boll.checkTotalLossStop ? this.boll.checkTotalLossStop(pos) : { action: 'HOLD' };
+            if (liq.action === 'CLOSE') closeReason = liq.reason;
+            else if (ult.action === 'CLOSE') closeReason = ult.reason;
+            else if (atrSL.action === 'CLOSE') closeReason = atrSL.reason;
+            else if (totSL.action === 'CLOSE') closeReason = totSL.reason;
+            // ② 止盈(仅当未触发止损)
+            if (!closeReason) {
+              const tp = this.boll.checkTakeProfit(pos, bkl);
+              if (tp.action === 'CLOSE' && !spike) closeReason = tp.reason;   // 插针不触发(防毛刺假平)
+            }
+            // ③ 极端兜底: 总浮亏≥50%强平(最后防线)
             if (!closeReason) {
               const tpn = pos.side==='LONG' ? (price-pos.entryPrice)/pos.entryPrice*100 : (pos.entryPrice-price)/pos.entryPrice*100;
               if (Math.abs(tpn) >= 50) closeReason = `极端兜底强平(浮亏${tpn.toFixed(0)}%)`;
