@@ -84,16 +84,17 @@ class QuantAgent {
     // 超大户(>$2000): 5仓/2x杠杆/每仓10%本金 — 资金充裕, 低杠杆控风险
     // 管理员特殊: 杠杆固定5x(用户要求配高一档), 仓位/资金仍按余额自适应
     let maxPositions, maxPerStrategy, leverage, posPct, riskPct;
+    // ═══ v12: 用户要求统一仓位配额 — 总7仓 = 趋势5 + 震荡2 ═══
     if (bal < 50) {
       maxPositions = 0; maxPerStrategy = 0; leverage = 1; posPct = 0; riskPct = 0;
     } else if (bal < 200) {
-      maxPositions = 2; maxPerStrategy = 2; leverage = 5; posPct = 0.20; riskPct = 0.02;
+      maxPositions = 7; maxPerStrategy = 7; leverage = 5; posPct = 0.10; riskPct = 0.02;
     } else if (bal < 500) {
-      maxPositions = 3; maxPerStrategy = 3; leverage = 4; posPct = 0.15; riskPct = 0.02;
+      maxPositions = 7; maxPerStrategy = 7; leverage = 4; posPct = 0.10; riskPct = 0.02;
     } else if (bal < 2000) {
-      maxPositions = 4; maxPerStrategy = 4; leverage = 3; posPct = 0.12; riskPct = 0.02;
+      maxPositions = 7; maxPerStrategy = 7; leverage = 3; posPct = 0.08; riskPct = 0.02;
     } else {
-      maxPositions = 5; maxPerStrategy = 5; leverage = 2; posPct = 0.10; riskPct = 0.015;
+      maxPositions = 7; maxPerStrategy = 7; leverage = 2; posPct = 0.07; riskPct = 0.015;
     }
     // ═══ 管理员账户: 自动配备基础上杠杆整体调高一档(用户要求适当配高, 用自适应而非固定, 防多仓+高杠杆爆仓) ═══
     //   小户5→6x / 中户4→5x / 大户3→4x / 超大2→3x; 资金/仓位仍按余额自动分级
@@ -108,16 +109,18 @@ class QuantAgent {
   // 各账户独立用自身balance/positions计算, 互不影响
   _exposureOk(strat, rp) {
     try {
-      // ═══ 用户要求: 趋势策略和布林策略 各自最多5个仓位, 互不干扰 ═══
-      const perStrat = 5;              // 每策略固定最多5仓(趋势≤5, 布林≤5)
-      const totalCap = 10;             // 跨策略总上限10(趋势5+布林5)
+      // ═══ v12: 用户要求 总7仓 = 趋势5 + 震荡2 ═══
+      const bollCap = 2;               // 震荡策略最多2仓
+      const trendCap = 5;              // 趋势策略最多5仓
+      const totalCap = 7;              // 总上限7 (趋势5+震荡2)
       const trendCount = Object.values(this.positions).filter(p => p.strategy !== 'bollinger').length;
       const bollCount = Object.values(this.positions).filter(p => p.strategy === 'bollinger').length;
       const totalCount = Object.keys(this.positions).length;
       const targetCount = strat === 'bollinger' ? bollCount : trendCount;
       const isBoll = strat === 'bollinger';
+      const perStrat = isBoll ? bollCap : trendCap;
       if (targetCount >= perStrat) return { allow: false, reason: `${isBoll?'布林':'趋势'}持仓已达${targetCount}/${perStrat}上限` };
-      if (totalCount >= totalCap) return { allow: false, reason: `账户总仓位已达上限${totalCount}/${totalCap}(趋势+布林合计)` };
+      if (totalCount >= totalCap) return { allow: false, reason: `账户总仓位已达上限${totalCount}/${totalCap}(趋势5+震荡2)` };
       // ═══ 保证金敞口熔断: 已有持仓保证金(notional/lev) + 新仓保证金 ≤ 总权益×90% ═══
       const eq = (this.totalWalletBalance > 0 ? this.totalWalletBalance : (this.balance || 1));
       let curMargin = 0;
