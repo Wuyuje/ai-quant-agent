@@ -59,6 +59,9 @@ class ArkieAssistant {
       if (this._matchAny(msgLower, ['ark走势','ark会涨','ark展望','ark预测','ark怎么看','ark分析','ark能买'])) {
         return this._reply(await this._arkOutlook());
       }
+      if (this._matchAny(msgLower, ['ark指标','ark技术','ark rsi','ark均线','ark布林','ark技术分析','ark k线','arkk线'])) {
+        return this._reply(await this._arkIndicators());
+      }
       if (this._matchAny(msgLower, ['ark生态','ark工具','工具站','citizen','公民'])) {
         return this._reply(this._getArkEcosystem());
       }
@@ -628,6 +631,70 @@ class ArkieAssistant {
       if (t.includes('ark')) return 'ark';
     }
     return null;
+  }
+
+  // ARK 技术指标 (RSI/MA/布林带, 用 DexScreener 小时K线)
+  async _arkIndicators() {
+    try {
+      // 拉 ARK 小时K线（DexScreener 提供 priceChange，详细K线用 GeckoTerminal）
+      const gt = await this._fetchJson('https://api.geckoterminal.com/api/v2/networks/bsc/pools/0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8/ohlcv/hour?aggregate=1&limit=100').catch(() => null);
+      let closes = [];
+      if (gt && gt.data && gt.data.attributes && gt.data.attributes.ohlcv_list) {
+        // ohlcv_list: [[ts, o, h, l, c, v], ...]
+        closes = gt.data.attributes.ohlcv_list.map(r => parseFloat(r[4])).filter(x => x > 0).reverse();
+      }
+      if (closes.length < 30) {
+        // 回退: 用 DexScreener 基本数据
+        const d = await this._fetchJson('https://api.dexscreener.com/latest/dex/pairs/bsc/0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8');
+        const p = (d.pairs && d.pairs[0]) || {};
+        const price = parseFloat(p.priceUsd || 0);
+        const pc = p.priceChange || {};
+        let t = '📈 ARK 技术指标（简化）\n\n';
+        t += '现价：$' + price.toFixed(4) + '\n';
+        t += '变动：5m ' + (pc.m5 || 0).toFixed(2) + '% | 1h ' + (pc.h1 || 0).toFixed(2) + '% | 6h ' + (pc.h6 || 0).toFixed(2) + '% | 24h ' + (pc.h24 || 0).toFixed(2) + '%\n';
+        t += '\n⚠️ 小时K线数据暂不可用，显示基本变动。';
+        return t;
+      }
+      const n = closes.length;
+      const price = closes[n - 1];
+      // MA
+      const ma = (arr, k) => arr.slice(-k).reduce((a, b) => a + b, 0) / Math.min(k, arr.length);
+      const ma7 = ma(closes, 7), ma25 = ma(closes, 25), ma99 = ma(closes, 99);
+      // RSI(14)
+      let gains = 0, losses = 0;
+      for (let i = n - 14; i < n; i++) {
+        const ch = closes[i] - closes[i - 1];
+        if (ch >= 0) gains += ch; else losses -= ch;
+      }
+      const rs = losses === 0 ? 100 : gains / losses;
+      const rsi = losses === 0 ? 100 : 100 - 100 / (1 + rs);
+      // 布林带(20)
+      const period = 20;
+      const sub = closes.slice(-period);
+      const mid = sub.reduce((a, b) => a + b, 0) / sub.length;
+      const std = Math.sqrt(sub.reduce((a, b) => a + (b - mid) ** 2, 0) / sub.length);
+      const upper = mid + 2 * std, lower = mid - 2 * std;
+      const pos = Math.max(0, Math.min(100, ((price - lower) / (upper - lower)) * 100));
+      // 信号
+      let sig = [];
+      if (rsi > 70) sig.push('RSI超买(' + rsi.toFixed(0) + ')');
+      else if (rsi < 30) sig.push('RSI超卖(' + rsi.toFixed(0) + ')');
+      if (price > upper) sig.push('突破布林上轨');
+      else if (price < lower) sig.push('跌破布林下轨');
+      if (ma7 > ma25 && ma25 > ma99) sig.push('多头排列');
+      else if (ma7 < ma25 && ma25 < ma99) sig.push('空头排列');
+      let t = '📈 ARK 技术指标（1h K线）\n\n';
+      t += '现价：$' + price.toFixed(4) + '\n';
+      t += 'RSI(14)：' + rsi.toFixed(1) + '\n';
+      t += 'MA7：' + ma7.toFixed(4) + ' | MA25：' + ma25.toFixed(4) + ' | MA99：' + ma99.toFixed(4) + '\n';
+      t += '布林带：上' + upper.toFixed(4) + ' / 中' + mid.toFixed(4) + ' / 下' + lower.toFixed(4) + '\n';
+      t += '布林位置：' + pos.toFixed(0) + '% （0=下轨 100=上轨）\n\n';
+      t += '🎯 信号：' + (sig.join('、') || '无明显信号') + '\n';
+      t += '\n💡 数据仅供参考，不构成投资建议。';
+      return t;
+    } catch (e) {
+      return '❌ ARK 指标查询失败: ' + e.message;
+    }
   }
 
   // ARK 走势展望（结合链上数据 + 推荐）
