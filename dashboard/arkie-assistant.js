@@ -62,6 +62,12 @@ class ArkieAssistant {
       if (this._matchAny(msgLower, ['ark指标','ark技术','ark rsi','ark均线','ark布林','ark技术分析','ark k线','arkk线'])) {
         return this._reply(await this._arkIndicators());
       }
+      if (this._matchAny(msgLower, ['我的订阅','查看订阅','my alerts','订阅列表','看订阅'])) {
+        return this._reply(this._listSubs(userId));
+      }
+      if (this._matchAny(msgLower, ['订阅','提醒我','设置提醒','alert me','subscribe','提醒'])) {
+        return this._reply(this._subscribe(msg, userId));
+      }
       if (this._matchAny(msgLower, ['ark生态','ark工具','工具站','citizen','公民'])) {
         return this._reply(this._getArkEcosystem());
       }
@@ -631,6 +637,76 @@ class ArkieAssistant {
       if (t.includes('ark')) return 'ark';
     }
     return null;
+  }
+
+  /* ══════════ 提醒订阅 ══════════ */
+  _subsPath() {
+    const path = require('path');
+    const dir = path.join(__dirname, '..', 'data');
+    try { require('fs').mkdirSync(dir, { recursive: true }); } catch (e) {}
+    return path.join(dir, 'arkie-subs.json');
+  }
+
+  _loadSubs() {
+    try { return JSON.parse(require('fs').readFileSync(this._subsPath(), 'utf8')) || []; }
+    catch (e) { return []; }
+  }
+
+  _saveSubs(list) {
+    try { require('fs').writeFileSync(this._subsPath(), JSON.stringify(list, null, 1)); } catch (e) {}
+  }
+
+  _subscribe(msg, userId) {
+    // 解析: "ARK 涨到 10 提醒我" / "ARK 跌到 5 提醒" / "订阅 ARK 涨破 8"
+    const above = msg.match(/(?:涨到|涨破|高于|突破|above|>)\s*([\d.]+)/i);
+    const below = msg.match(/(?:跌到|跌破|低于|below|<)\s*([\d.]+)/i);
+    let kind = null, target = null;
+    if (above) { kind = 'above'; target = parseFloat(above[1]); }
+    else if (below) { kind = 'below'; target = parseFloat(below[1]); }
+    if (!kind || !(target > 0)) {
+      return '🔔 提醒订阅\n\n用法：\n• "ARK 涨到 10 提醒我"\n• "ARK 跌到 5 提醒"\n• "订阅 ARK 突破 8"\n\n查看："我的订阅"';
+    }
+    const list = this._loadSubs();
+    const id = Math.random().toString(36).slice(2, 10);
+    list.push({ id, userId, kind, target, created: Date.now(), triggered: false });
+    this._saveSubs(list);
+    const mine = list.filter(x => x.userId === userId);
+    return '✅ 已订阅提醒\n\nARK ' + (kind === 'above' ? '涨到 ≥ $' : '跌到 ≤ $') + target +
+      '\n当前订阅数：' + mine.length + '\n\n系统会在达到目标价时通知你。输入"我的订阅"查看全部。';
+  }
+
+  _listSubs(userId) {
+    const mine = this._loadSubs().filter(x => x.userId === userId);
+    if (!mine.length) return '📭 你还没有订阅提醒。\n\n试试："ARK 涨到 10 提醒我"';
+    let t = '🔔 我的订阅 (' + mine.length + ')\n\n';
+    for (const s of mine) {
+      t += '• ARK ' + (s.kind === 'above' ? '≥ $' : '≤ $') + s.target +
+        (s.triggered ? ' ✅已触发' : ' ⏳监控中') + '\n';
+    }
+    return t;
+  }
+
+  // 外部调用: 检查并返回触发的订阅
+  async checkSubs() {
+    try {
+      const list = this._loadSubs();
+      const pending = list.filter(s => !s.triggered);
+      if (!pending.length) return [];
+      const d = await this._fetchJson('https://api.dexscreener.com/latest/dex/pairs/bsc/0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8');
+      const p = (d.pairs && d.pairs[0]) || {};
+      const price = parseFloat(p.priceUsd || 0);
+      if (!price) return [];
+      const hits = [];
+      for (const s of list) {
+        if (s.triggered) continue;
+        if ((s.kind === 'above' && price >= s.target) || (s.kind === 'below' && price <= s.target)) {
+          s.triggered = true; s.triggeredAt = Date.now(); s.triggeredPrice = price;
+          hits.push({ userId: s.userId, msg: '🔔 ARK 提醒触发！\n现价 $' + price.toFixed(4) + '（目标 ' + (s.kind === 'above' ? '≥' : '≤') + ' $' + s.target + '）' });
+        }
+      }
+      if (hits.length) this._saveSubs(list);
+      return hits;
+    } catch (e) { return []; }
   }
 
   // ARK 技术指标 (RSI/MA/布林带, 用 DexScreener 小时K线)
