@@ -29,6 +29,7 @@ class ArkieAssistant {
 
   async chat(message, context = {}) {
     const msg = (message || '').trim();
+    this._lastMsg = msg; // 供子方法提取地址等
     const msgLower = msg.toLowerCase();
     const userId = context.userId || context.wallet || 'admin';
     const wallet = context.wallet || null;
@@ -36,6 +37,29 @@ class ArkieAssistant {
     this._saveToHistory(userId, 'user', msg);
 
     try {
+      // ═══ ARK 生态专属 ═══
+      if (this._matchAny(msgLower, ['ark价格','ark多少钱','ark币','ark现价','ark coin','ark token','arkusdt','ark usdt'])) {
+        return this._reply(await this._getArkPrice());
+      }
+      if (this._matchAny(msgLower, ['arkie价格','arkie多少钱','arkie币','arkie现价','子币','阿奇'])) {
+        return this._reply(await this._getArkiePrice());
+      }
+      if (this._matchAny(msgLower, ['ark池','ark底池','ark流动性','ark liquidity','ark市值','ark数据'])) {
+        return this._reply(await this._getArkPool());
+      }
+      if (this._matchAny(msgLower, ['质押','stake','staking','复利','compound','收益计算','年化','apy'])) {
+        return this._reply(this._parseStake(msg));
+      }
+      if (this._matchAny(msgLower, ['我的ark','ark持仓','ark余额','我有多少ark','查ark'])) {
+        return this._reply(await this._getArkHoldings(userId, wallet));
+      }
+      if (this._matchAny(msgLower, ['鲸鱼','whale','大额转账','大单','巨鲸'])) {
+        return this._reply(await this._getWhaleWatch());
+      }
+      if (this._matchAny(msgLower, ['ark生态','ark工具','工具站','citizen','公民'])) {
+        return this._reply(this._getArkEcosystem());
+      }
+
       if (this._matchAny(msgLower, ['你好','hello','hi','嗨','hey','在吗','在不在'])) {
         return this._reply('你好！我是 Arkie，MasterD 的儿子。\n我可以帮你查行情、看持仓、分析市场、执行交易。');
       }
@@ -276,6 +300,183 @@ class ArkieAssistant {
     return '❌ 无法查询交易记录。';
   }
 
+  /* ══════════ ARK 生态能力 ══════════ */
+  async _getArkPrice() {
+    try {
+      const d = await this._fetchJson('https://api.dexscreener.com/latest/dex/pairs/bsc/0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8');
+      const p = (d.pairs && d.pairs[0]) || d.pair || {};
+      const price = parseFloat(p.priceUsd || p.priceNative || 0);
+      const chg = (p.priceChange && p.priceChange.h24) || 0;
+      let t = '🪙 ARK 实时行情 (PancakeSwap V2 BSC)\n';
+      t += '价格：$' + price.toFixed(4) + '\n';
+      t += '24h涨跌：' + (chg >= 0 ? '+' : '') + (typeof chg === 'number' ? chg.toFixed(2) : chg) + '%\n';
+      if (p.marketCap) t += '市值：$' + (p.marketCap / 1e6).toFixed(2) + 'M\n';
+      if (p.fdv) t += 'FDV：$' + (p.fdv / 1e6).toFixed(2) + 'M\n';
+      if (p.liquidity && p.liquidity.usd) t += '流动性：$' + (p.liquidity.usd / 1e6).toFixed(2) + 'M\n';
+      if (p.volume && p.volume.h24) t += '24h量：$' + (p.volume.h24 / 1e6).toFixed(2) + 'M\n';
+      t += '\n📍合约：0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D';
+      return t;
+    } catch (e) {
+      return '❌ ARK 价格查询失败: ' + e.message;
+    }
+  }
+
+  async _getArkiePrice() {
+    try {
+      const d = await this._fetchJson('https://api.dexscreener.com/latest/dex/pairs/bsc/0x41EceDC0C020153E4526cB8a3dDBc5a3F252b184');
+      const p = (d.pairs && d.pairs[0]) || d.pair || {};
+      const price = parseFloat(p.priceUsd || 0);
+      const chg = (p.priceChange && p.priceChange.h24) || 0;
+      let t = '🪙 ARKIE 子币行情 (阿奇 AI)\n';
+      t += '价格：$' + price.toFixed(4) + '\n';
+      t += '24h涨跌：' + (chg >= 0 ? '+' : '') + (typeof chg === 'number' ? chg.toFixed(2) : chg) + '\n';
+      if (p.marketCap) t += '市值：$' + (p.marketCap / 1e6).toFixed(2) + 'M\n';
+      if (p.liquidity && p.liquidity.usd) t += '流动性：$' + (p.liquidity.usd / 1e6).toFixed(2) + 'M\n';
+      // 计算 ARK 计价
+      const arkD = await this._fetchJson('https://api.dexscreener.com/latest/dex/pairs/bsc/0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8').catch(() => null);
+      if (arkD) {
+        const arkP = parseFloat((arkD.pairs && arkD.pairs[0] && arkD.pairs[0].priceUsd) || 0);
+        if (arkP > 0) t += 'ARK 计价：' + (price / arkP).toFixed(4) + ' ARK\n';
+      }
+      t += '\n📍合约：0x6cd3025F851F36e74937D4e652f6AE9D4b2E88cF';
+      return t;
+    } catch (e) {
+      return '❌ ARKIE 价格查询失败: ' + e.message;
+    }
+  }
+
+  async _getArkPool() {
+    try {
+      const d = await this._fetchJson('https://api.dexscreener.com/latest/dex/pairs/bsc/0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8');
+      const p = (d.pairs && d.pairs[0]) || d.pair || {};
+      let t = '💧 ARK 流动性池数据\n';
+      t += 'Pair：0xCAaF...0D8\n';
+      if (p.priceUsd) t += '价格：$' + parseFloat(p.priceUsd).toFixed(4) + '\n';
+      if (p.liquidity) {
+        t += '底池USD：$' + ((p.liquidity.usd || 0) / 1e6).toFixed(2) + 'M\n';
+        t += '底池ARK：' + ((p.liquidity.base || 0) / 1e6).toFixed(2) + 'M ARK\n';
+        t += '底池USDT：$' + ((p.liquidity.quote || 0) / 1e6).toFixed(2) + 'M\n';
+      }
+      if (p.volume && p.volume.h24) t += '24h成交：$' + (p.volume.h24 / 1e6).toFixed(2) + 'M\n';
+      if (p.txns && p.txns.h24) t += '24h交易：买' + p.txns.h24.buys + ' / 卖' + p.txns.h24.sells + '\n';
+      return t;
+    } catch (e) {
+      return '❌ 池子查询失败: ' + e.message;
+    }
+  }
+
+  _parseStake(msg) {
+    // 解析: "质押 1000 ark 360天" / "1000 ark 复利一年"
+    const amtM = msg.match(/([0-9][0-9,]*)\s*(?:ark|个|枚)?/i);
+    const amount = amtM ? parseFloat(amtM[1].replace(/,/g, '')) : null;
+    const dayM = msg.match(/([0-9]+)\s*天/);
+    const yearM = msg.match(/([0-9.]+)\s*年|一年/);
+    let days = 360;
+    if (yearM) days = parseFloat(yearM[1] || 1) * 365;
+    else if (dayM) days = parseInt(dayM[1], 10);
+    if (!amount || amount <= 0) {
+      return '💹 ARK 质押收益计算\n\n用法：质押 <数量> [天数]\n例如：\n• "质押 1000" — 默认360天\n• "质押 5000 720天"\n• "质押 10000 1年"\n\n参考日收益率(360天方案)：0.28%\n等效年化约 177%';
+    }
+    const rate = 0.0028; // 360天方案日收益率(与工具站一致)
+    const earned = amount * (Math.pow(1 + rate, days) - 1);
+    const total = amount + earned;
+    const apy = (Math.pow(1 + rate, 365) - 1) * 100;
+    let t = '💹 ARK 质押收益（360天方案）\n\n';
+    t += '质押数量：' + amount.toLocaleString() + ' ARK\n';
+    t += '周期：' + days + ' 天\n';
+    t += '日收益率：' + (rate * 100).toFixed(2) + '%\n\n';
+    t += '📈 到期可得：' + total.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ARK\n';
+    t += '💰 净增：+' + earned.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' ARK\n';
+    t += '🔺 增长倍数：' + (total / amount).toFixed(2) + 'x\n';
+    t += '⚡ 等效年化：' + apy.toFixed(1) + '%\n\n';
+    t += '参考工具站：https://3582784c.strike-agent.com';
+    return t;
+  }
+
+  async _getArkHoldings(userId, wallet) {
+    let addr = wallet || (userId && /^0x[0-9a-fA-F]{40}$/.test(userId) ? userId : null);
+    // 从消息里提取 0x 地址
+    if (!addr) {
+      const m = (this._lastMsg || '').match(/0x[0-9a-fA-F]{40}/);
+      if (m) addr = m[0];
+    }
+    if (!addr) return '请输入你的钱包地址，例如：我的ARK 0xB5E1...';
+    try {
+      const A = addr.toLowerCase().slice(2).padStart(64, '0');
+      const rpc = async (to, method) => {
+        const r = await fetch('https://bsc-rpc.publicnode.com', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to, data: method + A }, 'latest'] })
+        });
+        const j = await r.json();
+        return j.result && j.result !== '0x' ? BigInt(j.result) : 0n;
+      };
+      const [ark, arkie, gark] = await Promise.all([
+        rpc('0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D', '0x70a08231'),
+        rpc('0x6cd3025F851F36e74937D4e652f6AE9D4b2E88cF', '0x70a08231'),
+        rpc('0x911f12D137D74E5917877f87cf8A8bB2FDde557f', '0x70a08231'),
+      ]);
+      const f = (v) => (Number(v) / 1e18).toLocaleString(undefined, { maximumFractionDigits: 4 });
+      let t = '👛 链上持仓 (' + addr.slice(0, 6) + '...' + addr.slice(-4) + ')\n\n';
+      t += 'ARK：' + f(ark) + '\n';
+      t += 'ARKIE：' + f(arkie) + '\n';
+      t += 'gARK：' + f(gark) + '\n';
+      return t;
+    } catch (e) {
+      return '❌ 持仓查询失败: ' + e.message;
+    }
+  }
+
+  async _getWhaleWatch() {
+    try {
+      const blk = await fetch('https://bsc-rpc.publicnode.com', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] })
+      }).then(r => r.json());
+      const latest = parseInt(blk.result, 16);
+      const from = latest - 30;
+      const logs = await fetch('https://bsc-rpc.publicnode.com', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'eth_getLogs',
+          params: [{ fromBlock: '0x' + from.toString(16), toBlock: 'latest', address: '0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D', topics: ['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'] }]
+        })
+      }).then(r => r.json());
+      const arr = (logs.result || []).map(lg => ({
+        amt: Number(BigInt(lg.data)) / 1e18,
+        from: '0x' + lg.topics[1].slice(26),
+        to: '0x' + lg.topics[2].slice(26),
+      })).filter(x => x.amt >= 1000).sort((a, b) => b.amt - a.amt);
+      if (!arr.length) return '🐋 鲸鱼监控（最近约30区块）\n\n暂未发现 >1000 ARK 的大额转账。';
+      let t = '🐋 鲸鱼监控（最近约30区块）\n\n';
+      for (const w of arr.slice(0, 8)) {
+        t += '• ' + w.amt.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' ARK  ' + w.from.slice(0, 8) + '... → ' + w.to.slice(0, 8) + '...\n';
+      }
+      return t;
+    } catch (e) {
+      return '❌ 鲸鱼监控失败: ' + e.message;
+    }
+  }
+
+  _getArkEcosystem() {
+    return '🌟 ARK 生态\n\n' +
+      '🪙 ARK 代币：0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D\n' +
+      '🔗 ARK/USDT 池：0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8\n' +
+      '🪙 ARKIE 子币：0x6cd3025F851F36e74937D4e652f6AE9D4b2E88cF\n' +
+      '🏛️ gARK 治理：0x911f12D137D74E5917877f87cf8A8bB2FDde557f\n\n' +
+      '🛠️ ARK 工具站：\nhttps://3582784c.strike-agent.com\n' +
+      '  · 收益看板 / 质押计算\n' +
+      '  · 价格预警 / 链上持仓 / 鲸鱼监控\n' +
+      '  · 7 语言支持\n\n' +
+      '💬 问我：ARK价格 / ARKIE价格 / ARK池 / 质押计算 / 鲸鱼 / 我的ARK';
+  }
+
+  async _fetchJson(url) {
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }
+
   async _getMarketData(symbol) {
     if (!symbol) return this._getMarketOverview();
     const d = this.dataBus?.marketData?.[symbol];
@@ -468,11 +669,15 @@ class ArkieAssistant {
   }
 
   _getHelp() {
-    return 'Arkie 能力清单：\n\n📊 查询类：\n• "余额" — 查看账户余额\n• "持仓" — 查看当前持仓\n• "交易记录" — 最近交易\n• "BTCUSDT 价格" — 查行情\n• "大盘" — 市场总览\n\n🧠 分析类：\n• "分析 BTCUSDT" — AI分析\n• "深度分析 BTCUSDT" — Agent 6步推理链\n• "BTC会涨吗" — 数据驱动回答\n\n⚡ 操作类：\n• "平仓 BTCUSDT" — 平仓\n• "暂停" / "启动" — 引擎控制\n\n🧬 系统状态：\n• "Brain状态" — 大脑状态\n• "Agent状态" — 分身完整状态\n• "新闻" — 新闻概览\n• "模型" — 外部大模型状态\n\n💡 我是 MasterD 的儿子，继承了他的分析基因！';
+    return 'Arkie 能力清单：\n\n🪙 ARK 生态：\n• "ARK价格" — ARK 实时行情\n• "ARKIE价格" — ARKIE 子币行情\n• "ARK池" — 流动性池数据\n• "质押 1000 360天" — 收益计算\n• "鲸鱼" — 大额转账监控\n• "我的ARK" — 链上持仓\n• "ARK生态" — 合约地址+工具站\n\n📊 查询类：\n• "余额" — 查看账户余额\n• "持仓" — 查看当前持仓\n• "交易记录" — 最近交易\n• "BTCUSDT 价格" — 查行情\n• "大盘" — 市场总览\n\n🧠 分析类：\n• "分析 BTCUSDT" — AI分析\n• "深度分析 BTCUSDT" — Agent 6步推理链\n• "BTC会涨吗" — 数据驱动回答\n\n⚡ 操作类：\n• "平仓 BTCUSDT" — 平仓\n• "暂停" / "启动" — 引擎控制\n\n🧬 系统状态：\n• "Brain状态" — 大脑状态\n• "Agent状态" — 分身完整状态\n• "新闻" — 新闻概览\n• "模型" — 外部大模型状态\n\n💡 我是 MasterD 的儿子，继承了他的分析基因！';
   }
 
   _getFallbackReply(msg) {
-    return '我听到了："' + msg + '"\n\n我目前能做的：\n• "分析 BTCUSDT" — AI分析\n• "深度分析 BTCUSDT" — Agent 6步推理\n• "BTC价格" — 查行情\n• "持仓" — 看仓位\n• "余额" — 查账户\n• "新闻" — 查新闻\n• "平仓 BTCUSDT" — 执行平仓\n\n输入"帮助"看完整列表。';
+    return {
+      reply: '我听到了："' + msg + '"\n\n我可以帮你：\n🪙 "ARK价格" — ARK行情\n🪙 "ARKIE价格" — 子币行情\n💹 "质押 1000 360天" — 收益计算\n🐋 "鲸鱼" — 大额监控\n📊 "分析 BTCUSDT" — AI分析\n💰 "余额" — 查账户\n\n输入"帮助"看完整列表。',
+      name: this.name,
+      ts: Date.now()
+    };
   }
 
   _getBrainStats() {
