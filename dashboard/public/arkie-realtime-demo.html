@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Arkie 实时推送演示</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Inter","Segoe UI",system-ui,-apple-system,"PingFang SC",sans-serif;background:
+    radial-gradient(1000px 500px at 10% -10%,#16233d 0%,transparent 55%),#0a0e17;color:#e6edf3;min-height:100vh;padding:24px}
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-size:22px;margin-bottom:6px}
+  h1 span{color:#6366f1}
+  .sub{color:#8b95a8;font-size:13px;margin-bottom:20px}
+  .status{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;font-size:12px;background:#161d2b;border:1px solid #232c3d;margin-bottom:18px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#5a6779}
+  .dot.on{background:#18c98a;box-shadow:0 0 8px #18c98a;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}}
+  .card{background:#0f1420;border:1px solid #232c3d;border-radius:14px;padding:18px}
+  .card h2{font-size:12px;color:#8b95a8;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
+  .price{font-size:30px;font-weight:700;font-family:ui-monospace,Menlo,monospace}
+  .chg{font-size:13px;margin-top:4px}
+  .up{color:#18c98a}.dn{color:#f2555f}
+  .meta{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #1e2941;font-size:13px}
+  .meta:last-child{border:0}
+  .meta b{font-family:ui-monospace,monospace}
+  #log{background:#05080e;border:1px solid #232c3d;border-radius:12px;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.7;color:#8fe6b4;max-height:220px;overflow:auto;white-space:pre-wrap}
+  .tag{padding:2px 8px;border-radius:6px;font-size:11px;font-family:monospace}
+  .tag.up{background:#18c98a22;color:#18c98a}
+  .tag.dn{background:#f2555f22;color:#f2555f}
+  .tag.wh{background:#6366f122;color:#93b4ff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span>Arkie</span> 实时推送 <span style="font-size:12px;color:#8b95a8">v1</span></h1>
+  <div class="sub">WebSocket 实时价格 · 订阅告警 · 鲸鱼监控（5秒/30秒轮询）</div>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusTxt">连接中…</span></div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>ARK 实时价格</h2>
+      <div class="price" id="arkPrice">—</div>
+      <div class="chg" id="arkChg">—</div>
+      <div style="margin-top:14px">
+        <div class="meta"><span>24h量</span><b id="arkVol">—</b></div>
+        <div class="meta"><span>流动性</span><b id="arkLiq">—</b></div>
+        <div class="meta"><span>更新时间</span><b id="arkTs">—</b></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>ARKIE 实时价格</h2>
+      <div class="price" id="akPrice">—</div>
+      <div class="chg" id="akChg">—</div>
+      <div style="margin-top:14px">
+        <div class="meta"><span>24h量</span><b id="akVol">—</b></div>
+        <div class="meta"><span>流动性</span><b id="akLiq">—</b></div>
+        <div class="meta"><span>更新时间</span><b id="akTs">—</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>实时事件日志</h2>
+    <div id="log">等待推送…</div>
+  </div>
+</div>
+
+<script src="arkie-realtime-client.js"></script>
+<script>
+  var $ = id => document.getElementById(id);
+  var logv = s => { var el=$('log'); el.textContent += '\n' + s; el.scrollTop = el.scrollHeight; };
+  var n = (v,d)=>{ try{return Number(v).toLocaleString(undefined,{maximumFractionDigits:d||2})}catch(e){return '—'} };
+
+  ArkieRT.onStatus(function(s){
+    $('dot').className = 'dot' + (s.connected?' on':'');
+    $('statusTxt').textContent = s.connected ? 'WebSocket 已连接 · 实时推送中' : '连接断开，重连中…';
+    logv('[' + new Date().toLocaleTimeString() + '] ' + (s.connected?'✅ 已连接':'❌ 断开'));
+  });
+
+  ArkieRT.onPrice(function(d){
+    if (d.ark && d.ark.price) {
+      var a = d.ark;
+      $('arkPrice').textContent = '$' + a.price.toFixed(4);
+      var c = (a.change && a.change.h24) || 0;
+      $('arkChg').innerHTML = '<span class="' + (c>=0?'up':'dn') + '">' + (c>=0?'▲':'▼') + ' ' + c.toFixed(2) + '% (24h)</span>';
+      $('arkVol').textContent = '$' + (a.vol/1e6).toFixed(2) + 'M';
+      $('arkLiq').textContent = '$' + (a.liq/1e6).toFixed(2) + 'M';
+      $('arkTs').textContent = new Date().toLocaleTimeString();
+    }
+    if (d.arkie && d.arkie.price) {
+      var k = d.arkie;
+      $('akPrice').textContent = '$' + k.price.toFixed(4);
+      var c2 = (k.change && k.change.h24) || 0;
+      $('akChg').innerHTML = '<span class="' + (c2>=0?'up':'dn') + '">' + (c2>=0?'▲':'▼') + ' ' + c2.toFixed(2) + '% (24h)</span>';
+      $('akVol').textContent = '$' + (k.vol/1e6).toFixed(2) + 'M';
+      $('akLiq').textContent = '$' + (k.liq/1e6).toFixed(2) + 'M';
+      $('akTs').textContent = new Date().toLocaleTimeString();
+    }
+  });
+
+  var priceCount = 0;
+  ArkieRT.onPrice(function(){ priceCount++; if (priceCount % 6 === 1) logv('[' + new Date().toLocaleTimeString() + '] 📊 价格更新 #' + priceCount); });
+
+  ArkieRT.onWhale(function(w){
+    logv('[' + new Date().toLocaleTimeString() + '] 🐋 鲸鱼: ' + n(w.amt,0) + ' ARK  ' + w.from.slice(0,8) + '… → ' + w.to.slice(0,8) + '…');
+  });
+  ArkieRT.onAlert(function(a){
+    logv('[' + new Date().toLocaleTimeString() + '] 🔔 告警: ARK $' + a.price + ' (' + a.kind + ' $' + a.target + ')');
+  });
+</script>
+</body>
+</html>
