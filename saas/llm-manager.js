@@ -44,12 +44,12 @@ class LLMManager {
     // 27个免费模型, 无需付费, 注册即用
     const orKey = config.openrouter?.apiKey || process.env.OPENROUTER_API_KEY;
     const orFreeModels = config.openrouter?.freeModels || [
-      { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'llama-70b', weight: 0.2 },
-      { id: 'qwen/qwen3-next-80b-a3b-instruct:free', name: 'qwen3-80b', weight: 0.2 },
-      { id: 'qwen/qwen3-coder:free', name: 'qwen3-coder', weight: 0.15 },
-      { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'nemotron-120b', weight: 0.15 },
-      { id: 'openai/gpt-oss-120b:free', name: 'gpt-oss-120b', weight: 0.2 },
-      { id: 'google/gemma-4-31b-it:free', name: 'gemma4-31b', weight: 0.1 },
+      // 2026-10 更新: 当前可用的 OpenRouter 免费模型
+      { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', name: 'nemotron-550b', weight: 0.3 },
+      { id: 'nvidia/nemotron-3-super-120b-a12b:free', name: 'nemotron-120b', weight: 0.25 },
+      { id: 'google/gemma-4-31b-it:free', name: 'gemma4-31b', weight: 0.2 },
+      { id: 'google/gemma-4-26b-a4b-it:free', name: 'gemma4-26b', weight: 0.15 },
+      { id: 'nvidia/nemotron-3.5-lightning:free', name: 'nemotron-light', weight: 0.1 },
     ];
     
     if (orKey) {

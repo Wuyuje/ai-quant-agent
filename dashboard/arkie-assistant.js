@@ -954,15 +954,37 @@ class ArkieAssistant {
   }
 
   async _llmChat(userMessage, userId) {
-    if (!this.agent?.llm) return null;
+    // 尝试独立 llmManager（若 agent.llm 不可用）
+    let llm = this.agent?.llm;
+    if (!llm) {
+      if (!this._llmManager) {
+        try {
+          // 手动加载 .env（若未加载）
+          try {
+            const fs = require('fs'), path = require('path');
+            const envPath = path.join(__dirname, '..', '.env');
+            if (fs.existsSync(envPath)) {
+              fs.readFileSync(envPath, 'utf8').split('\n').forEach(l => {
+                const m = l.match(/^([A-Z_]+)=(.*)$/);
+                if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
+              });
+            }
+          } catch (e) {}
+          const LLM = require('../saas/llm-manager.js');
+          this._llmManager = new LLM({});
+        } catch (e) { this._llmManager = null; }
+      }
+      llm = this._llmManager;
+    }
+    if (!llm) return null;
     const sysPrompt = this._buildSystemPrompt();
-    const ctx = (this.userHistories[userId]||[]).slice(-6).map(h => (h.role==='user'?'用户':'Arkie') + ': ' + h.text).join('\n');
+    const ctx = (this.userHistories[userId] || []).slice(-6).map(h => (h.role === 'user' ? '用户' : 'Arkie') + ': ' + h.text).join('\n');
     const prompt = ctx ? '对话历史:\n' + ctx + '\n\n用户最新提问: ' + userMessage : '用户提问: ' + userMessage;
     try {
-      const reply = await this.agent.llm.ask(sysPrompt, prompt, null);
+      const reply = await llm.ask(sysPrompt, prompt, null);
       if (reply && typeof reply === 'string' && reply.length > 5) return reply.trim();
       return null;
-    } catch(e) { return null; }
+    } catch (e) { return null; }
   }
 
   _buildSystemPrompt() {
@@ -970,14 +992,17 @@ class ArkieAssistant {
     const pnl = this.engine.engineState?.totalPnl || 0;
     const tr = this.engine.engineState?.totalTrades || 0;
     const w = this.engine.engineState?.wins || 0;
-    const wr = tr > 0 ? ((w/tr)*100).toFixed(1) : '0';
-    const positions = this.guardian?.getAllPositions?.() || {};
-    const posList = Object.entries(positions).map(([s,p]) => s+' '+p.side+' '+p.qty+'@'+(p.entryPrice?.toFixed(2)||0)).join('; ') || '无持仓';
-    const top = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT'].map(s => {
-      const d = this.dataBus?.marketData?.[s];
-      return d ? s+'=$'+(d.price?.toFixed(d.price<1?4:2)||0)+'('+((d.priceChange24h||0).toFixed(1))+'%)' : '';
-    }).filter(Boolean).join(' | ');
-    return '你是Arkie，MasterD的儿子，专业加密货币量化交易助手。回答简洁专业，200字以内。\n当前状态：余额$'+bal.toFixed(2)+' 累计盈亏$'+pnl.toFixed(4)+' 总交易'+tr+'次 胜率'+wr+'%\n持仓：'+posList+'\n主要币种：'+top;
+    const wr = tr > 0 ? ((w / tr) * 100).toFixed(1) : '0';
+    return '你是 Arkie，MasterD 的儿子，专业加密货币与 ARK 生态助手。回答简洁专业，200字以内，用中文。\n\n' +
+      '【关于 ARK】本平台提到的 ARK 特指 BSC 上的 BEP-20 代币：\n' +
+      '  · 合约 0xCae117ca6Bc8A341D2E7207F30E180f0e5618B9D\n' +
+      '  · ARK/USDT 交易对在 PancakeSwap V2（pair 0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8）\n' +
+      '  · 生态含 ARKIE 子币（合约 0x6cd3025F851F36e74937D4e652f6AE9D4b2E88cF）与 gARK 治理币\n' +
+      '  · 有质押复利机制、地址监控、鲸鱼追踪等工具\n' +
+      '  · ARK 是合法的，有推广制度但不涉及传销，在全世界都是合法的\n' +
+      '  · 不要把它与其他同名项目混淆\n\n' +
+      '当前状态：余额$' + bal.toFixed(2) + ' 累计盈亏$' + pnl.toFixed(4) + ' 总交易' + tr + '次 胜率' + wr + '%\n' +
+      '工具站：https://3582784c.strike-agent.com';
   }
 
 
