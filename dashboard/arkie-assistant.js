@@ -56,6 +56,9 @@ class ArkieAssistant {
       if (this._matchAny(msgLower, ['鲸鱼','whale','大额转账','大单','巨鲸'])) {
         return this._reply(await this._getWhaleWatch());
       }
+      if (this._matchAny(msgLower, ['ark走势','ark会涨','ark展望','ark预测','ark怎么看','ark分析','ark能买'])) {
+        return this._reply(await this._arkOutlook());
+      }
       if (this._matchAny(msgLower, ['ark生态','ark工具','工具站','citizen','公民'])) {
         return this._reply(this._getArkEcosystem());
       }
@@ -144,7 +147,7 @@ class ArkieAssistant {
       }
 
       // 上下文驱动
-      const ctxReply = this._contextualReply(msg, userId);
+      const ctxReply = await this._contextualReply(msg, userId);
       if (ctxReply) return this._reply(ctxReply);
 
       // 数据驱动
@@ -573,10 +576,10 @@ class ArkieAssistant {
     return '❌ 无法执行平仓。请确认已登录。';
   }
 
-  _contextualReply(msg, userId) {
+  async _contextualReply(msg, userId) {
     const history = this.userHistories[userId] || [];
     if (history.length < 2) return null;
-    const lastArkie = history.filter(h=>h.role==='arkie').slice(-1)[0]?.text || '';
+    const lastArkie = history.filter(h => h.role === 'arkie').slice(-1)[0]?.text || '';
     if (lastArkie.includes('告诉我要分析哪个币') || lastArkie.includes('告诉我要平哪个仓')) {
       const symbol = this._extractSymbol(msg);
       if (symbol) {
@@ -584,7 +587,83 @@ class ArkieAssistant {
         if (lastArkie.includes('平仓')) return this._closePosition(symbol, userId, null, false);
       }
     }
+
+    // ⭐ 增强: 记住上文提到的币种 + ARK 主题
+    const ctxSymbol = this._lastSymbol(userId);
+    const ctxArk = this._lastTopic(userId) === 'ark';
+
+    // 追问型: "那我要买吗" "它会涨吗" "推荐吗"
+    if (/值得|该买|该卖|要不要|会涨|会跌|能买|推荐|怎么样|如何|好吗|行吗|买吗|卖吗/.test(msg)) {
+      if (ctxArk) return await this._arkOutlook();
+      if (ctxSymbol) return this._dataDrivenReply(ctxSymbol + ' 会涨吗');
+    }
+
+    // 纯追问: "那我呢" "多少" "分析下"
+    if (/^(那|那么|然后)?\s*(呢|多少|怎么样|分析下|说下|继续|然后呢)/.test(msg)) {
+      if (ctxArk) return await this._arkOutlook();
+      if (ctxSymbol) return this._dataDrivenReply(ctxSymbol + ' 价格');
+    }
+
     return null;
+  }
+
+  // 提取本用户最近提到的币种
+  _lastSymbol(userId) {
+    const h = this.userHistories[userId] || [];
+    for (let i = h.length - 1; i >= 0; i--) {
+      if (h[i].role !== 'user') continue;
+      const s = this._extractSymbol(h[i].text);
+      if (s) return s;
+    }
+    return null;
+  }
+
+  // 提取本用户最近的主题 (ark / arkie)
+  _lastTopic(userId) {
+    const h = this.userHistories[userId] || [];
+    for (let i = h.length - 1; i >= 0; i--) {
+      if (h[i].role !== 'user') continue;
+      const t = h[i].text.toLowerCase();
+      if (t.includes('arkie')) return 'arkie';
+      if (t.includes('ark')) return 'ark';
+    }
+    return null;
+  }
+
+  // ARK 走势展望（结合链上数据 + 推荐）
+  async _arkOutlook() {
+    try {
+      const d = await this._fetchJson('https://api.dexscreener.com/latest/dex/pairs/bsc/0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8');
+      const p = (d.pairs && d.pairs[0]) || d.pair || {};
+      const price = parseFloat(p.priceUsd || 0);
+      const pc = p.priceChange || {};
+      const vol = (p.volume && p.volume.h24) || 0;
+      const liq = (p.liquidity && p.liquidity.usd) || 0;
+      const tx = p.txns && p.txns.h24 ? (p.txns.h24.buys - p.txns.h24.sells) : 0;
+      let score = 0, reasons = [];
+      // 短中期动量
+      if (pc.h1 > 0.5) { score++; reasons.push('1h涨' + pc.h1.toFixed(2) + '%'); }
+      else if (pc.h1 < -0.5) { score--; reasons.push('1h跌' + pc.h1.toFixed(2) + '%'); }
+      if (pc.h24 > 2) { score++; reasons.push('24h涨' + pc.h24.toFixed(2) + '%'); }
+      else if (pc.h24 < -2) { score--; reasons.push('24h跌' + pc.h24.toFixed(2) + '%'); }
+      // 买卖均衡
+      if (tx > 0) { score++; reasons.push('买方占优(+' + tx + ')'); }
+      else if (tx < 0) { score--; reasons.push('卖方占优(' + tx + ')'); }
+      // 流动性
+      if (liq > 5e7) reasons.push('流动性充足($' + (liq / 1e6).toFixed(0) + 'M)');
+      else if (liq < 1e7) { score--; reasons.push('流动性偏低'); }
+      const view = score >= 2 ? '🟢 偏多' : (score <= -2 ? '🔴 偏空' : '⚪ 中性');
+      let t = '🔮 ARK 走势展望\n\n';
+      t += '现价：$' + price.toFixed(4) + '\n';
+      t += '1h/24h：' + (pc.h1 || 0).toFixed(2) + '% / ' + (pc.h24 || 0).toFixed(2) + '%\n';
+      t += '24h量：$' + (vol / 1e6).toFixed(2) + 'M\n';
+      t += '综合评估：' + view + '（评分 ' + score + '）\n\n';
+      t += '依据：' + (reasons.join('、') || '无明显信号') + '\n\n';
+      t += '💡 以上为数据分析，不构成投资建议。输入"ARK池"看详情，"质押 1000"算收益。';
+      return t;
+    } catch (e) {
+      return '❌ ARK 展望查询失败: ' + e.message;
+    }
   }
 
   _dataDrivenReply(msg) {
