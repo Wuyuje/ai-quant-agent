@@ -56,6 +56,9 @@ class ArkieAssistant {
       if (this._matchAny(msgLower, ['鲸鱼','whale','大额转账','大单','巨鲸'])) {
         return this._reply(await this._getWhaleWatch());
       }
+      if (this._matchAny(msgLower, ['ark信号','交易信号','买卖信号','signal','买点','卖点','开仓信号'])) {
+        return this._reply(await this._arkSignal());
+      }
       if (this._matchAny(msgLower, ['ark预测','ark价格预测','ark forecast','ark会到哪里','ark目标价','ark能到','ark涨到多少','ark目标'])) {
         return this._reply(await this._arkForecast());
       }
@@ -710,6 +713,95 @@ class ArkieAssistant {
       if (hits.length) this._saveSubs(list);
       return hits;
     } catch (e) { return []; }
+  }
+
+  // ARK 交易信号（多因子融合 → 买/卖/观望）
+  async _arkSignal() {
+    try {
+      const gt = await this._fetchJson('https://api.geckoterminal.com/api/v2/networks/bsc/pools/0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8/ohlcv/hour?aggregate=1&limit=200').catch(() => null);
+      let closes = [], highs = [], lows = [];
+      if (gt && gt.data && gt.data.attributes && gt.data.attributes.ohlcv_list) {
+        const list = gt.data.attributes.ohlcv_list.slice().reverse();
+        closes = list.map(r => parseFloat(r[4]));
+        highs = list.map(r => parseFloat(r[2]));
+        lows = list.map(r => parseFloat(r[3]));
+      }
+      const d = await this._fetchJson('https://api.dexscreener.com/latest/dex/pairs/bsc/0xCAaF3c41a40103a23Eeaa4BbA468AF3cF5b0e0D8');
+      const p = (d.pairs && d.pairs[0]) || {};
+      const price = parseFloat(p.priceUsd || 0);
+      if (closes.length < 30 || !price) return '⚠️ 数据不足，无法生成交易信号。';
+      const n = closes.length;
+      const ma = (arr, k) => arr.slice(-k).reduce((a, b) => a + b, 0) / Math.min(k, arr.length);
+      const ma7 = ma(closes, 7), ma25 = ma(closes, 25), ma99 = ma(closes, 99);
+      // RSI
+      let g = 0, l = 0;
+      for (let i = n - 14; i < n; i++) { const c = closes[i] - closes[i - 1]; if (c >= 0) g += c; else l -= c; }
+      const rsi = l === 0 ? 100 : 100 - 100 / (1 + g / l);
+      // MACD (12/26/9)
+      const ema = (arr, k) => { const a = arr.slice(-k * 3); let e = a[0]; const m = 2 / (k + 1); for (let i = 1; i < a.length; i++) e = a[i] * m + e * (1 - m); return e; };
+      const ema12 = ema(closes, 12), ema26 = ema(closes, 26);
+      const macd = ema12 - ema26;
+      // 布林
+      const sub = closes.slice(-20), mid = sub.reduce((a, b) => a + b, 0) / sub.length;
+      const std = Math.sqrt(sub.reduce((a, b) => a + (b - mid) ** 2, 0) / sub.length);
+      const upper = mid + 2 * std, lower = mid - 2 * std;
+      const bpos = (price - lower) / (upper - lower);
+      // ATR(14) 用于止损/止盈
+      let atrSum = 0, cnt = 0;
+      for (let i = n - 14; i < n; i++) {
+        const tr = Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1]));
+        atrSum += tr; cnt++;
+      }
+      const atr = atrSum / cnt;
+
+      // ═══ 信号判定 ═══
+      let signals = [], score = 0;
+      // 1. RSI
+      if (rsi < 30) { score += 2; signals.push('RSI超卖(' + rsi.toFixed(0) + ') → 买'); }
+      else if (rsi > 70) { score -= 2; signals.push('RSI超买(' + rsi.toFixed(0) + ') → 卖'); }
+      // 2. 均线
+      if (ma7 > ma25 && ma25 > ma99) { score += 2; signals.push('多头排列 → 持'); }
+      else if (ma7 < ma25 && ma25 < ma99) { score -= 2; signals.push('空头排列 → 避'); }
+      else if (ma7 > ma25) { score += 1; signals.push('MA7上穿MA25 → 偏多'); }
+      else if (ma7 < ma25) { score -= 1; signals.push('MA7下穿MA25 → 偏空'); }
+      // 3. 布林
+      if (bpos < 0.05) { score += 2; signals.push('触布林下轨 → 反弹机会'); }
+      else if (bpos > 0.95) { score -= 2; signals.push('触布林上轨 → 回落风险'); }
+      // 4. MACD
+      if (macd > 0) { score += 1; signals.push('MACD正值 → 多头动能'); }
+      else { score -= 1; signals.push('MACD负值 → 空头动能'); }
+      // 5. 买卖压力
+      const tx = p.txns && p.txns.h24 ? (p.txns.h24.buys - p.txns.h24.sells) : 0;
+      if (tx > 500) { score += 1; signals.push('买方主导'); }
+      else if (tx < -500) { score -= 1; signals.push('卖方主导'); }
+
+      // ═══ 最终操作 ═══
+      let action, actionEmoji;
+      if (score >= 4) { action = '强力买入'; actionEmoji = '🟢🟢'; }
+      else if (score >= 2) { action = '买入'; actionEmoji = '🟢'; }
+      else if (score <= -4) { action = '强力卖出'; actionEmoji = '🔴🔴'; }
+      else if (score <= -2) { action = '卖出'; actionEmoji = '🔴'; }
+      else { action = '观望'; actionEmoji = '⚪'; }
+
+      // 止损/止盈 (基于 ATR)
+      const stopLoss = price - atr * 1.5;
+      const takeProfit = price + atr * 3;
+
+      let t = '🎯 ARK 交易信号\n\n';
+      t += '现价：$' + price.toFixed(4) + '\n';
+      t += '信号强度：' + score + ' / ±8\n';
+      t += '操作建议：' + actionEmoji + ' ' + action + '\n\n';
+      t += '📍 关键位（ATR基准）：\n';
+      t += '  止损：$' + stopLoss.toFixed(4) + ' (-' + ((1 - stopLoss / price) * 100).toFixed(2) + '%)\n';
+      t += '  止盈：$' + takeProfit.toFixed(4) + ' (+' + ((takeProfit / price - 1) * 100).toFixed(2) + '%)\n';
+      t += '  ATR：$' + atr.toFixed(4) + '\n\n';
+      t += '🔍 信号明细：\n';
+      signals.forEach(s => { t += '  • ' + s + '\n'; });
+      t += '\n⚠️ 信号仅供参考，非投资建议。请结合仓位管理。';
+      return t;
+    } catch (e) {
+      return '❌ 信号生成失败: ' + e.message;
+    }
   }
 
   // ARK 价格预测 (多因子评分模型 + 目标价区间)
