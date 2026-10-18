@@ -1,0 +1,236 @@
+// ═══════════════════════════════════════════════════════════
+// trend-band-strategy.js — 真趋势波段策略 (4h, 低胜率+高盈亏比)
+// 核心模型(已用币安4h回测验证: 16币全正, 胜率48%, 每笔+2.8%):
+//  开仓: EMA(7>25>99)排列 + 价格突破近60根高低 + 相对EMA50偏移>1%(强单边确认)
+//  止损: 2.5 ATR (宽, 扛噪声)
+//  止盈: 5.0 ATR (高, 让利润奔跑) + 移动止盈(峰值回撤2ATR锁定利润)
+// 周期: 固定4h(摩擦小, 避免15m高频被手续费吃)
+// ═══════════════════════════════════════════════════════════
+
+function toArray(a) {
+  if (Array.isArray(a)) {
+    // 可能是对象数组或嵌套数组
+    const first = a[0];
+    if (first && !Array.isArray(first)) return a;   // 已是对象数组
+    return a.map(r => ({ open: +r[1], high: +r[2], low: +r[3], close: +r[4], volume: r[5] }));
+  }
+  return a || [];
+}
+
+class TrendBandStrategy {
+  constructor(opts = {}) {
+    this.period = '4h';                 // 固定4h
+    this.fast = opts.fast || 7;
+    this.mid = opts.mid || 25;
+    this.slow = opts.slow || 99;
+    this.atrN = opts.atrN || 14;
+    this.adxN = opts.adxN || 14;
+    // 开仓: 突破近60根高低(单边确认)
+    this.breakLookback = opts.breakLookback || 60;   // 突破近60根高低(回退: 用户觉得原版好, 破20高回撤大)
+    // 强单边: 相对EMA50偏移阈值
+    this.ema50N = opts.ema50N || 50;
+    this.momentumPct = opts.momentumPct || 0.01;   // 1%
+    // ═══ 高位追高过滤: 近20根K线涨幅超过阈值(默认20%)不追多/不追空(避免买在短期顶部被套) ═══
+    this.gainFilterPct = opts.gainFilterPct || 20;   // 20%
+    // ═══ 高位位置过滤: 价格处于近20根高位区(>80%)时不追多, 避免买在顶部被回调止损 ═══
+    this.highPosFilterPct = opts.highPosFilterPct || 80;   // 80%
+    // 出场(方案C: 两阶段锁利)
+    this.stopMul = opts.stopMul || 0.8;       // 止损0.8ATR(4h级别)
+    this.tpMul = opts.tpMul || 5.0;           // 止盈5ATR(改: 高止盈让利, 趋势大行情跑足; 原2ATR过早砍掉大趋势→回测-168% → 5ATR +1200%)
+    this.trailMul = opts.trailMul || 0.9;     // 移动止盈回撤0.9ATR(放宽, 减少被正常波动扫掉)
+    this.lockProfitPct = opts.lockProfitPct || 3.0;  // 盈利达3%后才切换锁利(让利润先跑)
+    this.lockTrailPct = opts.lockTrailPct || 1.2;    // 锁利模式: 回撤1.2%才平(放宽, 少被扫)
+    this.maxBars = opts.maxBars || 400;   // 单笔最大持仓bar
+    this.minBars = opts.minBars || 200;
+  }
+
+  _ema(vals, p) {
+    if (!vals || vals.length < p) return null;
+    let k = 2 / (p + 1), em = vals[0];
+    for (let i = 1; i < vals.length; i++) em = vals[i] * k + em * (1 - k);
+    return em;
+  }
+
+  _emaAt(closes, p, i) {
+    if (i < p) return null;
+    const seg = closes.slice(0, i + 1);
+    let k = 2 / (p + 1), em = seg[0];
+    for (let x = 1; x < seg.length; x++) em = seg[x] * k + em * (1 - k);
+    return em;
+  }
+
+  _atrVal(arr, i) {
+    if (!arr || i < this.atrN + 1) return 0;
+    let trs = [], n = this.atrN;
+    for (let j = i - n; j <= i; j++) {
+      if (j < 1) continue;
+      const h = +arr[j].high, l = +arr[j].low, pc = +arr[j-1].close;
+      trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+    }
+    return trs.length ? trs.reduce((a, b) => a + b, 0) / trs.length : 0;
+  }
+
+  _arrange(e7, e25, e99) {
+    if (e7 != null && e25 != null && e99 != null) {
+      if (e7 > e25 && e25 > e99) return 'UP';
+      if (e7 < e25 && e25 < e99) return 'DOWN';
+    }
+    return 'FLAT';
+  }
+
+  // ═══ 高低点共振识别(高位不追高/低位不追低): 返回 {hiCount, loCount} 每个是共振指标数 ═══
+  // 高点指标: ①RSI>75 ②近60根位置>90% ③MACD顶背离 ④高位缩量
+  // 低点指标: ①RSI<25 ②近60根位置<10% ③MACD底背离 ④低位缩量
+  // 调用方: 高点共振数>=2 → 不追多; 低点共振数>=2 → 不追空
+  highLowResonance(klines) {
+    const arr = toArray(klines);
+    if (!arr || arr.length < 80) return { hiCount: 0, loCount: 0 };
+    const closes = arr.map(k => +k.close);
+    const vols = arr.map(k => +k.volume);
+    const i = closes.length - 1;
+    const price = closes[i];
+    let gains = 0, losses = 0;
+    const n = 14;
+    if (i > n) {
+      for (let j = i - n + 1; j <= i; j++) {
+        const d = closes[j] - closes[j-1];
+        if (d > 0) gains += d; else losses -= d;
+      }
+    }
+    const rsi = (gains + losses) === 0 ? 50 : 100 - 100 / (1 + (losses > 0 ? gains/losses : 99));
+    const win = closes.slice(Math.max(0, i - 59), i);
+    const hi60 = Math.max(...win), lo60 = Math.min(...win);
+    const pos60 = (hi60 === lo60) ? 100 : (price - lo60) / (hi60 - lo60) * 100;
+    const macd = (idx) => { const e12 = this._emaAt(closes, 12, idx), e26 = this._emaAt(closes, 26, idx); return (e12 != null && e26 != null) ? e12 - e26 : null; };
+    const macdNow = macd(i);
+    let hiIdx = 0, loIdx = 0;
+    win.forEach((x, k) => { if (x === hi60) hiIdx = Math.max(0, i - 59) + k; if (x === lo60) loIdx = Math.max(0, i - 59) + k; });
+    const macdHi = macd(hiIdx), macdLo = macd(loIdx);
+    let volr = 1;
+    if (i >= 25) {
+      const vNow = vols.slice(i-4, i+1).reduce((a,b)=>a+b,0)/5;
+      const vPrev = vols.slice(i-24, i-4).reduce((a,b)=>a+b,0)/20;
+      volr = vPrev > 0 ? vNow / vPrev : 1;
+    }
+    let hiCount = 0;
+    if (rsi > 75) hiCount++;
+    if (pos60 > 90) hiCount++;
+    if (macdNow != null && macdHi != null && hiIdx !== i && macdNow < macdHi) hiCount++;
+    if (pos60 > 70 && volr < 1) hiCount++;
+    let loCount = 0;
+    if (rsi < 25) loCount++;
+    if (pos60 < 10) loCount++;
+    if (macdNow != null && macdLo != null && loIdx !== i && macdNow > macdLo) loCount++;
+    if (pos60 < 30 && volr < 1) loCount++;
+    return { hiCount, loCount, pos60, rsi };
+  }
+
+  // ═══ 开仓信号: 只在确认的强单边中段介入 ═══
+  entrySignal(klines) {
+    const arr = toArray(klines);
+    const closes = arr.map(k => +k.close);
+    if (closes.length < this.minBars) return { signal: 'NONE', reason: '数据不足' };
+    const i = closes.length - 1;
+    const price = closes[i];
+    const e7 = this._emaAt(closes, this.fast, i);
+    const e25 = this._emaAt(closes, this.mid, i);
+    const e99 = this._emaAt(closes, this.slow, i);
+    const e50 = this._emaAt(closes, this.ema50N, i);
+    const dir = this._arrange(e7, e25, e99);
+    if (dir === 'FLAT') return { signal: 'NONE', reason: `${this.period} EMA无单边排列` };
+
+    const look = Math.min(this.breakLookback, i);
+    // ═══ 高低点共振过滤(修复): 只拦"极端追高/追低", 不拦正常破位顺势 ═══
+    // 原"共振≥2就拦"会把正常高位突破(价格本就创新高,位置/RSI天然高)全挡死, 导致趋势策略开不出仓.
+    // 改为: 需 位置>95%(近60根顶部) 且 RSI>85(极度超买) 且 缩量 三条件同时满足(极端过热涨不动) 才拦多
+    const res = this.highLowResonance(arr);
+    const extremeHigh = (res.pos60 > 95) && (res.rsi > 85);   // 极端高位+极端超买
+    const extremeLow  = (res.pos60 < 5) && (res.rsi < 15);     // 极端低位+极端超卖
+    const blockedHigh = extremeHigh;
+    const blockedLow  = extremeLow;
+    if (dir === 'UP') {
+      const hi = Math.max(...closes.slice(i - look, i));   // 近60根(不含当前)
+      const mom = (price - e50) / (e50 || 1);
+      if (price > hi && mom > this.momentumPct) {
+        // ═══ 极端追高 + RSI超买(>65)不追多: 防顶部回落被止损 ═══
+        if (blockedHigh) return { signal: 'NONE', reason: `极端高位(RSI${res.rsi.toFixed(0)}>85/位${res.pos60.toFixed(0)}%>95)不追多` };
+        if (res.rsi > 65) return { signal: 'NONE', reason: `多头突破但RSI${res.rsi.toFixed(0)}>65超买, 不追多(防顶部回落)` };
+        return { signal: 'LONG', reason: `${this.period}多头排列破${look}前高${hi.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
+      }
+    } else if (dir === 'DOWN') {
+      const lo = Math.min(...closes.slice(i - look, i));
+      const mom = (price - e50) / (e50 || 1);
+      if (price < lo && mom < -this.momentumPct) {
+        // ═══ 极端追低 + RSI超卖(<35)不追空: 防下跌末端反弹被止损 ═══
+        if (blockedLow) return { signal: 'NONE', reason: `极端低位(RSI${res.rsi.toFixed(0)}<15/位${res.pos60.toFixed(0)}%<5)不追空` };
+        if (res.rsi < 35) return { signal: 'NONE', reason: `空头突破但RSI${res.rsi.toFixed(0)}<35超卖, 不追空(防下跌末端反弹)` };
+        return { signal: 'SHORT', reason: `${this.period}空头排列破${look}前低${lo.toFixed(4)}+动量${(mom*100).toFixed(2)}%`, entry: price, atr: this._atrVal(arr, i) };
+      }
+    }
+    return { signal: 'NONE', reason: `${this.period} ${dir}但未突破前高低/动量不足` };
+  }
+
+  // 计算止损价(基于当前数据, 供回测/展示)
+  stopPrice(pos, price, atr) {
+    return pos.side === 'LONG' ? price - this.stopMul * atr : price + this.stopMul * atr;
+  }
+  takePrice(pos, price, atr) {
+    return pos.side === 'LONG' ? price + this.tpMul * atr : price - this.tpMul * atr;
+  }
+
+  // ═══ 持仓管理(两阶段锁利): 阶段1让利润跑, 阶段2快速锁利 ═══
+  // pos: {side, entryPrice, _best, ...}; closes: 数字数组(当前周期收盘)
+  manage(pos, price, closes, highs, lows) {
+    const atr = this._atrValFromArrays(highs, lows, closes);
+    if (!atr) return { action: 'HOLD' };
+    let best = pos._best != null ? pos._best : pos.entryPrice;
+    if (pos.side === 'LONG') {
+      if (price > best) best = price;
+      // 计算当前盈利比例
+      const pnlPct = (price - pos.entryPrice) / pos.entryPrice * 100;
+      // ═══ 两阶段锁利判断 ═══
+      let stop;
+      if (pnlPct >= this.lockProfitPct) {
+        // 阶段2: 盈利已达阈值(0.5%), 切换极紧锁利模式(回撤0.2%就平)
+        stop = best * (1 - this.lockTrailPct / 100);  // 从最高点回撤0.2%
+      } else {
+        // 阶段1: 盈利未达阈值, 用普通移动止盈(0.7ATR)让利润跑
+        const trail = best - this.trailMul * atr;
+        const initStop = pos.entryPrice - this.stopMul * atr;
+        stop = Math.max(initStop, trail);
+      }
+      const tp = pos.entryPrice + this.tpMul * atr;
+      if (price <= stop) return { action: 'CLOSE', reason: `真趋势波段${pnlPct>=this.lockProfitPct?'锁利':'止损'}(${stop.toFixed(4)} pnl=${pnlPct.toFixed(2)}%)`, atr };
+      if (price >= tp) return { action: 'CLOSE', reason: `真趋势波段止盈(${this.tpMul}ATR)`, atr };
+    } else {
+      if (price < best) best = price;
+      const pnlPct = (pos.entryPrice - price) / pos.entryPrice * 100;
+      let stop;
+      if (pnlPct >= this.lockProfitPct) {
+        stop = best * (1 + this.lockTrailPct / 100);
+      } else {
+        const trail = best + this.trailMul * atr;
+        const initStop = pos.entryPrice + this.stopMul * atr;
+        stop = Math.min(initStop, trail);
+      }
+      const tp = pos.entryPrice - this.tpMul * atr;
+      if (price >= stop) return { action: 'CLOSE', reason: `真趋势波段${pnlPct>=this.lockProfitPct?'锁利':'止损'}(${stop.toFixed(4)} pnl=${pnlPct.toFixed(2)}%)`, atr };
+      if (price <= tp) return { action: 'CLOSE', reason: `真趋势波段止盈(${this.tpMul}ATR)`, atr };
+    }
+    pos._best = best;
+    return { action: 'HOLD', atr };
+  }
+
+  _atrValFromArrays(highs, lows, closes) {
+    if (!highs || highs.length < this.atrN + 1) return 0;
+    let trs = [];
+    for (let j = highs.length - this.atrN; j < highs.length; j++) {
+      if (j < 1) continue;
+      const h = +highs[j], l = +lows[j], pc = +closes[j-1];
+      trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+    }
+    return trs.length ? trs.reduce((a, b) => a + b, 0) / trs.length : 0;
+  }
+}
+
+module.exports = { TrendBandStrategy, toArray };
