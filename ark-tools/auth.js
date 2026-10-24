@@ -7,6 +7,7 @@
   // ⭐ 暴露給其他模組（ads.js 等使用）
   Object.defineProperty(window, "arkState", {
     get: function () { return state; },
+    set: function (v) { state = v || { addr: "", plan: "free", pro: false, until: 0 }; },
     configurable: true
   });
 
