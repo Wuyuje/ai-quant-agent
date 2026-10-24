@@ -1110,11 +1110,14 @@ window.saveCoefBinding = function () {
           try {
             var _thEl = document.getElementById('coefTh');
             var _tgEl = document.getElementById('coefTarget');
-            if (_thEl) _thEl.setAttribute('data-saved', '1');
-            if (_tgEl) _tgEl.setAttribute('data-saved', '1');
+            if (_thEl) { _thEl.setAttribute('data-saved', '1'); _thEl.removeAttribute('data-user'); }
+            if (_tgEl) { _tgEl.setAttribute('data-saved', '1'); _tgEl.removeAttribute('data-user'); }
             window.__ARK_SAVED_ALERT = { id: dd.id, threshold: th, channel: ch, target: target };
             try { window.__ARK_ALERT_ADDR = _wa ? String(_wa() || '').toLowerCase() : ''; } catch (e) {}
-            if (typeof window.loadCoefAlerts === 'function') window.loadCoefAlerts();
+            /* ⭐⭐ FIX: 刚保存完，输入框里是用户填的值，不能让 loadCoefAlerts 回读覆盖/清空。
+               标记 __ARK_KEEP_INPUT 让回读逻辑跳过输入框。 */
+            try { window.__ARK_KEEP_INPUT = Date.now(); } catch (e) {}
+            if (typeof window.loadCoefAlerts === 'function') setTimeout(function(){ try { window.__ARK_KEEP_INPUT = 0; } catch(e){} }, 1200);
           } catch (e) {}
           console.log('[coef] 阈值已保存到云端: ' + th);
         } else {
@@ -1180,6 +1183,33 @@ function checkTargetFormat(ch, target) {
   return null;
 }
 window.checkTargetFormat = checkTargetFormat;
+
+/* ══════════ ⭐⭐ FIX: 用户输入保护 ══════════
+   用户在 coefTh/coefTarget 里敲任何字，就打 data-user=1 标记，
+   后续所有自动回填逻辑（loadCoefAlerts / 8秒定时器）看到这个标记就不再覆盖。
+   这样用户可以从容填完再点保存，不会被定时刷新冲掉。 */
+document.addEventListener('DOMContentLoaded', function () {
+  try {
+    ['coefTh', 'coefTarget'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var mark = function () { try { el.setAttribute('data-user', '1'); } catch (e) {} };
+      el.addEventListener('input', mark, { passive: true });
+      el.addEventListener('change', mark, { passive: true });
+      el.addEventListener('keyup', mark, { passive: true });
+      el.addEventListener('paste', mark, { passive: true });
+    });
+    console.log('[coef] 用户输入保护已启用');
+    /* ⭐ 便利功能：点进输入框自动全选已有内容，直接输入即覆盖，避免误拼接 */
+    ['coefTh', 'coefTarget'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('focus', function () {
+        try { setTimeout(function(){ el.select(); }, 10); } catch (e) {}
+      });
+    });
+  } catch (e) { console.warn('[coef] 输入保护绑定失败', e); }
+});
 
 /* ══════════ 测试发送（验证通道配置）══════════ */
 window.testCoefChannel = function () {
@@ -1248,7 +1278,7 @@ window.addCoefAlert = function () {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ addr: _w, threshold: th, channel: ch, target: target })
   }).then(function (r) { return r.json(); }).then(function (d) {
-    if (d.ok) { hint.textContent = '✅ 已添加提醒'; hint.style.color = '#18c98a'; document.getElementById('coefTarget').value = ''; loadCoefAlerts(); }
+    if (d.ok) { hint.textContent = '✅ 已添加提醒（阈值 ' + th + ' · ' + (ch === 'wechat' ? '微信' : 'Telegram') + '）'; hint.style.color = '#18c98a'; loadCoefAlerts(); }
     else if (d.error === 'pro_required') { hint.innerHTML = '🔒 系数提醒是 <b>VIP</b> 功能，请先升级会员'; hint.style.color = '#f5a623'; }
     else { hint.textContent = '❌ ' + (d.error || '失败'); hint.style.color = '#f2555f'; }
   }).catch(function () { hint.textContent = '❌ 网络错误'; hint.style.color = '#f2555f'; });
@@ -1265,8 +1295,11 @@ window.loadCoefAlerts = function (_retry) {
       var _e1 = document.getElementById('coefTh');
       var _e2 = document.getElementById('coefTarget');
       var _e3 = document.getElementById('coefCh');
-      if (_e1) { _e1.removeAttribute('data-saved'); _e1.value = ''; }
-      if (_e2) { _e2.removeAttribute('data-saved'); _e2.value = ''; }
+      /* ⭐⭐ FIX: 用户正在输入时不能清空！以前无条件 e.value='' ，配合下方 8 秒 setInterval
+         定时调用，导致用户填一半就被清掉，"页面太快来不及保存"。
+         现在只清 data-saved 标记，输入框有内容一律保留。 */
+      if (_e1) _e1.removeAttribute('data-saved');
+      if (_e2) _e2.removeAttribute('data-saved');
       if (_e3) _e3.removeAttribute('data-saved');
       window.__ARK_SAVED_ALERT = null;
       var _h = document.getElementById('coefHint');
@@ -1310,13 +1343,30 @@ window.loadCoefAlerts = function (_retry) {
         }
       }
       if (!al) {
-        /* ⭐ FIX: 当前地址没有任何提醒 → 清空输入框，绝不显示别人的阈值 */
+        /* ⭐⭐ FIX: 当前地址没有任何提醒时，绝不显示别人的阈值——但也不能清空用户正在填的内容！
+           以前无条件清空，配合 8 秒定时器，用户填一半就被抹掉，"页面太快来不及保存"。
+           现在：用户正在输入 / 刚保存过 → 保留输入；否则只清标记不碰值。 */
         try {
           var _t1 = document.getElementById('coefTh');
           var _t2 = document.getElementById('coefTarget');
-          if (_t1) { _t1.value = ''; _t1.removeAttribute('data-saved'); }
-          if (_t2) { _t2.value = ''; _t2.removeAttribute('data-saved'); }
-          window.__ARK_SAVED_ALERT = null;
+          var _ae = document.activeElement;
+          var _typing = !!(_ae && (_ae.id === 'coefTh' || _ae.id === 'coefTarget'));
+          var _justSaved = false;
+          try { _justSaved = !!(window.__ARK_KEEP_INPUT && (Date.now() - window.__ARK_KEEP_INPUT) < 1500); } catch (e) {}
+          if (_t1) _t1.removeAttribute('data-saved');
+          if (_t2) _t2.removeAttribute('data-saved');
+          if (!_typing && !_justSaved) {
+            /* 只有在用户完全没在输入、也没刚保存时，才按地址隔离清理 */
+            var _curAddr = _wa ? String(_wa() || '').toLowerCase() : '';
+            var _lastAddr = '';
+            try { _lastAddr = String(window.__ARK_INPUT_ADDR || ''); } catch (e) {}
+            if (_curAddr && _lastAddr && _curAddr !== _lastAddr) {
+              if (_t1) _t1.value = '';
+              if (_t2) _t2.value = '';
+              window.__ARK_SAVED_ALERT = null;
+            }
+          }
+          try { window.__ARK_INPUT_ADDR = _wa ? String(_wa() || '').toLowerCase() : ''; } catch (e) {}
         } catch (e) {}
       }
       if (al) {
@@ -1324,15 +1374,18 @@ window.loadCoefAlerts = function (_retry) {
         var chEl = document.getElementById('coefCh');
         var tgEl = document.getElementById('coefTarget');
         // 阈值：只要云端有值就写入（不依赖 data-saved 标记，避免首次登录被默认值 0.45 挡住）
-        if (thEl && Number(al.threshold) > 0) {
-          /* ⭐ FIX: 只回填"当前地址"的云端值，不再用脏标记挡（脏标记是跨钱包串值的根因） */
+        /* ⭐⭐ FIX: 用户手动改过输入框（data-user=1）→ 永不自动回填覆盖，避免"填一半被冲掉" */
+        var _userTh = thEl && thEl.getAttribute('data-user') === '1';
+        var _userTg = tgEl && tgEl.getAttribute('data-user') === '1';
+        var _keepNow = false;
+        try { _keepNow = !!(window.__ARK_KEEP_INPUT && (Date.now() - window.__ARK_KEEP_INPUT) < 1500); } catch (e) {}
+        if (thEl && Number(al.threshold) > 0 && !_userTh && !_keepNow) {
           var _saved = String(al.threshold);
           thEl.value = _saved;
           thEl.setAttribute('data-saved', '1');
         }
         /* FIX: 先写 SendKey，再切通道 —— 反过来会被 coefChHint 清空 */
-        if (tgEl && al.target) {
-          /* ⭐ FIX: 同理，直接写入当前地址自己的 SendKey */
+        if (tgEl && al.target && !_userTg && !_keepNow) {
           tgEl.value = String(al.target);
           tgEl.setAttribute('data-saved', '1');
         }
@@ -1341,7 +1394,7 @@ window.loadCoefAlerts = function (_retry) {
           try { if (typeof coefChHint === 'function') coefChHint(); } catch (e) {}
         }
         /* FIX: 切通道后可能被 coefChHint 清空，最后再兜底写一次 SendKey */
-        if (tgEl && al.target) {
+        if (tgEl && al.target && tgEl.getAttribute('data-user') !== '1') {
           var _afterV = String(tgEl.value || '').trim();
           if (!_afterV && al.target) {
             tgEl.value = String(al.target);
@@ -1380,11 +1433,21 @@ setInterval(function () {
     if (_cur && window.__ARK_ALERT_ADDR !== _cur) { window.loadCoefAlerts(); return; }
     var thEl = document.getElementById('coefTh');
     var tgEl = document.getElementById('coefTarget');
+    /* ⭐⭐ FIX: 只在输入框"完全为空"时才自动回填。
+       以前条件含 !_thSaved（未保存标记），用户填了内容但还没点保存时
+       每8秒也会触发 loadCoefAlerts()，导致输入被清空、来不及点保存。
+       现在只要用户输入框有内容就一律跳过，绝不打扰用户输入。 */
+    /* coefTh 有默认值 0.45，不能用是否为空判断；改用 data-saved 标记：
+       没保存过 → 才需要从云端回填。保存过 → 跳过，绝不打扰。 */
     var _thSaved = thEl && thEl.getAttribute('data-saved') === '1';
     var _tgSaved = tgEl && tgEl.getAttribute('data-saved') === '1';
-    var needTh = !thEl || !thEl.value || !_thSaved;
-    var needTg = !tgEl || !tgEl.value || !_tgSaved;
-    if (needTh || needTg) window.loadCoefAlerts();
+    var _focusIn = false;
+    try {
+      var _ae = document.activeElement;
+      _focusIn = !!(_ae && (_ae.id === 'coefTh' || _ae.id === 'coefTarget'));
+    } catch (e) {}
+    if (_focusIn) return;                       // 用户正在输入 → 完全不打扰
+    if (!_thSaved && !_tgSaved) window.loadCoefAlerts();
   } catch (e) {}
 }, 8000);
 
