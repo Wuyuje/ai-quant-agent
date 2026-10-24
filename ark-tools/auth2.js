@@ -130,24 +130,45 @@
   function logout() {
     console.log("[logout] 清理登入狀態");
     try { localStorage.removeItem(KEY_ADDR); } catch (e) {}
-    try { localStorage.removeItem("ark_addr"); } catch (e) {}          // ⭐ 补清
+    try { localStorage.removeItem("ark_addr"); } catch (e) {}
+    try { localStorage.removeItem("ark_token"); } catch (e) {}
+    try { localStorage.removeItem("ark_auth_addr"); } catch (e) {}
     try { sessionStorage.removeItem(KEY_ADDR); } catch (e) {}
     try { localStorage.removeItem("ark_pay_pending"); } catch (e) {}
-    // ⭐ 不再清 ark_noti：通知配置存在服务器，退出登录后重登应自动恢复
+    /* ⭐⭐ FIX: 以前只清本模組狀態，其他模組的錢包地址還在，
+       點登出後介面被寫回來，所以看起來"點不動"。現在一次清幹淨所有模組。 */
     window._arkAddr = "";
     window._arkProvider = null;
     window._arkState = null;
-    window.arkState = null;                                            // ⭐ 同步清 arkState
+    window.arkState = null;
     window.ARK_ADDR = "";
     window.ARK_PRO = false;
+    try { if (window.arkClearWallet) window.arkClearWallet(); } catch (e) {}
+    try { if (window.arkSwitchAddr) window.arkSwitchAddr(""); } catch (e) {}
+    try { if (window._arkOnAccountChange) window._arkOnAccountChange(""); } catch (e) {}
+    try { if (window._onAccountChange) window._onAccountChange(""); } catch (e) {}
     state = { addr: "", plan: "free", pro: false, until: 0 };
-    // ⭐ 清空通知表单
+    /* 清空通知表單 */
     try {
       ["tgToken", "tgChat", "wxKey"].forEach(function(id){ var e = document.getElementById(id); if (e) e.value = ""; });
       var st = document.getElementById("notiStatus"); if (st) st.textContent = "";
     } catch (e) {}
+    /* 清空阀值/發送密鑰表單與列表 */
+    try {
+      ["coefTh", "coefTarget", "alTarget"].forEach(function (id) {
+        var e = document.getElementById(id);
+        if (e) { e.value = ""; e.removeAttribute("data-saved"); }
+      });
+      var _h = document.getElementById("coefHint"); if (_h) _h.textContent = "";
+      var _tb = document.getElementById("coefTbody");
+      if (_tb) _tb.innerHTML = '<tr><td colspan="4" class="mut" style="text-align:center">尚未登入</td></tr>';
+      var _al = document.getElementById("alTbody");
+      if (_al) _al.innerHTML = '<tr><td colspan="4" class="mut" style="text-align:center">尚未登入</td></tr>';
+    } catch (e) {}
     renderAuth();
     setStatus(t("au.loggedOut"), "");
+    try { if (typeof window.updateUpgradeBanner === "function") window.updateUpgradeBanner(); } catch (e) {}
+    try { if (typeof window.updateCoefLock === "function") window.updateCoefLock(); } catch (e) {}
   }
   window.logout = logout;
 
