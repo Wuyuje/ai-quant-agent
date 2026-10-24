@@ -1,0 +1,179 @@
+{
+ "0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a": {
+  "addr": "0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a",
+  "created": 1790784012019,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1790784012019
+ },
+ "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e": {
+  "addr": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+  "created": 1790784154275,
+  "plan": "whitelist",
+  "until": 4946231529737,
+  "totalPaid": 0.012,
+  "payments": [
+   {
+    "txHash": "0x0898deeaf0bd8e23a44f2766bb5de4b4cfefc4df0ea43c19eaa1eebe83a61eac",
+    "plan": "test",
+    "ark": 0.01,
+    "ts": 1790784684921
+   },
+   {
+    "txHash": "0xcace61c7f56d344870328b32aa6b4e06dcb6d50eee925131d8e9af8826fc3af2",
+    "plan": "test",
+    "ark": 0.001,
+    "ts": 1791832745964
+   },
+   {
+    "txHash": "0x5516e3fa31cd89a3be319e3c12404a2be537741710effe1d9ff8855fd2829cd1",
+    "plan": "test",
+    "ark": 0.001,
+    "ts": 1791833183010
+   }
+  ],
+  "lastLogin": 1790838103268
+ },
+ "0x5cbdd86a2fa8dc4bddd8a8f69dba48572eec07fb": {
+  "addr": "0x5cbdd86a2fa8dc4bddd8a8f69dba48572eec07fb",
+  "created": 1790793896517,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1790795901479
+ },
+ "0xed36d3f71f9e95422744b901f102df13191909fe": {
+  "addr": "0xed36d3f71f9e95422744b901f102df13191909fe",
+  "created": 1790796306040,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1790796306039
+ },
+ "0xaaaa00000000000000000000000000000000bbbb": {
+  "addr": "0xaaaa00000000000000000000000000000000bbbb",
+  "created": 1791947043386,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1791947043385
+ },
+ "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": {
+  "addr": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+  "created": 1791952424151,
+  "plan": "pro",
+  "until": 1794545106330,
+  "totalPaid": 1,
+  "payments": [
+   {
+    "txHash": "0xbb4eae25ee097ba60003771d0c1d6c7e101c60f20702425ea582fc9cd3c9f0fa",
+    "plan": "pro",
+    "ark": 1,
+    "ts": 1791953106330
+   }
+  ],
+  "lastLogin": 1791952424151
+ },
+ "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7": {
+  "addr": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+  "created": 1791952803261,
+  "plan": "pro",
+  "until": 1794544905754,
+  "totalPaid": 1,
+  "payments": [
+   {
+    "txHash": "0x552d86f71dcbcc95f8c7f0655967b92c18d73672e7fcd4fb628e8ed31de71d18",
+    "plan": "pro",
+    "ark": 1,
+    "ts": 1791952905754
+   }
+  ],
+  "lastLogin": 1792520409175
+ },
+ "0x9c2f473806faff4db2ee5d8eee18f2c463fb3de9": {
+  "addr": "0x9c2f473806faff4db2ee5d8eee18f2c463fb3de9",
+  "created": 1791970783721,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1791970783720
+ },
+ "0x1111111111111111111111111111111111111111": {
+  "addr": "0x1111111111111111111111111111111111111111",
+  "created": 1792630557346,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1792630557345
+ },
+ "0x73e5700000000000000000000000000000000000": {
+  "addr": "0x73e5700000000000000000000000000000000000",
+  "created": 1792630684266,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1792630684266
+ },
+ "0x100844ccd4af887d123c0ac4a9671e0ab5dd9de2": {
+  "addr": "0x100844ccd4af887d123c0ac4a9671e0ab5dd9de2",
+  "created": 1792630778962,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1792630778962
+ },
+ "0xaaaa000000000000000000000000000000000001": {
+  "addr": "0xaaaa000000000000000000000000000000000001",
+  "created": 1792630779559,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1792630779559
+ },
+ "0xbbbb000000000000000000000000000000000002": {
+  "addr": "0xbbbb000000000000000000000000000000000002",
+  "created": 1792630779858,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1792630779858
+ },
+ "0xcccc000000000000000000000000000000000003": {
+  "addr": "0xcccc000000000000000000000000000000000003",
+  "created": 1792630780150,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1792630780150
+ },
+ "0x1234567890abcdef1234567890abcdef12345678": {
+  "addr": "0x1234567890abcdef1234567890abcdef12345678",
+  "created": 1792633276586,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1792633276586
+ },
+ "0xdeadbeef0000000000000000000000000000cafe": {
+  "addr": "0xdeadbeef0000000000000000000000000000cafe",
+  "created": 1792636998238,
+  "plan": "free",
+  "until": 0,
+  "totalPaid": 0,
+  "payments": [],
+  "lastLogin": 1792636998238
+ }
+}

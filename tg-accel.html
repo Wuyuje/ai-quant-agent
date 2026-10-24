@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<title>电报号加速器 · ARK 生态工具</title>
+<style>
+:root{--bg:#060b18;--card:#0d1420;--line:rgba(53,224,245,.22);--cyan:#35e0f5;--violet:#6a5cff;--gold:#f5c46b;--dim:#8ba3c7;--txt:#e6edf3;--red:#f2555f;--green:#4cde80}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:radial-gradient(1200px 600px at 20% -10%,rgba(53,224,245,.10),transparent),radial-gradient(900px 500px at 90% 0%,rgba(106,92,255,.12),transparent),var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;min-height:100vh;line-height:1.6}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.logo{width:46px;height:46px;border-radius:50%;border:2px solid var(--line);background:linear-gradient(135deg,rgba(53,224,245,.25),rgba(106,92,255,.25));display:flex;align-items:center;justify-content:center;font-size:22px}
+.brand{font-weight:800;font-size:16px;color:var(--cyan);letter-spacing:.4px}
+.brand-sub{font-size:11.5px;color:var(--dim)}
+h1{font-size:23px;margin:14px 0 4px;font-weight:800}
+.sub{color:var(--dim);font-size:13.5px;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+.card h2{font-size:15px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.badge{font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(53,224,245,.18);color:var(--cyan);font-weight:800}
+.badge.green{background:rgba(76,222,128,.16);color:var(--green)}
+.badge.gold{background:rgba(245,196,107,.16);color:var(--gold)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:10px;padding:12px 20px;font-size:14px;font-weight:800;cursor:pointer;text-decoration:none;transition:transform .12s,box-shadow .12s;font-family:inherit}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:linear-gradient(135deg,var(--cyan),var(--violet));color:#060b18;box-shadow:0 6px 20px rgba(53,224,245,.30)}
+.btn.ghost{background:rgba(53,224,245,.08);border:1px solid var(--line);color:var(--cyan)}
+.btn.gold{background:linear-gradient(135deg,#f5c46b,#e8a33d);color:#241a05;box-shadow:0 6px 20px rgba(245,196,107,.28)}
+.btn.wide{width:100%}
+.node{display:flex;align-items:center;gap:12px;padding:13px;border:1px solid var(--line);border-radius:11px;margin-bottom:10px;background:rgba(53,224,245,.04);flex-wrap:wrap}
+.node .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:var(--green);box-shadow:0 0 8px var(--green)}
+.node .dot.warn{background:var(--gold);box-shadow:0 0 8px var(--gold)}
+.node .dot.off{background:#6d7c96;box-shadow:none}
+.node .info{flex:1;min-width:180px}
+.node .nm{font-weight:700;font-size:13.5px}
+.node .meta{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums}
+.node .lat{font-size:12px;font-weight:800;color:var(--green);white-space:nowrap}
+.tag{font-size:10px;padding:2px 7px;border-radius:7px;background:rgba(106,92,255,.18);color:#a99cff;font-weight:800}
+.copybox{background:#0a101c;border:1px solid var(--line);border-radius:9px;padding:11px 13px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;color:var(--cyan);word-break:break-all;position:relative}
+.mini{font-size:11.5px;padding:7px 12px;border-radius:8px}
+.hint{font-size:12px;color:var(--dim);line-height:1.9}
+.hint b{color:var(--gold)}
+code{background:#0a101c;padding:1px 5px;border-radius:4px;color:var(--cyan);font-size:12px}
+.step{display:flex;gap:10px;margin-bottom:12px}
+.step .n{flex:0 0 auto;width:22px;height:22px;border-radius:50%;background:rgba(53,224,245,.16);color:var(--cyan);font-size:11.5px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.step .t{font-size:12.5px;color:var(--dim);line-height:1.9}
+.step .t b{color:var(--txt)}
+.warnbox{background:rgba(242,85,95,.09);border:1px solid rgba(242,85,95,.28);border-radius:10px;padding:11px 13px;font-size:12px;color:#f8a0a5;margin-top:10px}
+.okbox{background:rgba(76,222,128,.08);border:1px solid rgba(76,222,128,.25);border-radius:10px;padding:11px 13px;font-size:12px;color:#8fe6ab;margin-top:10px}
+.foot{text-align:center;color:#5a6b82;font-size:11.5px;margin-top:26px}
+a.link{color:var(--cyan)}
+input,select{font-family:inherit}
+.inp{background:#0a101c;border:1px solid var(--line);border-radius:9px;padding:10px 12px;color:var(--txt);font-size:13px;width:100%}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="logo">✈️</div>
+    <div>
+      <div class="brand">ARK 生態工具</div>
+      <div class="brand-sub">Telegram 加速器 · 電報號直連</div>
+    </div>
+  </div>
+
+  <h1>電報號加速器</h1>
+  <p class="sub">一鍵打開 Telegram 電報號 · 多線路加速 · 免安裝客戶端</p>
+
+  <!-- ① 打开电报号 -->
+  <div class="card">
+    <h2>📲 打開電報號 <span class="badge green">免登錄</span></h2>
+    <p class="hint" style="margin-bottom:14px">選擇要打開的電報號入口，點擊即可跳轉。</p>
+    <div class="row">
+      <a class="btn primary" id="openWeb" href="https://web.telegram.org/a/" target="_blank" rel="noopener">✈️ 打開 Telegram 網頁版</a>
+      <a class="btn ghost" id="openApp" href="tg://resolve?domain=telegram" target="_blank" rel="noopener">📱 喚起手機 App</a>
+    </div>
+    <div style="margin-top:14px">
+      <label style="font-size:12.5px;color:var(--dim);display:block;margin-bottom:6px">或輸入指定電報號 / 頻道 / 群組</label>
+      <div class="row">
+        <input class="inp" id="tgTarget" type="text" placeholder="例如：@arkchannel 或 頻道連結" style="flex:1;min-width:200px">
+        <button class="btn primary mini" onclick="openTarget()">打開 →</button>
+      </div>
+      <div class="hint" id="tgTargetMsg" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- ② 加速节点 -->
+  <div class="card">
+    <h2>⚡ 加速線路 <span class="badge">智能選線</span></h2>
+    <p class="hint" style="margin-bottom:12px">選擇離你最近的加速節點，自動探測延遲。</p>
+    <div id="nodeList"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn ghost mini" onclick="probeAll()">🔄 重新測速</button>
+      <span class="hint" id="probeStatus" style="margin-left:4px"></span>
+    </div>
+  </div>
+
+  <!-- ③ MTProto 代理 -->
+  <div class="card" id="mtprotoCard">
+    <h2>🔐 MTProto 代理 <span class="badge gold">客戶端加速</span></h2>
+    <p class="hint" style="margin-bottom:12px">複製以下代理資訊，填入 Telegram App 設定即可加速。</p>
+    <div class="hint" style="margin-bottom:6px">伺服器 (Server)</div>
+    <div class="copybox" id="mtServer">—</div>
+    <div class="hint" style="margin:12px 0 6px">連接埠 (Port)</div>
+    <div class="copybox" id="mtPort">—</div>
+    <div class="hint" style="margin:12px 0 6px">密鑰 (Secret)</div>
+    <div class="copybox" id="mtSecret">—</div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary mini" onclick="copyMt()">📋 一鍵複製代理資訊</button>
+      <button class="btn ghost mini" onclick="copyMtLink()">🔗 複製 tg:// 一鍵導入連結</button>
+    </div>
+    <div class="okbox" id="mtMsg" style="display:none"></div>
+    <div class="warnbox" id="mtWarn"></div>
+  </div>
+
+  <!-- ④ 使用说明 -->
+  <div class="card">
+    <h2>📖 使用步驟</h2>
+    <div class="step"><div class="n">1</div><div class="t"><b>打開電報號</b>：點上方「打開 Telegram 網頁版」，或輸入你的電報號 / 頻道連結直接跳轉。</div></div>
+    <div class="step"><div class="n">2</div><div class="t"><b>選加速線路</b>：在「加速線路」裡選擇延遲最低的節點，點「啟用」。</div></div>
+    <div class="step"><div class="n">3</div><div class="t"><b>客戶端加速</b>：手機 App 使用者，複製 MTProto 代理資訊，到 Telegram「設定 → 數據和儲存 → 代理」新增。</div></div>
+    <div class="step"><div class="n">4</div><div class="t"><b>驗證</b>：網頁版能正常載入、App 能收發訊息 = 加速成功 ✅</div></div>
+  </div>
+
+  <div class="foot">
+    ARK 公民工具站 · Telegram 加速器<br>
+    本頁僅提供加速線路資訊，請遵守當地法律法規
+  </div>
+</div>
+
+<script src="tg-accel.js?v=1"></script>
+</body>
+</html>

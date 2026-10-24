@@ -1,0 +1,26 @@
+[
+ {
+  "id": "c58942fb03fd",
+  "addr": "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7",
+  "threshold": 0.42,
+  "channel": "wechat",
+  "target": "SCT442286TSbZb8JUxG1LKI8mbXZtMqbHp",
+  "created": 1792855842287,
+  "lastFired": 0,
+  "_wasAbove": false,
+  "_nearNotified": false,
+  "_failCount": 0
+ },
+ {
+  "id": "ab1c7519ebf4",
+  "addr": "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366",
+  "threshold": 0.41,
+  "channel": "wechat",
+  "target": "SCT442522T6vxHmhxADwts39jAqsaXdSEz",
+  "created": 1792856227260,
+  "lastFired": 0,
+  "_wasAbove": false,
+  "_nearNotified": false,
+  "_failCount": 0
+ }
+]

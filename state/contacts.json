@@ -1,0 +1,182 @@
+[
+ {
+  "id": "9e3f9c25ed12",
+  "addr": null,
+  "contact": "test@cloud",
+  "body": "云端测试消息-管理后台",
+  "ip": "",
+  "created": 1791812077545,
+  "read": true
+ },
+ {
+  "id": "163d836fd965",
+  "addr": null,
+  "contact": "用户测试",
+  "body": "端到端测试消息",
+  "ip": "",
+  "created": 1791816711681,
+  "read": true
+ },
+ {
+  "id": "900c5764e69c",
+  "addr": null,
+  "contact": "最终测试",
+  "body": "验证用",
+  "ip": "",
+  "created": 1791816746386,
+  "read": true
+ },
+ {
+  "id": "0c470da738f9",
+  "addr": null,
+  "contact": "云端用户端测试",
+  "body": "从云端用户端发的",
+  "ip": "",
+  "created": 1791817471189,
+  "read": true
+ },
+ {
+  "id": "ebb4e6beb99d",
+  "addr": null,
+  "contact": "test@example.com",
+  "body": "这是一条测试消息",
+  "ip": "",
+  "created": 1791810215288,
+  "read": true
+ },
+ {
+  "id": "146903ca7d5d",
+  "addr": null,
+  "contact": "0xTestUser",
+  "body": "测试消息2",
+  "ip": "",
+  "created": 1791810245081,
+  "read": true
+ },
+ {
+  "id": "3770220afe41",
+  "addr": null,
+  "contact": "公网测试",
+  "body": "来自公网的测试消息",
+  "ip": "43.159.39.201",
+  "created": 1791810255483,
+  "read": true
+ },
+ {
+  "id": "a72fed0d6776",
+  "addr": null,
+  "contact": "",
+  "body": "你好，我想联系你，怎样联系？",
+  "ip": "182.243.25.219",
+  "created": 1791810997332,
+  "read": true
+ },
+ {
+  "id": "6889c288a646",
+  "addr": null,
+  "contact": "",
+  "body": "你好",
+  "ip": "182.243.25.219",
+  "created": 1791811985143,
+  "read": true
+ },
+ {
+  "id": "83f7b52ce452",
+  "addr": null,
+  "contact": "",
+  "body": "哈喽",
+  "ip": "182.243.25.219",
+  "created": 1791812321965,
+  "read": true
+ },
+ {
+  "id": "eca4ae963566",
+  "addr": null,
+  "contact": "",
+  "body": "你好，可以看见吗",
+  "ip": "182.243.25.219",
+  "created": 1791816325795,
+  "read": true
+ },
+ {
+  "id": "cb247e275d58",
+  "addr": null,
+  "contact": "",
+  "body": "你好，可以看到我的信息吗",
+  "ip": "182.243.25.219",
+  "created": 1791816501628,
+  "read": true
+ },
+ {
+  "id": "4167ec7fd382",
+  "addr": null,
+  "contact": "",
+  "body": "你好，在吗",
+  "ip": "182.243.25.219",
+  "created": 1791817014543,
+  "read": true
+ },
+ {
+  "id": "e972785bf7cc",
+  "addr": null,
+  "contact": "",
+  "body": "你好",
+  "ip": "182.243.25.219",
+  "created": 1791817217377,
+  "read": true
+ },
+ {
+  "id": "eae1aa8a3813",
+  "addr": null,
+  "contact": "沙箱用户端测试",
+  "body": "从沙箱发的",
+  "ip": "",
+  "created": 1791817471235,
+  "read": true
+ },
+ {
+  "id": "f298c860c3ee",
+  "addr": null,
+  "contact": "",
+  "body": "你好啊，从今天起，我们可以聊天了",
+  "ip": "",
+  "created": 1791818052783,
+  "read": true
+ },
+ {
+  "id": "a453c22b9cb0",
+  "addr": null,
+  "contact": "t",
+  "body": "删除排行榜后测试",
+  "ip": "",
+  "created": 1791820081107,
+  "read": true
+ },
+ {
+  "id": "1c9e428ad68d",
+  "addr": null,
+  "contact": "<script>alert(1)</script>",
+  "body": "<img src=x onerror=alert(1)>",
+  "ip": "",
+  "created": 1791820879528,
+  "read": true
+ },
+ {
+  "id": "c272c15a96d3",
+  "addr": null,
+  "contact": "x",
+  "body": "<img src=x onerror=alert(document.cookie)>",
+  "ip": "",
+  "created": 1791820927662,
+  "read": true
+ },
+ {
+  "id": "e2b4318789ec",
+  "addr": null,
+  "contact": "a@b.c",
+  "body": "hi",
+  "ip": "",
+  "created": 1792631342084,
+  "read": false
+ }
+]

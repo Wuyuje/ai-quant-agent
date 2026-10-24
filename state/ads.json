@@ -1,0 +1,28 @@
+{
+ "ads": [
+  {
+   "id": "ad_mviuf5ek3jw4",
+   "addr": "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e",
+   "slot": "hero",
+   "months": 1,
+   "ark": 50,
+   "title": "<img src=x onerror=alert(document.domain)>",
+   "url": "http://127.0.0.1:18080/admin",
+   "image": "http://127.0.0.1:18080/posters/x.png",
+   "contact": "c",
+   "desc": "<script>alert(2)</script>",
+   "status": "pending_pay",
+   "created": 1792631349020,
+   "paidAt": null,
+   "txHash": null,
+   "reviewedAt": null,
+   "startsAt": null,
+   "endsAt": null,
+   "views": 0,
+   "clicks": 0
+  }
+ ],
+ "usedTx": {
+  "0x79a089149617e97d1a90fae0ff1be1b5b376f8e29ae903f675ebc6a1967832db": "ad_muohys26w63l"
+ }
+}

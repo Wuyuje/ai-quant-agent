@@ -1,0 +1,57 @@
+{
+ "0xb5e113dd2fcb87a458191c3b0e2d606129455d4e": {
+  "code": "ARK-8Q2VW6",
+  "ref": null,
+  "children": [],
+  "joined": 1791908765817,
+  "earnings": {
+   "ark": 0,
+   "usdt": 0
+  },
+  "paid": 0
+ },
+ "0xa52eb09f7df2f8284fad8af9443a947aaf6b9366": {
+  "code": "ARK-QXE67E",
+  "ref": null,
+  "children": [],
+  "joined": 1791951343609,
+  "earnings": {
+   "ark": 0,
+   "usdt": 0
+  },
+  "paid": 0
+ },
+ "0x2c8f48175344100e8dc2f8c2390f376a19dc68f7": {
+  "code": "ARK-J8SR92",
+  "ref": null,
+  "children": [],
+  "joined": 1791952881049,
+  "earnings": {
+   "ark": 0,
+   "usdt": 0
+  },
+  "paid": 0
+ },
+ "0x9c2f473806faff4db2ee5d8eee18f2c463fb3de9": {
+  "code": "ARK-9W2WVF",
+  "ref": null,
+  "children": [],
+  "joined": 1791970819268,
+  "earnings": {
+   "ark": 0,
+   "usdt": 0
+  },
+  "paid": 0
+ },
+ "0x1111111111111111111111111111111111111111": {
+  "code": "ARK-4BP5WS",
+  "ref": null,
+  "children": [],
+  "joined": 1792630702787,
+  "earnings": {
+   "ark": 0,
+   "usdt": 0
+  },
+  "paid": 0
+ }
+}
