@@ -372,15 +372,54 @@
 
   /* ── 錢包連接（EIP-1193，僅讀地址，不簽名） ── */
   var walletAddr = "";
+  /* ══ 钱包断开时彻底清理（不再残留上一个钱包的数据）══ */
+  function _clearWalletState() {
+    walletAddr = "";
+    try { window.walletAddr = ""; } catch (e) {}
+    try { window.ARK_ADDR = ""; } catch (e) {}
+    try { window.ARK_PRO = undefined; } catch (e) {}
+    try {
+      localStorage.removeItem("ark_addr");
+      localStorage.removeItem("ark_auth_addr");
+      localStorage.removeItem("ark_token");
+    } catch (e) {}
+    try { if (window.arkSwitchAddr) window.arkSwitchAddr(""); } catch (e) {}
+  }
+  window.arkClearWallet = _clearWalletState;
   function toggleWallet() {
-    if (walletAddr) { walletAddr = ""; renderWallet(); return; }
+    if (walletAddr) { _clearWalletState(); renderWallet(); return; }
     if (!window.ethereum) { alert("No Web3 wallet detected"); return; }
     window.ethereum.request({ method: "eth_requestAccounts" }).then(function (accs) {
-      walletAddr = (accs && accs[0]) || "";
+      var _a = (accs && accs[0]) || "";
+      walletAddr = _a;
+      try { window.walletAddr = _a; } catch (e) {}
+      /* ══ 切换到新地址：先清理旧钱包界面数据，再渲染 ══ */
+      try { if (window.arkSwitchAddr) window.arkSwitchAddr(_a); } catch (e) {}
       renderWallet();
     }).catch(function (e) { alert("Connect failed: " + (e.message || e)); });
   }
   window.toggleWallet = toggleWallet;
+
+  /* ══ 监听钱包插件的账户切换/断开事件（MetaMask 内部切换也能捕获）══ */
+  try {
+    if (window.ethereum && window.ethereum.on) {
+      window.ethereum.on('accountsChanged', function (accs) {
+        var _a = (accs && accs[0]) || "";
+        if (_a) {
+          walletAddr = _a;
+          try { window.walletAddr = _a; } catch (e) {}
+          try { if (window.arkSwitchAddr) window.arkSwitchAddr(_a); } catch (e) {}
+        } else {
+          try { _clearWalletState(); } catch (e) {}
+        }
+        try { renderWallet(); } catch (e) {}
+      });
+      window.ethereum.on('disconnect', function () {
+        try { _clearWalletState(); } catch (e) {}
+        try { renderWallet(); } catch (e) {}
+      });
+    }
+  } catch (e) {}
 
   function renderWallet() {
     var b = document.getElementById("walletBtn");
@@ -528,6 +567,53 @@
   /* ⭐⭐ 关键修复: 把 _wa 挂到全局，供 IIFE 外部定义的 window.loadCoefAlerts / addCoefAlert 调用 */
   window._wa = _wa;
 
+  /* ══════════ 钱包切换隔离核心 ══════════ */
+  /* 问题: 以前切换钱包只清 walletAddr, 但 window.ARK_ADDR 和 localStorage 里的旧地址还在,
+     _wa() 会从 localStorage 读到旧地址 -> 看到别人的阀值/持仓/提醒。
+     这里做一个统一的"地址变化 -> 清理界面上所有跨钱包数据" 入口。 */
+  window.__ARK_UI_ADDR = "";
+  window.arkSwitchAddr = function (newAddr) {
+    var _old = window.__ARK_UI_ADDR || "";
+    var _new = newAddr ? String(newAddr).toLowerCase() : "";
+    if (_old === _new) return false;
+    window.__ARK_UI_ADDR = _new;
+    /* 清理所有跨钱包异步数据的界面残留 */
+    try {
+      window.__ARK_SAVED_ALERT = null;
+      window.__ARK_ALERT_ADDR = null;
+      var _ids = ['coefTh', 'coefTarget', 'coefCh'];
+      _ids.forEach(function (id) {
+        var e = document.getElementById(id);
+        if (e) { e.removeAttribute('data-saved'); if (id !== 'coefCh') e.value = ''; }
+      });
+      var _h = document.getElementById('coefHint'); if (_h) _h.textContent = '';
+      var _tb = document.getElementById('coefTbody');
+      if (_tb) _tb.innerHTML = '<tr><td colspan="4" class="mut" style="text-align:center">加载中…</td></tr>';
+      var _al = document.getElementById('alTbody');
+      if (_al) _al.innerHTML = '<tr><td colspan="4" class="mut" style="text-align:center">加载中…</td></tr>';
+      var _at = document.getElementById('alTarget'); if (_at) _at.value = '';
+      var _hd = document.getElementById('hdAddr'); if (_hd) _hd.value = _new;
+      ['hdArk','hdArkie','hdGark','hdBnb','hdTotal','hdArkUsd'].forEach(function (id) {
+        var e = document.getElementById(id); if (e) e.textContent = '—';
+      });
+      var _pl = document.getElementById('pfTracked'); if (_pl) _pl.textContent = '—';
+      var _pr = document.getElementById('refAmt'); if (_pr) _pr.textContent = '—';
+      var _pe = document.getElementById('refEarn'); if (_pe) _pe.textContent = '—';
+    } catch (e) {}
+    /* 新地址就绪后，立即拉该地址自己的数据 */
+    setTimeout(function () {
+      try { window.refreshProState && window.refreshProState(); } catch (e) {}
+      try { window.loadCoefAlerts && window.loadCoefAlerts(); } catch (e) {}
+      try { window.alRender && window.alRender(); } catch (e) {}
+      try { window.hdFetch && window.hdFetch(); } catch (e) {}
+      try { window.pfFetch && window.pfFetch(); } catch (e) {}
+      try { window.refreshRef && window.refreshRef(); } catch (e) {}
+      try { window.loadStakes && window.loadStakes(); } catch (e) {}
+      try { document.dispatchEvent(new CustomEvent('ark:addrchange', { detail: { addr: _new } })); } catch (e) {}
+    }, 60);
+    return true;
+  };
+
 function alRender() {
     var tb = document.getElementById("alTbody");
     if (!tb) return;
@@ -551,6 +637,7 @@ function alRender() {
       .catch(function () {});
   }
 
+  window.alRender = alRender;
   window.delAlert = function (id) {
     if (!_wa()) return;
     fetch("/api/alerts/delete", {
@@ -596,6 +683,7 @@ function alRender() {
 
   /* ══════════ 鏈上持倉 (Holdings) ══════════ */
   function hdFetch() {
+    /* ⭐ 隔离: 优先用当前钱包地址，不再默认拿旧地址 */
     var _hd = document.getElementById("hdAddr");
     var addr = ((_hd && _hd.value) || _wa() || "").trim();
     if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) { return; }
@@ -1748,18 +1836,28 @@ window.testVoice = function () {
 document.addEventListener('DOMContentLoaded', function () {
   var cb = document.getElementById('coefVoice');
   if (cb) {
-    try {
-      var _saved = localStorage.getItem('ark_voice');
-      // 未设置过 → 默认开启; 明确存过 '0' 才关闭
-      cb.checked = (_saved === null) ? true : (_saved === '1');
-      if (_saved === null) { try { localStorage.setItem('ark_voice','1'); } catch(e){} }
-    } catch (e) { cb.checked = true; }
-    window.ARK_VOICE = cb.checked;
+    /* ⭐ FIX: 语音开关按钱包地址分键，不再跨钱包互相影响 */
+    function _voiceKey() {
+      var a = '';
+      try { a = String((window.__ARK_UI_ADDR || (window._wa && window._wa()) || '')).toLowerCase(); } catch (e) {}
+      return a ? ('ark_voice__' + a) : 'ark_voice';
+    }
+    function _loadVoice() {
+      try {
+        var _saved = localStorage.getItem(_voiceKey());
+        cb.checked = (_saved === null) ? true : (_saved === '1');
+        if (_saved === null) { try { localStorage.setItem(_voiceKey(), '1'); } catch (e) {} }
+      } catch (e) { cb.checked = true; }
+      window.ARK_VOICE = cb.checked;
+    }
+    _loadVoice();
     cb.addEventListener('change', function () {
       window.ARK_VOICE = cb.checked;
-      try { localStorage.setItem('ark_voice', cb.checked ? '1' : '0'); } catch (e) {}
+      try { localStorage.setItem(_voiceKey(), cb.checked ? '1' : '0'); } catch (e) {}
       if (cb.checked) window.speakArk('语音提醒已开启');
     });
+    /* 切换钱包后重新读取该钱包自己的语音开关 */
+    document.addEventListener('ark:addrchange', _loadVoice);
   }
 });
 // 轮询系数：达到本地阈值时语音播报（每30秒检查）
@@ -2053,13 +2151,20 @@ window.useBindCode2 = function () {
   var KEY_ARK = 'ark_saved_amounts';   // 保存各输入框的ARK数量
   var KEY_TOKEN = 'ark_token';
 
+  /* ⭐ FIX: 按钱包地址分键存储，不再全局共享。A 钱包存的数量不会出现在 B 钱包里。 */
+  function _addrKey(suffix) {
+    var a = '';
+    try { a = (window.__ARK_UI_ADDR || '').toLowerCase(); } catch (e) {}
+    if (!a) { try { a = String((window._wa && window._wa()) || '').toLowerCase(); } catch (e) {} }
+    return a ? ('ark_saved_amounts__' + a) : KEY_ARK;
+  }
   function getSaved() {
-    try { return JSON.parse(localStorage.getItem(KEY_ARK) || '{}'); } catch (e) { return {}; }
+    try { return JSON.parse(localStorage.getItem(_addrKey()) || '{}'); } catch (e) { return {}; }
   }
   function saveAmount(id, val) {
     try {
       var m = getSaved(); m[id] = val;
-      localStorage.setItem(KEY_ARK, JSON.stringify(m));
+      localStorage.setItem(_addrKey(), JSON.stringify(m));
     } catch (e) {}
   }
   // 自动保存 + 恢复（各 ARK 数量输入框）
@@ -2084,7 +2189,7 @@ window.useBindCode2 = function () {
       var el = document.getElementById(id);
       if (el && el.value) saved[id] = el.value;
     });
-    try { localStorage.setItem(KEY_ARK, JSON.stringify(saved)); } catch (e) {}
+    try { localStorage.setItem(_addrKey(), JSON.stringify(saved)); } catch (e) {}
     if (window.arkToast) window.arkToast('已保存 ARK 数量');
     else alert('✅ 已保存');
   };
@@ -2562,8 +2667,14 @@ function _renderPosterModal(imgUrl, filename) {
       nx.textContent = bj.getUTCHours().toString().padStart(2,'0') + ':00 (北京时间)';
     }
   }
+  function _stakeKey() {
+    var a = '';
+    try { a = String((window.__ARK_UI_ADDR || (window._wa && window._wa()) || '')).toLowerCase(); } catch (e) {}
+    return a ? ('ark_stake_start__' + a) : 'ark_stake_start';
+  }
+  window._arkStakeKey = _stakeKey;
   function updateTracked() {
-    var startTs = (function(){ try { return parseInt(localStorage.getItem('ark_stake_start')||'0',10); } catch(e){ return 0; } })();
+    var startTs = (function(){ try { return parseInt(localStorage.getItem(_stakeKey())||'0',10); } catch(e){ return 0; } })();
     if (!startTs) return;
     var el = document.getElementById('pfTracked');
     if (!el) return;
@@ -2583,12 +2694,12 @@ function _renderPosterModal(imgUrl, filename) {
   // 获取/设置跟踪起始时间
   function getStartTime() {
     try {
-      var t = localStorage.getItem('ark_stake_start');
+      var t = localStorage.getItem(_stakeKey());
       return t ? parseInt(t, 10) : 0;
     } catch(e){ return 0; }
   }
   function setStartTime(ts) {
-    try { localStorage.setItem('ark_stake_start', String(ts)); } catch(e){}
+    try { localStorage.setItem(_stakeKey(), String(ts)); } catch(e){}
   }
 
   window.pfFetch = function (resetStart) {
@@ -2659,7 +2770,7 @@ function _renderPosterModal(imgUrl, filename) {
   var dt=new Date(now.getFullYear(), now.getMonth(), day, hour, min, 0, 0);
   // 如果这个时间在未来 → 说明是上个月
   if (dt.getTime() > Date.now()) dt.setMonth(dt.getMonth()-1);
-  try { localStorage.setItem('ark_stake_start', String(dt.getTime())); } catch(e){}
+  try { localStorage.setItem(_stakeKey(), String(dt.getTime())); } catch(e){}
   window.pfFetch();
   var h=document.getElementById('pfHint');
   if(h){h.textContent='✅ 开始时间: '+dt.toLocaleString();h.style.color='#18c98a';}
@@ -2677,7 +2788,7 @@ window.pfResetStart = function () {
     setTimeout(function(){
     loadStakes(); window.pfFetch();
     // 回填起始时间输入框
-    var st = (function(){ try { return parseInt(localStorage.getItem('ark_stake_start')||'0',10); } catch(e){ return 0; } })();
+    var st = (function(){ try { return parseInt(localStorage.getItem(_stakeKey())||'0',10); } catch(e){ return 0; } })();
     if (st) {
       var dt = new Date(st);
       var e1=document.getElementById('pfSD'), e2=document.getElementById('pfSH'), e3=document.getElementById('pfSM');
