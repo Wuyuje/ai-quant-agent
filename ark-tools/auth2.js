@@ -93,6 +93,12 @@
         if (typeof window.applyGates === "function") window.applyGates();
         if (typeof window.updateUpgradeBanner === "function") window.updateUpgradeBanner();
         if (typeof window.updateCoefLock === "function") window.updateCoefLock();
+        // ⭐⭐ FIX: 派发 ark:auth 事件，让 phase3.js(微信/电报绑定回填)、app2.js(门控/横幅)
+        //       等所有监听模块都能收到登录通知。以前这里不派发，导致微信绑定永远不自动恢复。
+        try {
+          window.dispatchEvent(new CustomEvent("ark:auth", { detail: { addr: d.addr, plan: d.plan, pro: !!d.pro } }));
+          console.log("[login] 已派发 ark:auth 事件:", d.addr);
+        } catch (e) { console.warn("[login] ark:auth 派发失败", e); }
         // ⭐⭐ 登录成功 → 立即从云端恢复通知配置（微信/电报号绑定，付费有效期内免二次绑定）
         setTimeout(function () {
           if (typeof window.loadNotiFromServer === "function") {
