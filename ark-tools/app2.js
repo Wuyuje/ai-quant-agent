@@ -1025,6 +1025,7 @@ window.saveCoefBinding = function () {
             if (_thEl) _thEl.setAttribute('data-saved', '1');
             if (_tgEl) _tgEl.setAttribute('data-saved', '1');
             window.__ARK_SAVED_ALERT = { id: dd.id, threshold: th, channel: ch, target: target };
+            try { window.__ARK_ALERT_ADDR = _wa ? String(_wa() || '').toLowerCase() : ''; } catch (e) {}
             if (typeof window.loadCoefAlerts === 'function') window.loadCoefAlerts();
           } catch (e) {}
           console.log('[coef] 阈值已保存到云端: ' + th);
@@ -1167,6 +1168,25 @@ window.addCoefAlert = function () {
 window.loadCoefAlerts = function (_retry) {
   _retry = _retry || 0;
   var _a = _wa();
+  /* ⭐ FIX: 切换钱包/地址后必须重置脏标记，否则新地址会沿用旧地址的回填值，
+     造成"不同钱包登录显示同一个阈值"的错觉 */
+  try {
+    _a = _a ? String(_a).toLowerCase() : '';
+    if (window.__ARK_ALERT_ADDR !== _a) {
+      window.__ARK_ALERT_ADDR = _a;
+      var _e1 = document.getElementById('coefTh');
+      var _e2 = document.getElementById('coefTarget');
+      var _e3 = document.getElementById('coefCh');
+      if (_e1) { _e1.removeAttribute('data-saved'); _e1.value = ''; }
+      if (_e2) { _e2.removeAttribute('data-saved'); _e2.value = ''; }
+      if (_e3) _e3.removeAttribute('data-saved');
+      window.__ARK_SAVED_ALERT = null;
+      var _h = document.getElementById('coefHint');
+      if (_h) _h.textContent = '';
+      var _tb0 = document.getElementById('coefTbody');
+      if (_tb0) _tb0.innerHTML = '<tr><td colspan="4" class="mut" style="text-align:center">加载中…</td></tr>';
+    }
+  } catch (e) {}
   if (!_a) {
     /* FIX: 地址未就绪（令牌登录尚未返回）时重试，而不是直接放弃 */
     if (_retry < 12) setTimeout(function () { window.loadCoefAlerts(_retry + 1); }, 500);
@@ -1201,29 +1221,32 @@ window.loadCoefAlerts = function (_retry) {
           if (_it && Number(_it.threshold) > 0) { al = _it; break; }
         }
       }
+      if (!al) {
+        /* ⭐ FIX: 当前地址没有任何提醒 → 清空输入框，绝不显示别人的阈值 */
+        try {
+          var _t1 = document.getElementById('coefTh');
+          var _t2 = document.getElementById('coefTarget');
+          if (_t1) { _t1.value = ''; _t1.removeAttribute('data-saved'); }
+          if (_t2) { _t2.value = ''; _t2.removeAttribute('data-saved'); }
+          window.__ARK_SAVED_ALERT = null;
+        } catch (e) {}
+      }
       if (al) {
         var thEl = document.getElementById('coefTh');
         var chEl = document.getElementById('coefCh');
         var tgEl = document.getElementById('coefTarget');
         // 阈值：只要云端有值就写入（不依赖 data-saved 标记，避免首次登录被默认值 0.45 挡住）
         if (thEl && Number(al.threshold) > 0) {
-          var _cur = String(thEl.value || '').trim();
+          /* ⭐ FIX: 只回填"当前地址"的云端值，不再用脏标记挡（脏标记是跨钱包串值的根因） */
           var _saved = String(al.threshold);
-          // 用户正在输入（已标记 data-saved 且值不同）时不覆盖；否则一律同步云端值
-          var _dirty = thEl.getAttribute('data-saved') === '1' && _cur && _cur !== _saved;
-          if (!_dirty) {
-            thEl.value = _saved;
-            thEl.setAttribute('data-saved', '1');
-          }
+          thEl.value = _saved;
+          thEl.setAttribute('data-saved', '1');
         }
         /* FIX: 先写 SendKey，再切通道 —— 反过来会被 coefChHint 清空 */
         if (tgEl && al.target) {
-          var _curT = String(tgEl.value || '').trim();
-          var _dirtyT = tgEl.getAttribute('data-saved') === '1' && _curT && _curT !== String(al.target);
-          if (!_dirtyT) {
-            tgEl.value = String(al.target);
-            tgEl.setAttribute('data-saved', '1');
-          }
+          /* ⭐ FIX: 同理，直接写入当前地址自己的 SendKey */
+          tgEl.value = String(al.target);
+          tgEl.setAttribute('data-saved', '1');
         }
         if (chEl && al.channel) {
           chEl.value = al.channel;
@@ -1264,9 +1287,11 @@ window.arkRefillAlerts = function () {
 setInterval(function () {
   try {
     if (typeof window.loadCoefAlerts !== 'function') return;
+    var _cur = _wa ? String(_wa() || '').toLowerCase() : '';
+    /* ⭐ FIX: 地址变了立刻重新拉取该地址自己的设置；地址没变则按需补填 */
+    if (_cur && window.__ARK_ALERT_ADDR !== _cur) { window.loadCoefAlerts(); return; }
     var thEl = document.getElementById('coefTh');
     var tgEl = document.getElementById('coefTarget');
-    /* FIX: 只要还没拿到过云端值(data-saved!=1)或输入框为空，就持续回填 */
     var _thSaved = thEl && thEl.getAttribute('data-saved') === '1';
     var _tgSaved = tgEl && tgEl.getAttribute('data-saved') === '1';
     var needTh = !thEl || !thEl.value || !_thSaved;
