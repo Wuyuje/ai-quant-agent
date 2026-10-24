@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ARK 公民工具站 · ARK Citizen Tools</title>
+<meta name="description" content="ARK 質押收益追蹤、複利計算器、鏈上數據與地址監控">
+<link rel="icon" href="images/mascot.png">
+<link rel="stylesheet" href="style2.css?v=1792513380">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script>
+// ⭐ 修復 WalletConnect UMD 庫的 process is not defined
+if (typeof window.process === "undefined") { window.process = { env: {}, version: "", platform: "browser", nextTick: function(f){ setTimeout(f,0); } }; }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.13.3/dist/index.umd.js"></script>
+</head>
+<body>
+
+<!-- 1. NAV -->
+<nav>
+  <div class="wrap nav-in">
+    <div class="logo"><img src="images/mascot.png" alt="ARK"><span>ARK Citizen</span></div>
+    <div class="nav-links">
+      <a href="#portfolio" data-i18n="nav.portfolio">收益看板</a>
+      <a href="#holdings" data-i18n="nav.holdings">持倉</a>
+      <a href="#whales" data-i18n="nav.whales">鯨魚</a>
+      <a href="#bind" data-i18n="nav.bind">跨設備登錄</a>
+      <a href="chat.html" style="color:#35e0f5;font-weight:700">💬 聊天</a>
+      <a href="#ecosystem">🌐 生態</a>
+      <a href="#referral" data-i18n="nav.ref">推廣</a>
+      <a href="#calc" data-i18n="nav.calc">收益計算器</a>
+      <a href="#plans" data-i18n="nav.plans">方案對比</a>
+      <a href="#accounts" data-i18n="nav.accounts">我的帳戶</a>
+      <a href="#monitor" data-i18n="nav.monitor">地址監控</a>
+      <a href="#history" data-i18n="nav.history">歷史走勢</a>
+      <a href="#notify" data-i18n="nav.notify">推播通知</a>
+    </div>
+    <div class="nav-right">
+      <select id="langSel" aria-label="Language">
+        <option value="zh-TW">繁中</option>
+        <option value="zh-CN">简中</option>
+        <option value="en">EN</option>
+        <option value="ja">日本語</option>
+        <option value="ko">한국어</option>
+        <option value="es">ES</option>
+        <option value="vi">VI</option>
+      </select>
+      <span id="authBox" class="auth-inline"></span>
+      <a class="btn primary" href="#calc" data-i18n="nav.cta">開始質押</a>
+    </div>
+  </div>
+</nav>
+
+<!-- 2. HERO -->
+<header class="hero">
+  <div class="wrap">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px">
+      <img src="images/mascot.png" alt="Arkie 阿奇" style="width:54px;height:54px;border-radius:50%;border:2px solid rgba(53,224,245,.4);box-shadow:0 4px 16px rgba(53,224,245,.25);background:#0d1420">
+      <div>
+        <div style="font-size:13px;color:var(--cyan,#35e0f5);font-weight:700;letter-spacing:.5px" data-i18n="hero.arkie">Arkie · 阿奇</div>
+        <div style="font-size:11px;color:var(--text-dim,#8b95a8)" data-i18n="hero.arkieSub">你的 ARK 智能助手 · 24h 在线</div>
+      </div>
+    </div>
+    <h1 data-i18n="hero.title">別盯著 K 線。盯著你手裡的幣變多了沒。</h1>
+    <p class="sub" data-i18n="hero.sub">ARK 公民工具站 — 用複利引擎與鏈上數據，看清你的每一枚 ARK。</p>
+    <p class="sub" style="margin-top:-16px" data-i18n="hero.sub2">ARK 複利機器人 — 開啟屬於你的被動收入。</p>
+    <!-- 💎 升级广告横幅（详细版） -->
+    <div id="upgradeBanner" class="upgrade-banner" style="display:none">
+      <span class="ub-badge">VIP</span>
+      <span class="ub-title" data-i18n="ub.title">升級 VIP 會員 · 解鎖全部功能</span>
+      <span class="ub-tags">🌪 系数 · 🔔 提醒 · 🔊 语音 · 📍 监控 · 📢 广告 · 🌐 生态</span>
+      <button class="btn primary mini" onclick="openPay()" data-i18n="ub.upgrade">1 ARK/月 升級</button>
+    </div>
+    <div class="hero-cta">
+      <a class="btn primary" href="#calc" data-i18n="hero.cta1">開啟複利計算</a>
+      <a class="btn chat-hero" href="chat.html" style="display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#35e0f5,#6a5cff);color:#060b18;font-weight:800;box-shadow:0 8px 24px rgba(53,224,245,.35)">💬 進入聊天</a>
+      <a class="btn ghost" href="#plans" data-i18n="hero.cta2">查看方案對比</a>
+    </div>
+    <div class="hero-stats">
+      <div class="st"><b>3712.63%</b><span data-i18n="hero.stat1">最高參考年回報</span></div>
+      <div class="st"><b>12h</b><span data-i18n="hero.stat2">Rebase 週期</span></div>
+      <div class="st"><b>7</b><span data-i18n="hero.stat3">支持語言</span></div>
+    </div>
+    <div class="ad-hero-slot" id="adHeroSlot" style="display:none"></div>
+    <div class="member-bar">
+      <span data-i18n="au.badge">ARK 公民工具站 · 會員免費開放中</span>
+      <button class="btn primary mini" onclick="openPay()" data-i18n="au.upgrade">升級 VIP</button>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kk" data-i18n="hero.kpiTrades">交易記錄</div><div class="kv" id="kpiTrades">-</div></div>
+      <div class="kpi"><div class="kk" data-i18n="hero.kpiHolders">持有者</div><div class="kv" id="kpiHolders">-</div></div>
+      <div class="kpi"><div class="kk" data-i18n="hero.kpiDays">運行天數</div><div class="kv" id="kpiDays">-</div></div>
+    </div>
+  </div>
+</header>
+
+<!-- 3. CALCULATOR -->
+<!-- 0z. BIND 跨设备登录（独立区块） -->
+<section id="bind">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="bind.secTitle">跨设备登录</h2>
+      <p class="mut" data-i18n="bind.secSub">手机升级 VIP → 电脑输码免插件使用</p>
+    </div>
+    <div class="card" style="max-width:560px">
+      <div style="margin-bottom:14px">
+        <div style="font-weight:700;color:var(--cyan);font-size:14px;margin-bottom:8px" data-i18n="bind.mobileTitle">📱 手机端（升级后生成）</div>
+        <button class="btn primary" onclick="genBindCode()" data-i18n="bind.gen2">生成我的绑定码</button>
+        <div id="bindCodeBox" style="display:none;margin-top:12px"></div>
+      </div>
+      <div style="border-top:1px solid var(--line);padding-top:14px">
+        <div style="font-weight:700;color:var(--cyan);font-size:14px;margin-bottom:8px" data-i18n="bind.pcTitle">💻 电脑端（输入绑定码）</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input id="bindInput2" placeholder="输入6位绑定码" maxlength="6" style="flex:1;min-width:140px;text-transform:uppercase;font-family:ui-monospace,monospace;letter-spacing:4px;text-align:center;padding:11px;background:#0a101c;border:1px solid var(--line);border-radius:8px;color:#e6edf3;font-size:16px"/>
+          <button class="btn primary" onclick="useBindCode2()" data-i18n="bind.use2">用码登录</button>
+        </div>
+        <div class="mut" id="bindStatus2" style="margin-top:10px;font-size:12px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 0y. REFERRAL 推广中心 -->
+<section id="referral">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="ref.title">推广中心</h2>
+      <p class="mut" data-i18n="ref.sub">推荐好友升级，获持续收益（三级分润 15%/5%/2%）</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div style="text-align:center;padding:8px 0">
+          <div class="mut" data-i18n="ref.myCode">我的推广码</div>
+          <div id="refCode" style="font-size:32px;font-weight:900;font-family:ui-monospace,monospace;color:#35e0f5;letter-spacing:3px;margin:10px 0">—</div>
+          <div id="refQR" style="margin:12px auto;width:160px;height:160px;background:#fff;border-radius:10px;padding:8px;display:none"></div>
+          <button class="btn ghost mini" onclick="copyRefLink()" data-i18n="ref.copyLink">复制推广链接</button>
+          <button class="btn primary mini" onclick="genRefPoster()" data-i18n="ref.poster" style="margin-left:6px">生成推广海报</button>
+          <button class="btn ghost mini" onclick="showRefQR()" data-i18n="ref.qr" style="margin-left:6px">显示二维码</button>
+        </div>
+        <div style="margin-top:16px">
+          <div class="kv"><span data-i18n="ref.earnArk">累计收益 (ARK)</span><b id="refEarnArk" style="color:#18c98a">—</b></div>
+          <div class="kv"><span data-i18n="ref.earnToday">今日收益</span><b id="refEarnToday">—</b></div>
+          <div class="kv"><span data-i18n="ref.l1">一级人数</span><b id="refL1">—</b></div>
+          <div class="kv"><span data-i18n="ref.l2">二级人数</span><b id="refL2">—</b></div>
+          <div class="kv"><span data-i18n="ref.l3">三级人数</span><b id="refL3">—</b></div>
+        </div>
+        <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:12px">
+          <div style="font-weight:700;color:var(--cyan);font-size:13px;margin-bottom:8px" data-i18n="ref.chainTitle">⛓ 链上推荐（合约）</div>
+          <div class="kv"><span data-i18n="ref.chainEarned">链上可提取</span><b id="refChainEarned" style="color:#18c98a">—</b></div>
+          <div class="kv"><span data-i18n="ref.chainWithdrawn">已提取</span><b id="refChainWithdrawn">—</b></div>
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <input id="bindRefInput" placeholder="上级推广码 (ARK-XXX)" style="flex:1;min-width:120px;padding:8px;background:#0a101c;border:1px solid var(--line);border-radius:8px;color:#e6edf3;font-size:13px;text-transform:uppercase"/>
+            <button class="btn ghost mini" onclick="bindReferrer()" data-i18n="ref.bind">绑定推荐人</button>
+          </div>
+          <button class="btn primary mini" style="width:100%;margin-top:8px" onclick="withdrawOnChain()" data-i18n="ref.withdrawChain">链上提现</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="sec-head" style="margin-bottom:10px"><h3 style="font-size:15px" data-i18n="ref.rules">分润规则</h3></div>
+        <div class="mut" style="font-size:13px;line-height:1.9">
+          · <b style="color:#35e0f5">一级 15%</b> — 你直接推荐的人付费<br>
+          · <b style="color:#35e0f5">二级 5%</b> — 你推荐的人推荐的人<br>
+          · <b style="color:#35e0f5">三级 2%</b> — 再深一层<br>
+          · 仅分平台<span style="color:#18c98a">真实收益</span>，不涉下级本金<br>
+          · 单日上限 100 ARK · 三级封顶
+        </div>
+        <div class="mut" id="refLog" style="margin-top:14px;font-size:12px;max-height:160px;overflow:auto"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 0. PORTFOLIO 收益看板 -->
+<section id="portfolio">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="pf.title">收益看板</h2>
+      <p class="mut" data-i18n="pf.sub">輸入你的持倉，即時看清賺了多少</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="form-row"><label data-i18n="pf.amount">ARK 數量</label><div style="display:flex;gap:8px"><input id="pfAmt" type="number" min="0" step="1" value="1000" style="flex:1"><button class="btn ghost mini" onclick="saveArkAmount()" data-i18n="common.save">保存</button></div></div>
+        <div class="form-row"><label data-i18n="pf.plan">鎖倉方案</label>
+          <select id="pfPlan" style="display:none">
+            <option value="flex">活期 / Flex</option>
+            <option value="180">180 天</option>
+            <option value="360" selected>360 天</option>
+            <option value="540">540 天</option>
+            <option value="720">720 天</option>
+            <option value="long">長效質押 (1080 天)</option>
+            <option value="max">永久質押 (1440 天)</option>
+          </select>
+          <div class="plan-chips" id="pfPlanChips"></div>
+        </div>
+        <div class="kv" style="margin-top:6px"><span data-i18n="pf.rate">当前利率</span><b id="pfRateShow" style="color:#35e0f5">加载中…</b></div>
+        <div class="kv"><span data-i18n="pf.next">下次结算</span><b id="pfNext" style="color:#f5c46b">—</b></div>
+        <div class="kv"><span data-i18n="pf.countdown">倒计时</span><b id="pfCountdown" style="font-family:ui-monospace">—</b></div>
+        <div class="kv"><span data-i18n="pf.tracked">已跟踪</span><b id="pfTracked" style="color:#35e0f5">—</b></div>
+        <div class="form-row" style="margin-top:8px"><label data-i18n="pf.startTime">质押开始时间</label>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input id="pfSD" type="number" placeholder="日" min="1" max="31" style="width:56px;text-align:center">
+            <input id="pfSH" type="number" placeholder="时" min="0" max="23" style="width:56px;text-align:center">
+            <input id="pfSM" type="number" placeholder="分" min="0" max="59" style="width:56px;text-align:center">
+            <span class="mut" style="font-size:12px">(月/日 时:分, 本月)</span>
+          </div>
+        </div>
+        <div class="mut" id="pfHint" style="margin-top:8px;font-size:12px"></div>
+        <div class="btnrow" style="margin-top:8px">
+          <button class="btn primary" style="flex:1" id="pfRun" data-i18n="pf.run">更新看板</button>
+          <button class="btn ghost" onclick="pfSetStart()" data-i18n="pf.setTime">设置时间</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="results">
+          <div class="res"><div class="k" data-i18n="pf.r1">當前價值 (USD)</div><div class="v" id="pfUsd">—</div></div>
+          <div class="res"><div class="k" data-i18n="pf.r2">累計賺取 (ARK)</div><div class="v ok" id="pfEarnArk">—</div></div>
+          <div class="res"><div class="k" data-i18n="pf.r3">累計賺取 (USD)</div><div class="v ok" id="pfEarnUsd">—</div></div>
+          <div class="res"><div class="k" data-i18n="pf.r4">當前 ARK 總量</div><div class="v" id="pfCurArk">—</div></div>
+          <div class="res"><div class="k" data-i18n="pf.r5">參考年化</div><div class="v" id="pfApy">—</div></div>
+          <div class="res"><div class="k" data-i18n="pf.r6">ARK 現價</div><div class="v" id="pfPrice">—</div></div>
+        </div>
+        <div class="btnrow" style="margin-top:14px">
+          <button class="btn" id="pfShare" data-i18n="pf.share">生成分享卡片</button>
+          <button class="btn primary" onclick="genPoster()" data-i18n="pf.poster">生成收益海报</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 0b. ALERTS 價格預警 -->
+<section id="alerts" data-pro>
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="al.title">價格預警</h2>
+      <p class="mut" data-i18n="al.sub">設定目標價，達到時自動通知（需先連接錢包）</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="form-row"><label data-i18n="al.kind">條件</label>
+          <select id="alKind">
+            <option value="above" data-i18n="al.above">漲破 (≥)</option>
+            <option value="below" data-i18n="al.below">跌破 (≤)</option>
+          </select>
+        </div>
+        <div class="form-row"><label data-i18n="al.target">目標價 (USD)</label><input id="alTarget" type="number" min="0" step="0.01" placeholder="例: 10"></div>
+        <button class="btn primary" style="width:100%" id="alAdd" data-i18n="al.add">新增預警</button>
+        <div class="mut" id="alHint" style="margin-top:10px">連接錢包後可保存預警</div>
+      </div>
+      <div class="card">
+        <div class="sec-head" style="margin-bottom:10px"><h3 style="font-size:15px" data-i18n="al.list">我的預警</h3></div>
+        <div class="scroll-x">
+          <table>
+            <thead><tr><th data-i18n="al.kind">條件</th><th data-i18n="al.target">目標價</th><th data-i18n="al.status">狀態</th><th></th></tr></thead>
+            <tbody id="alTbody"><tr><td colspan="4" class="mut" style="text-align:center">—</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 0c. HOLDINGS 鏈上持倉 -->
+<section id="holdings">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="hd.title">鏈上持倉</h2>
+      <p class="mut" data-i18n="hd.sub">輸入地址，直接從 BSC 讀取你的 ARK / ARKIE / gARK 餘額</p>
+    </div>
+    <div class="card">
+      <div class="form-row"><label data-i18n="hd.addr">錢包地址</label>
+        <input id="hdAddr" type="text" placeholder="0x..."/>
+      </div>
+      <button class="btn primary" id="hdRun" data-i18n="hd.run">讀取持倉</button>
+      <div class="results" style="margin-top:16px">
+        <div class="res"><div class="k" data-i18n="hd.ark">ARK 餘額</div><div class="v" id="hdArk">—</div></div>
+        <div class="res"><div class="k" data-i18n="hd.arkie">ARKIE 餘額</div><div class="v" id="hdArkie">—</div></div>
+        <div class="res"><div class="k" data-i18n="hd.gark">gARK 餘額</div><div class="v" id="hdGark">—</div></div>
+        <div class="res"><div class="k" data-i18n="hd.bnb">BNB 餘額</div><div class="v" id="hdBnb">—</div></div>
+        <div class="res"><div class="k" data-i18n="hd.total">總價值 (USD)</div><div class="v ok" id="hdTotal">—</div></div>
+        <div class="res"><div class="k" data-i18n="hd.arkval">ARK 價值</div><div class="v" id="hdArkUsd">—</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 0f. COEFFICIENT 实时系数 -->
+<section id="coefficient">
+  <div class="wrap">
+    <div class="sec-head" style="position:relative">
+      <h2 data-i18n="coef.title">涡轮共识系数 <span class="badge-active">VIP</span></h2>
+      <p class="mut" data-i18n="coef.sub">涡轮共识系数（链上实时）</p>
+    </div>
+    <div id="coefProLock" style="display:none;padding:18px;background:linear-gradient(135deg,rgba(53,224,245,.06),rgba(124,58,237,.08));border:1px dashed rgba(53,224,245,.35);border-radius:12px;margin-bottom:14px;text-align:center">
+      <div style="font-size:15px;font-weight:700;color:var(--cyan)" data-i18n="coef.lockTitle">🔒 涡轮系数 · VIP 会员专属</div>
+      <div class="mut" style="font-size:12px;margin:8px 0 14px" data-i18n="coef.lockShort">实时系数 · 涨高提醒 · 语音播报 · 释放进度</div>
+      <button class="btn primary mini" onclick="openPay()" data-i18n="coef.lockBtn">升级 VIP 解锁</button>
+    </div>
+      <div style="text-align:center">
+        <button class="btn primary" onclick="openPay()" style="padding:12px 34px;font-size:15px" data-i18n="coef.lockBtn">升级 VIP 解锁</button>
+        <div class="mut" style="margin-top:10px;font-size:12px" data-i18n="coef.lockNote">1 ARK/月 · 链上支付秒开通</div>
+      </div>
+    </div>
+    <div id="coefContent">
+    <div class="grid2">
+      <div class="card">
+        <div style="text-align:center;padding:10px 0">
+          <div class="mut" data-i18n="coef.score">实时综合系数</div>
+          <div id="coefScore" style="font-size:56px;font-weight:800;font-family:ui-monospace,monospace;color:#35e0f5">—</div>
+          <div id="coefMomentum" style="font-size:14px;font-weight:700;font-family:ui-monospace,monospace;letter-spacing:1px;margin-top:2px">—</div>
+          <div id="coefFlicker" style="font-size:12px;font-family:ui-monospace,monospace;opacity:.45;letter-spacing:1px">—</div>
+          <div id="coefSrc" style="font-size:11px;font-family:ui-monospace,monospace;opacity:.35;letter-spacing:.5px;margin-top:4px">链上实时</div>
+          <div id="coefLabel" class="mut">—</div>
+          <div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(24,201,138,.08);border:1px solid rgba(24,201,138,.25)">
+            <div class="mut" style="font-size:11px;letter-spacing:.5px">实际到手 ARK 比例</div>
+            <div id="coefActual" style="font-size:22px;font-weight:800;font-family:ui-monospace,monospace;color:#18c98a">—</div>
+            <div style="font-size:10px;opacity:.5;margin-top:2px">= ARK奖励 × (0.78 × 涡轮系数 − 0.02)</div>
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <div class="kv"><span data-i18n="coef.poolRatio">24h系数区间</span><b id="coefPr">—</b></div>
+          <div class="kv"><span data-i18n="coef.bsRatio">已释放/总量</span><b id="coefBs">—</b></div>
+          <div class="kv"><span data-i18n="coef.turnover">释放进度</span><b id="coefTo">—</b></div>
+          <div class="kv"><span data-i18n="coef.buysSells">周期</span><b id="coefTx">—</b></div>
+        </div>
+        <div class="btnrow"><button class="btn ghost" onclick="loadCoef()" data-i18n="coef.refresh">刷新</button></div>
+      </div>
+      <div class="card">
+        <div class="sec-head" style="margin-bottom:10px"><h3 style="font-size:15px" data-i18n="coef.alertTitle">系数涨高提醒 <span class="badge-active">VIP</span></h3></div>
+        <div class="form-row"><label data-i18n="coef.threshold">提醒触发阈值（非系数）</label><input id="coefTh" type="number" min="0.01" max="1" step="0.0001" value="0.45" placeholder="例：0.45"><div style="font-size:11px;opacity:.55;margin-top:4px">⚠️ 这是你的提醒线，不是当前系数。系数 ≥ 该值才会推送</div></div>
+        <div class="form-row"><label data-i18n="coef.channel">提醒通道</label>
+          <select id="coefCh" onchange="coefChHint()">
+            <option value="wechat">💬 微信 (Server酱)</option>
+            <option value="telegram">✈️ 电报号 (Telegram)</option>
+          </select>
+        </div>
+        <div class="form-row"><label id="coefTargetLabel">Server酱 SendKey</label><input id="coefTarget" placeholder="SCT..." autocomplete="off"></div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-dim);margin:10px 0">
+          <input type="checkbox" id="coefVoice" style="width:auto;margin:0">
+          <span data-i18n="coef.voice">🔊 长语音 + 音乐 + 振动提醒（循环到确认）</span>
+        </label>
+        <div id="coefThHint" style="font-size:12px;margin:8px 0 12px;padding:8px 10px;border-radius:8px;background:rgba(53,224,245,.06);border:1px solid rgba(53,224,245,.2);color:var(--text-dim)">—</div>
+        <div id="arkAlertStatus" style="font-size:12px;margin:0 0 12px;padding:10px 12px;border-radius:10px;background:rgba(24,201,138,.07);border:1px solid rgba(24,201,138,.25);line-height:1.9">
+          <div style="font-weight:800;font-size:12px;letter-spacing:.5px;margin-bottom:6px;color:#18c98a">📡 提醒状态实时监控</div>
+          <div style="display:flex;justify-content:space-between;gap:10px"><span style="opacity:.7">当前系数</span><b id="arkCurCoef" style="font-family:ui-monospace,monospace;color:#35e0f5">—</b></div>
+          <div style="display:flex;justify-content:space-between;gap:10px"><span style="opacity:.7">你的阈值</span><b id="arkThVal" style="font-family:ui-monospace,monospace">—</b></div>
+          <div style="display:flex;justify-content:space-between;gap:10px"><span style="opacity:.7">差距</span><b id="arkGapVal" style="font-family:ui-monospace,monospace">—</b></div>
+          <div style="display:flex;justify-content:space-between;gap:10px"><span style="opacity:.7">达标进度</span><b id="arkProgVal" style="font-family:ui-monospace,monospace">—</b></div>
+          <div style="display:flex;justify-content:space-between;gap:10px"><span style="opacity:.7">语音通道</span><b id="arkVoiceState" style="font-family:ui-monospace,monospace;color:#f5a623">未解锁</b></div>
+          <div style="display:flex;justify-content:space-between;gap:10px"><span style="opacity:.7">提醒状态</span><b id="arkFireState" style="font-family:ui-monospace,monospace">—</b></div>
+          <div id="arkProgBarWrap" style="margin-top:8px;height:6px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden">
+            <div id="arkProgBar" style="height:100%;width:0%;background:linear-gradient(90deg,#35e0f5,#18c98a);transition:width .5s"></div>
+          </div>
+        </div>
+        <button class="btn primary" style="width:100%" onclick="addCoefAlert()" data-i18n="coef.add">添加提醒</button>
+        <button class="btn primary" style="width:100%;margin-top:8px;background:linear-gradient(135deg,#18c98a,#0fa36f);color:#fff;font-weight:800" onclick="saveCoefBinding()">💾 保存绑定（付费期内免二次绑定）</button>
+        <button class="btn ghost mini" style="width:100%;margin-top:8px" onclick="testCoefChannel()">📤 测试发送（验证配置是否正确）</button>
+        <button class="btn ghost mini" style="width:100%;margin-top:6px" onclick="testVoice()" data-i18n="coef.testVoice">🔊 测试长提醒（语音+音乐+振动）</button>
+        <div class="mut" id="coefHint" style="margin-top:10px"></div>
+        <div class="wx-guide" id="coefGuide" style="margin-top:12px;padding:12px;background:rgba(53,224,245,.06);border:1px solid rgba(53,224,245,.2);border-radius:10px;font-size:12px;line-height:1.9;color:#8ba3c7">
+          <!-- 内容由 coefChHint() 动态填充 -->
+        </div>
+        <div class="scroll-x" style="margin-top:12px">
+          <table><thead><tr><th data-i18n="coef.threshold">阈值</th><th data-i18n="coef.channel">通道</th><th data-i18n="al.status">状态</th><th></th></tr></thead>
+          <tbody id="coefTbody"><tr><td colspan="4" class="mut" style="text-align:center">—</td></tr></tbody></table>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+<!-- 0d. WHALES 鯨魚監控 -->
+<section id="whales">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="wh.title">鯨魚監控</h2>
+      <p class="mut" data-i18n="wh.sub">實時監控 ARK 大額轉賬（最近約50個區塊）</p>
+    </div>
+    <div class="card">
+      <div class="form-row"><label data-i18n="wh.min">最小金額 (ARK)</label>
+        <input id="whMin" type="number" min="1" value="1000"/>
+      </div>
+      <button class="btn primary" id="whRun" data-i18n="wh.run">刷新</button>
+      <div class="mut" id="whInfo" style="margin-top:10px">—</div>
+      <div class="scroll-x" style="margin-top:12px">
+        <table>
+          <thead><tr><th data-i18n="wh.amount">金額 (ARK)</th><th data-i18n="wh.from">從</th><th data-i18n="wh.to">到</th><th data-i18n="wh.tx">交易</th></tr></thead>
+          <tbody id="whTbody"><tr><td colspan="4" class="mut" style="text-align:center">—</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="calc">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="calc.title">複利計算器</h2>
+      <p class="mut">每 12 小時 Rebase 複利一次</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="form-row">
+          <label data-i18n="calc.amount">ARK 數量</label>
+          <div style="display:flex;gap:8px"><input id="cAmount" type="number" value="1000" min="0" step="1" style="flex:1"><button class="btn ghost mini" onclick="saveArkAmount()" data-i18n="common.save">保存</button></div>
+        </div>
+        <div class="form-row">
+          <label data-i18n="calc.plan">鎖倉方案</label>
+          <select id="cPlan" onchange="onPlanChange()" style="display:none">
+            <option value="flex">活期 / Flex</option>
+            <option value="180">180 天</option>
+            <option value="360" selected>360 天</option>
+            <option value="540">540 天</option>
+            <option value="720">720 天</option>
+            <option value="long">長效質押 (1080 天)</option>
+            <option value="max">永久質押 (1440 天)</option>
+          </select>
+          <div class="plan-chips" id="cPlanChips"></div>
+        </div>
+        <div class="form-row">
+          <label data-i18n="calc.type">單利 / 複利</label>
+          <div class="tabs" style="margin:0">
+            <button class="btn ghost mini active" id="ct-simple" onclick="setCalcType('simple')" data-i18n="calc.simple">單利</button>
+            <button class="btn ghost mini" id="ct-compound" onclick="setCalcType('compound')" data-i18n="calc.compound">複利</button>
+          </div>
+        </div>
+        <div class="form-row">
+          <label data-i18n="calc.rate">日收益率 (%)</label>
+          <input id="cRate" type="number" value="1.0" min="0" step="0.01">
+        </div>
+        <div class="form-row">
+          <label data-i18n="calc.days">模擬天數</label>
+          <input id="cDays" type="number" value="360" min="1" step="1">
+        </div>
+        <button class="btn primary" style="width:100%" onclick="runCalc()" data-i18n="calc.run">開始計算</button>
+      </div>
+      <div class="card">
+        <div class="results">
+          <div class="res"><div class="k" data-i18n="calc.r1">最終 ARK</div><div class="v" id="rFinal">-</div></div>
+          <div class="res"><div class="k" data-i18n="calc.r2">淨增 ARK</div><div class="v" id="rGain">-</div></div>
+          <div class="res"><div class="k" data-i18n="calc.r3">增長倍數</div><div class="v" id="rMult">-</div></div>
+          <div class="res"><div class="k" data-i18n="calc.r4">日均產出</div><div class="v" id="rDaily">-</div></div>
+          <div class="res" style="grid-column:1/-1"><div class="k" data-i18n="calc.r5">等效年化</div><div class="v" id="rApr">-</div></div>
+        </div>
+        <div class="chart-box"><canvas id="calcChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 法币换算 -->
+    <div class="card" style="margin-top:16px">
+      <div class="sec-head" style="margin-bottom:12px">
+        <h2 style="font-size:16px" data-i18n="fx.title">收益法币换算</h2>
+        <p class="mut" data-i18n="fx.sub">ARK → USDT → 各国法币（实时汇率）</p>
+      </div>
+      <div class="form-row" style="max-width:280px">
+        <label data-i18n="fx.cur">计价货币</label>
+        <select id="fxCur" onchange="runCalc()">
+          <option value="USDT">USDT (美元)</option>
+          <option value="CNY">🇨🇳 CNY 人民币</option>
+          <option value="TWD">🇹🇼 TWD 新台币</option>
+          <option value="HKD">🇭🇰 HKD 港币</option>
+          <option value="JPY">🇯🇵 JPY 日元</option>
+          <option value="KRW">🇰🇷 KRW 韩元</option>
+          <option value="EUR">🇪🇺 EUR 欧元</option>
+          <option value="GBP">🇬🇧 GBP 英镑</option>
+          <option value="SGD">🇸🇬 SGD 新加坡元</option>
+          <option value="MYR">🇲🇾 MYR 马来西亚令吉</option>
+          <option value="THB">🇹🇭 THB 泰铢</option>
+          <option value="VND">🇻🇳 VND 越南盾</option>
+          <option value="INR">🇮🇳 INR 印度卢比</option>
+          <option value="AUD">🇦🇺 AUD 澳元</option>
+          <option value="CAD">🇨🇦 CAD 加元</option>
+        </select>
+      </div>
+      <div class="results">
+        <div class="res"><div class="k" data-i18n="fx.r1">当前持仓价值</div><div class="v" id="fxNow">-</div></div>
+        <div class="res"><div class="k" data-i18n="fx.r2">到期总价值</div><div class="v ok" id="fxEnd">-</div></div>
+        <div class="res"><div class="k" data-i18n="fx.r3">净收益</div><div class="v ok" id="fxGain">-</div></div>
+        <div class="res"><div class="k" data-i18n="fx.r4">汇率</div><div class="v" id="fxRate">-</div></div>
+      </div>
+      <div class="mut" id="fxNote" style="margin-top:8px;font-size:11px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. PLANS -->
+<section id="plans">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="plans.title">方案對比</h2>
+      <p class="mut" data-i18n="plans.chart">360 / 540 / 720 天複利軌跡</p>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="form-row" style="max-width:260px">
+        <label data-i18n="calc.amount">ARK 數量</label>
+        <input id="pAmount" type="number" value="1000" min="1" step="100" oninput="runCompare()">
+      </div>
+      <div class="chart-box tall"><canvas id="compareChart"></canvas></div>
+    </div>
+    <div class="plan-cards">
+      <div class="pcard" id="plansCard1"></div>
+      <div class="pcard" id="plansCard2"></div>
+      <div class="pcard" id="plansCard3"></div>
+      <div class="pcard" id="plansCard4"></div>
+      <div class="pcard" id="plansCard5"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. BURN -->
+<section id="burn">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="burn.title">燃燒費率表</h2>
+      <p class="mut">解鎖週期越長，燃燒費率越低</p>
+    </div>
+    <div class="card">
+      <div class="scroll-x">
+        <table>
+          <thead><tr>
+            <th data-i18n="burn.col1">解鎖週期</th>
+            <th data-i18n="burn.col2">燃燒費率</th>
+            <th data-i18n="burn.col3">說明</th>
+          </tr></thead>
+          <tbody id="burnTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. CHAIN -->
+<section id="chain">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="chain.title">鏈上數據</h2>
+      <p class="mut mono">PancakeSwap V2 · BSC · <span data-i18n="chain.delay">鏈上數據可能延遲約 5 分鐘</span></p>
+    </div>
+    <div class="chain-grid">
+      <div class="chain-card"><div class="cl" data-i18n="chain.price">ARK 價格</div><div class="cv" id="chPrice">-</div><div class="mut" id="chChg">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.mcap">市值</div><div class="cv" id="chMcap">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.fdv">完全稀釋估值</div><div class="cv" id="chFdv">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.poolArk">底池 ARK</div><div class="cv" id="chArkPool">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.poolUsdt">底池 USDT</div><div class="cv" id="chUsdtPool">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.tvl">總流動性 (TVL)</div><div class="cv" id="chTvl">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.supply">流通量</div><div class="cv" id="chSupply">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.vol24">24h 成交量</div><div class="cv" id="chVol24">-</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6a. ENGINE (ARK 底層邏輯) -->
+<section id="engine">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="eng.title">ARK 底層邏輯引擎</h2>
+      <p class="mut" data-i18n="eng.sub">六大模組如何驅動 ARK 經濟</p>
+    </div>
+
+    <div class="sub-head" data-i18n="eng.modules">六大核心模組</div>
+    <div class="mod-grid" id="engineModules"></div>
+
+    <div class="grid2" style="margin-top:34px">
+      <div class="card">
+        <div class="sub-head" style="margin-top:0" data-i18n="eng.amm">恆定乘積做市 (x·y=k)</div>
+        <p class="mut" style="margin-bottom:14px" data-i18n="eng.ammDesc"></p>
+        <div class="chart-box"><canvas id="ammChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="sub-head" style="margin-top:0" data-i18n="eng.pools">雙池聯動結構</div>
+        <p class="mut" style="margin-bottom:14px">國庫 (RBS) + 流動性池 (LP) 雙重保障</p>
+        <div id="poolBars"></div>
+        <div class="sub-head" style="margin-top:22px" data-i18n="eng.rbs">RBS 價格區間</div>
+        <p class="mut" style="margin-bottom:12px" data-i18n="eng.rbsDesc"></p>
+        <div id="rbsGauge"></div>
+      </div>
+    </div>
+
+    <div class="sub-head" style="margin-top:34px" data-i18n="eng.gap">複利層級差距</div>
+    <p class="mut" style="margin-bottom:14px" data-i18n="eng.gapDesc"></p>
+    <div class="card">
+      <div class="chart-box tall"><canvas id="gapChart"></canvas></div>
+      <div class="gap-row">
+        <div class="gap-item"><div class="kk">540d @0.8%/日 → 18個月</div><div class="kv" id="gap540">-</div></div>
+        <div class="gap-item"><div class="kk">720d @0.9%/日 → 18個月</div><div class="kv gold" id="gap720">-</div></div>
+      </div>
+    </div>
+
+    <div class="sub-head" style="margin-top:34px" data-i18n="eng.flow">資金流轉路徑</div>
+    <div class="flow-path">
+      <div class="fp-node">USDT</div><div class="fp-arrow">→</div>
+      <div class="fp-node">ARK 債券</div><div class="fp-arrow">→</div>
+      <div class="fp-split">
+        <div class="fp-branch"><span class="fp-50">50%</span> 買入 ARK</div>
+        <div class="fp-branch"><span class="fp-50">50%</span> 組成 LP 永久鎖倉</div>
+      </div>
+      <div class="fp-arrow">→</div>
+      <div class="fp-node">EM 鑄幣</div><div class="fp-arrow">→</div>
+      <div class="fp-node gold">質押合約 (12h Rebase)</div>
+    </div>
+  </div>
+</section>
+
+<!-- 6c. ARKIE (子幣) -->
+<section id="arkie">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="arkie.title">ARKIE 子幣 · 阿奇 AI</h2>
+      <p class="mut" data-i18n="arkie.sub">ARK 生態的智能執行層與造血閉環</p>
+    </div>
+
+    <!-- 雙層結構 -->
+    <div class="dual-layer">
+      <div class="dl-node parent"><span class="dl-tag" data-i18n="arkie.parent">母幣</span><b>ARK</b><span class="mut mono">0xCae117…8B9D</span></div>
+      <div class="dl-link">⇄<div class="dl-link-txt">ARKIE/ARK</div></div>
+      <div class="dl-node child"><span class="dl-tag" data-i18n="arkie.child">子幣</span><b>ARKIE</b><span class="mut mono">0x6cd302…88cF</span></div>
+    </div>
+
+    <!-- 三個核心定位 -->
+    <div class="sub-head" style="margin-top:30px" data-i18n="arkie.roles">ARKIE 三個核心定位</div>
+    <div class="mod-grid" id="arkieRoles"></div>
+
+    <!-- 市場數據 -->
+    <div class="sub-head" style="margin-top:32px" data-i18n="arkie.mkt">ARKIE 市場數據</div>
+    <div class="chain-grid">
+      <div class="chain-card"><div class="cl">ARKIE 價格</div><div class="cv" id="akPrice">-</div><div class="mut" id="akPriceArk">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.mcap">市值</div><div class="cv" id="akMcap">-</div><div class="mut" id="akChg">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.tvl">流動性 (TVL)</div><div class="cv" id="akLiq">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.supply">流通量</div><div class="cv" id="akSupply">-</div></div>
+      <div class="chain-card"><div class="cl">底池 ARKIE</div><div class="cv" id="akPoolArkie">-</div></div>
+      <div class="chain-card"><div class="cl">底池 ARK</div><div class="cv" id="akPoolArk">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="chain.vol24">24h 成交量</div><div class="cv" id="akVol24">-</div></div>
+      <div class="chain-card"><div class="cl">24h 買/賣</div><div class="cv" id="akTx24">-</div></div>
+    </div>
+
+    <div class="grid2" style="margin-top:20px">
+      <div class="card">
+        <div class="sub-head" style="margin-top:0" data-i18n="arkie.swap">ARK ⇄ ARKIE 兌換</div>
+        <div class="grid2" style="grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-row"><label data-i18n="common.ark">ARK</label><input id="akAmt" type="number" value="100" min="0" oninput="runArkieSwap()"></div>
+          <div class="form-row"><label>方向</label>
+            <select id="akMode" onchange="runArkieSwap()">
+              <option value="ark2arkie">ARK → ARKIE</option>
+              <option value="arkie2ark">ARKIE → ARK</option>
+            </select>
+          </div>
+        </div>
+        <div class="res"><div class="k" data-i18n="calc.youGet">你將獲得</div><div class="v" id="akOut">-</div></div>
+        <div class="mut" id="akRate" style="margin-top:8px">-</div>
+      </div>
+      <div class="card">
+        <div class="sub-head" style="margin-top:0" data-i18n="arkie.alloc">代幣分配結構</div>
+        <div class="chart-box"><canvas id="akAllocChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 交易活躍度 -->
+    <div class="sub-head" style="margin-top:32px" data-i18n="arkie.trade">ARKIE 交易活躍度</div>
+    <div class="card">
+      <div class="scroll-x">
+        <table>
+          <thead><tr><th>Period</th><th class="up" data-i18n="flow.buys">買入</th><th class="dn" data-i18n="flow.sells">賣出</th><th data-i18n="flow.net">淨流向</th></tr></thead>
+          <tbody id="akTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 造血閉環 -->
+    <div class="sub-head" style="margin-top:32px" data-i18n="arkie.fw.core">造血飛輪</div>
+    <div class="flywheel" id="flywheel"></div>
+  </div>
+</section>
+
+<!-- 6b. FLOW + MECHANISM + GOVERNANCE -->
+<section id="mechanism">
+  <div class="wrap">
+    <div class="sec-head"><h2 data-i18n="flow.title">買入量 / 賣出量</h2></div>
+    <div class="chain-grid">
+      <div class="chain-card"><div class="cl" data-i18n="flow.buy">買入量</div><div class="cv up" id="flowBuy">-</div><div class="mut" id="flowBuySub">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="flow.sell">賣出量</div><div class="cv dn" id="flowSell">-</div><div class="mut" id="flowSellSub">-</div></div>
+      <div class="chain-card"><div class="cl" data-i18n="flow.net">淨流向</div><div class="cv" id="flowNet">-</div><div class="mut" id="flowNetSub">24h</div></div>
+    </div>
+    <div class="card" style="margin-top:18px">
+      <div class="scroll-x">
+        <table>
+          <thead><tr>
+            <th>Period</th>
+            <th class="up" data-i18n="flow.buys">買入</th>
+            <th class="dn" data-i18n="flow.sells">賣出</th>
+            <th data-i18n="flow.net">淨流向</th>
+          </tr></thead>
+          <tbody id="flowTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec-head" style="margin-top:36px"><h2 data-i18n="mech.title">回購銷毀機制 (Buyback &amp; Burn)</h2></div>
+    <div class="grid3">
+      <div class="card"><div class="mini-ico">🔥</div><p style="font-size:14px;color:var(--text-dim)" data-i18n="mech.p1"></p></div>
+      <div class="card"><div class="mini-ico">♻️</div><p style="font-size:14px;color:var(--text-dim)" data-i18n="mech.p2"></p></div>
+      <div class="card"><div class="mini-ico">🛡️</div><p style="font-size:14px;color:var(--text-dim)" data-i18n="mech.p3"></p></div>
+    </div>
+
+    <div class="sec-head" style="margin-top:36px"><h2 data-i18n="gov.title">安全與治理</h2></div>
+    <div class="grid3">
+      <div class="card gov-card"><span class="gov-badge">DAO</span><p data-i18n="gov.multisig"></p></div>
+      <div class="card gov-card"><span class="gov-badge">AUDIT</span><p data-i18n="gov.audit"></p></div>
+      <div class="card gov-card"><span class="gov-badge">100%</span><p data-i18n="gov.decentralized"></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. ACCOUNTS -->
+<section id="accounts">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="acc.title">多帳戶管理</h2>
+      <p class="mut">本地儲存，不上傳</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="form-row"><label data-i18n="acc.name">帳戶名稱</label><input id="aName" type="text" placeholder="My ARK"></div>
+        <div class="form-row"><label data-i18n="acc.count">ARK 數量</label><input id="aAmt" type="number" min="0" step="1"></div>
+        <div class="form-row"><label data-i18n="acc.plan">鎖倉方案</label>
+          <select id="aPlan" style="display:none">
+            <option value="flex">活期 / Flex</option>
+            <option value="180">180 天</option>
+            <option value="360" selected>360 天</option>
+            <option value="540">540 天</option>
+            <option value="720">720 天</option>
+            <option value="long">長效質押 (1080 天)</option>
+            <option value="max">永久質押 (1440 天)</option>
+          </select>
+          <div class="plan-chips" id="aPlanChips"></div>
+        </div>
+        <button class="btn primary" style="width:100%" onclick="addAccount()" data-i18n="acc.add">新增帳戶</button>
+      </div>
+      <div class="card">
+        <div class="results">
+          <div class="res"><div class="k" data-i18n="acc.t1">總 ARK</div><div class="v" id="accTotal">0</div></div>
+          <div class="res"><div class="k" data-i18n="acc.t2">總帳戶</div><div class="v" id="accCount">0</div></div>
+          <div class="res"><div class="k" data-i18n="acc.t3">預估日產出</div><div class="v" id="accDaily">0</div></div>
+          <div class="res"><div class="k" data-i18n="acc.t4">預估年產出</div><div class="v" id="accYearly">0</div></div>
+        </div>
+        <div class="chart-box"><canvas id="accChart"></canvas></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:20px">
+      <div class="scroll-x">
+        <table>
+          <thead><tr><th data-i18n="acc.name">帳戶名稱</th><th data-i18n="acc.count">ARK 數量</th><th data-i18n="acc.plan">鎖倉方案</th><th></th></tr></thead>
+          <tbody id="accTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8. WITHDRAW -->
+<section id="withdraw">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="wd.title">提領成本建議</h2>
+      <p class="mut">比較不同解鎖週期的實際到手數量</p>
+    </div>
+    <div class="card">
+      <div class="form-row" style="max-width:280px">
+        <label data-i18n="wd.amount">提領數量 (ARK)</label>
+        <input id="wAmt" type="number" value="1000" min="0" step="1" oninput="runWithdraw()">
+      </div>
+      <div class="scroll-x">
+        <table>
+          <thead><tr>
+            <th data-i18n="wd.col1">解鎖週期</th>
+            <th data-i18n="wd.col2">燃燒費率</th>
+            <th data-i18n="wd.col3">實際到手</th>
+            <th data-i18n="wd.col4">折損</th>
+          </tr></thead>
+          <tbody id="wTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9. MONITOR -->
+<section id="monitor" data-pro>
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="mon.title">地址監控</h2>
+      <p class="mut">BSC 地址持倉與異動追蹤</p>
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="grid2" style="align-items:end">
+        <div class="form-row"><label data-i18n="mon.addr">BSC 地址 (0x...)</label><input id="mAddr" type="text" placeholder="0x..."></div>
+        <div style="display:flex;gap:12px">
+          <div class="form-row" style="flex:1"><label data-i18n="mon.label">備註</label><input id="mLabel" type="text" placeholder="Whale 1"></div>
+          <button class="btn primary" style="height:42px" onclick="addMonitor()" data-i18n="mon.add">加入監控</button>
+        </div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="mut" style="margin-bottom:10px" data-i18n="mon.list">監控列表</div>
+        <table><thead><tr><th data-i18n="mon.label">備註</th><th data-i18n="mon.addr">地址</th><th></th></tr></thead>
+        <tbody id="mTbody"></tbody></table>
+      </div>
+      <div class="card">
+        <div class="mut" style="margin-bottom:10px" data-i18n="mon.log">異動記錄</div>
+        <table><thead><tr><th>Time</th><th>Address</th><th>Event</th></tr></thead>
+        <tbody id="mLogTbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10. HISTORY -->
+<section id="history">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="hist.orders">歷史訂單走勢</h2>
+      <p class="mut">ARK 價格快照（本機累積）</p>
+    </div>
+    <div class="card">
+      <div class="tabs">
+        <button class="btn ghost active" id="kbtn-1h" onclick="loadKline('minute',60)">1H</button>
+        <button class="btn ghost" id="kbtn-4h" onclick="loadKline('minute',240)">4H</button>
+        <button class="btn ghost" id="kbtn-1d" onclick="loadKline('hour',24)">1D</button>
+        <button class="btn ghost" id="kbtn-7d" onclick="loadKline('hour',168)">7D</button>
+        <button class="btn ghost" id="kbtn-30d" onclick="loadKline('day',30)">30D</button>
+        <button class="btn ghost" style="margin-left:auto" onclick="exportCSV()" data-i18n="hist.export">匯出 CSV</button>
+      </div>
+      <div style="display:flex;gap:18px;margin-bottom:10px;font-size:13px;flex-wrap:wrap" id="klineStats"></div>
+      <div class="chart-box tall"><canvas id="histChart"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<!-- 11. NOTIFY -->
+<section id="notify">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="noti.title">推播通知</h2>
+      <p class="mut">價格異動時推送提醒</p>
+    </div>
+    <div class="card">
+      <div class="tabs">
+        <button class="btn ghost" id="notibtn-tg" onclick="switchNoti('tg')" data-i18n="noti.tg">Telegram</button>
+        <button class="btn ghost" id="notibtn-wx" onclick="switchNoti('wx')" data-i18n="noti.wx">微信</button>
+      </div>
+      <!-- ⭐ 操作区(需要 VIP)：表单 + 按钮 -->
+      <div id="notiActionArea" style="position:relative">
+      <div id="noti-tg" class="panel on">
+        <div class="grid2">
+          <div class="form-row"><label data-i18n="noti.tgToken">Bot Token</label><input id="tgToken" type="password" placeholder="8123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw" autocomplete="off"></div>
+          <div class="form-row"><label data-i18n="noti.tgChat">Chat ID</label><input id="tgChat" type="text" placeholder="123456789" autocomplete="off"></div>
+        </div>
+        
+      </div>
+      <div id="noti-wx" class="panel">
+        <div class="form-row" style="max-width:420px"><label data-i18n="noti.wxKey">Server 醬 Key</label><input id="wxKey" type="password" placeholder="SCT..."></div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn primary" onclick="saveNoti()" data-i18n="noti.save">儲存設定</button>
+        <button class="btn ghost" onclick="bindNoti()" data-i18n="noti.bind">綁定</button>
+        <button class="btn ghost" onclick="unbindNoti()" data-i18n="noti.unbind">解綁</button>
+        <button class="btn ghost" onclick="testNoti()" data-i18n="noti.test">發送測試</button>
+      </div>
+      <div class="mut" id="notiStatus" style="margin-top:10px"></div>
+      </div><!-- /notiActionArea -->
+      <div style="margin-top:14px;padding:14px;background:rgba(53,224,245,.06);border:1px solid rgba(53,224,245,.2);border-radius:10px;font-size:12.5px;line-height:2;color:#8ba3c7">
+          <div style="font-weight:700;color:#35e0f5;margin-bottom:8px">📱 Telegram 绑定 4 步（约3分钟）</div>
+
+          <div style="margin-bottom:8px"><b style="color:#f5c46b">第1步 · 创建 Bot 拿 Token</b></div>
+          <div>① Telegram 搜索 <b>@BotFather</b>（认准蓝色认证勾）</div>
+          <div>② 点「START」→ 发送 <code style="background:#0a101c;padding:2px 6px;border-radius:4px;color:#35e0f5">/newbot</code></div>
+          <div>③ 起个名字（如：ARK提醒）→ 起用户名（必须 <b>_bot</b> 结尾，如 arkalert_bot）</div>
+          <div>④ 成功后它会返回一串 <b style="color:#f5c46b">8123456789:AAHdqTcv...</b> ← 这就是 Token，完整复制</div>
+
+          <div style="margin:12px 0 8px"><b style="color:#f5c46b">第2步 · 给 Bot 发消息（关键！）</b></div>
+          <div>① 搜索你刚创建的用户名（如 @arkalert_bot）</div>
+          <div>② 点「START」→ 随便发一句 <code style="background:#0a101c;padding:2px 6px;border-radius:4px;color:#35e0f5">hi</code></div>
+          <div style="color:#f2555f">⚠️ 不做这步会报 "chat not found"</div>
+
+          <div style="margin:12px 0 8px"><b style="color:#f5c46b">第3步 · 拿你的 Chat ID</b></div>
+          <div>① Telegram 搜索 <b>@userinfobot</b></div>
+          <div>② 点「START」→ 它立即回复：<code style="background:#0a101c;padding:2px 6px;border-radius:4px;color:#35e0f5">Id: 123456789</code></div>
+          <div>③ 这个数字就是 Chat ID</div>
+
+          <div style="margin:12px 0 8px"><b style="color:#f5c46b">第4步 · 填入并测试</b></div>
+          <div>① 把 Token 填上面「Bot Token」框</div>
+          <div>② 把数字填上面「Chat ID」框</div>
+          <div>③ 点下方「发送测试」→ 手机 Telegram 收到 = 成功 ✅</div>
+
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(53,224,245,.15);color:#6d7c96;font-size:11.5px">
+            💡 想发到群组？把 Bot 拉进群 → 群里发条消息 → 浏览器打开<br>
+            <code style="background:#0a101c;padding:1px 4px;border-radius:3px">https://api.telegram.org/bot你的Token/getUpdates</code><br>
+            找 <code style="background:#0a101c;padding:1px 4px;border-radius:3px">"chat":{"id":-100xxxx}</code> 这个负数就是群 Chat ID
+          </div>
+        </div>
+      <!-- ⭐ 以下说明对所有人可见(免费) -->
+      <div style="margin-top:14px;padding:12px;background:rgba(53,224,245,.06);border:1px solid rgba(53,224,245,.2);border-radius:10px;font-size:12px;line-height:1.9;color:#8ba3c7">
+        <div style="font-weight:700;color:#35e0f5;margin-bottom:6px">📱 微信配置说明</div>
+        <div>① 打开 <a href="https://sct.ftqq.com/" target="_blank" rel="noopener" style="color:#35e0f5">sct.ftqq.com</a> → 微信扫码登录</div>
+        <div>② 复制「SendKey」（<b style="color:#f5c46b">SCT 开头，约 40 位</b>）</div>
+        <div>③ 粘贴 → 点「发送测试」</div>
+        <div>④ 微信看 <b style="color:#f5c46b">「服务通知」</b>（不是聊天列表）</div>
+        <div style="margin-top:6px;color:#f2555f">⚠️ 不要填 wxid_xxx（微信个人号 ID，不是 SendKey）</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 11b. 生態合作 (廣告位) -->
+<section id="partner">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 data-i18n="au.adsTitle">生態合作</h2>
+      <p class="mut" data-i18n="au.adsDesc">項目方投放廣告請聯繫</p>
+      <div id="adProGate" style="margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(242,193,78,.11);border-left:3px solid var(--gold);color:var(--gold);font-size:12.5px" data-i18n="ad.proGate">💡 浏览/点击广告位免费 · 项目方投放广告需开通 VIP</div>
+    </div>
+    <!-- 📢 合作推廣（已投放廣告，可點擊） -->
+    <div id="adAllSlots" style="margin-bottom:20px"></div>
+    <div id="adEmptyHint" class="card" style="margin-bottom:20px;text-align:center;padding:22px">
+      <div style="font-size:34px;margin-bottom:8px">📢</div>
+      <div style="font-weight:700;color:#e6edf3;font-size:14px;margin-bottom:6px">合作推廣位 · 火熱招租中</div>
+      <div class="mut" style="font-size:12.5px;line-height:1.8">這裡將展示生態合作項目方的推廣內容<br>所有人可免費瀏覽、點擊了解</div>
+    </div>
+
+    <!-- 🏆 廣告位一覽（可投放） -->
+    <div class="mut" style="margin-bottom:10px;font-size:13px">🏆 可投放的廣告位</div>
+    <div class="grid3" id="adSlots"></div>
+
+    <!-- 我的投放記錄 -->
+    <div class="card" style="margin-top:20px">
+      <div class="mut" style="margin-bottom:10px">我的投放記錄</div>
+      <div class="scroll-x">
+        <table><thead><tr><th>項目</th><th>位置</th><th>時長</th><th>金額</th><th>狀態</th></tr></thead>
+        <tbody id="adMineList"><tr><td colspan="5" class="mut">請先登入錢包</td></tr></tbody></table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:18px;text-align:center">
+      <div class="mut" style="margin-bottom:10px" data-i18n="au.contactUs">聯繫我們</div>
+      <button class="btn primary" onclick="openContact()" data-i18n="ct.btn">發送訊息</button>
+      <div class="mut" style="margin-top:10px;font-size:12px" data-i18n="ct.hint">點擊填寫，管理員會收到你的訊息</div>
+    </div>
+  </div>
+</section>
+
+
+
+<!-- 11c. 生態系統 (ARK 生態工具) -->
+<section id="ecosystem">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>生態系統</h2>
+      <p class="mut">ARK 生態工具集合，一站式使用</p>
+    </div>
+    <!-- 主推：ARK Chat 大卡 -->
+    <a id="ecoMainCard" href="chat.html" class="card" style="display:block;position:relative;overflow:hidden;padding:22px;margin-bottom:16px;text-decoration:none;background:linear-gradient(135deg,rgba(53,224,245,.10),rgba(106,92,255,.10));border:1px solid rgba(53,224,245,.28)">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="font-size:46px;line-height:1;flex:0 0 auto">💬</div>
+        <div style="flex:1;min-width:180px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:800;color:#e6edf3;font-size:17px">ARK Chat 聊天</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(53,224,245,.18);color:#35e0f5;font-weight:800">HOT</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(76,222,128,.16);color:#4cde80;font-weight:800">免登錄</span>
+          </div>
+          <div class="mut" style="font-size:13px;margin-top:7px;line-height:1.7">錢包即身份，無需註冊 · 好友 / 群聊 / 動態 · 圖片實時收發 · 掃碼加好友</div>
+        </div>
+        <span style="flex:0 0 auto;background:linear-gradient(135deg,#35e0f5,#6a5cff);color:#060b18;font-weight:800;font-size:13.5px;padding:11px 22px;border-radius:10px;white-space:nowrap;box-shadow:0 6px 20px rgba(53,224,245,.32)">進入聊天 →</span>
+      </div>
+    </a>
+    <!-- 主推：電報號加速器 大卡 -->
+    <a href="tg-accel.html" class="card" style="display:block;position:relative;overflow:hidden;padding:22px;margin-bottom:16px;text-decoration:none;background:linear-gradient(135deg,rgba(53,224,245,.10),rgba(106,92,255,.10));border:1px solid rgba(53,224,245,.28)">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="font-size:46px;line-height:1;flex:0 0 auto">✈️</div>
+        <div style="flex:1;min-width:180px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="font-weight:800;color:#e6edf3;font-size:17px">電報號加速器</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(106,92,255,.20);color:#a99cff;font-weight:800">NEW</span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:8px;background:rgba(76,222,128,.16);color:#4cde80;font-weight:800">免登錄</span>
+          </div>
+          <div class="mut" style="font-size:13px;margin-top:7px;line-height:1.7">一鍵打開 Telegram 電報號 · 多線路加速 · MTProto 客戶端加速 · 網頁版直連</div>
+        </div>
+        <span style="flex:0 0 auto;background:linear-gradient(135deg,#35e0f5,#6a5cff);color:#060b18;font-weight:800;font-size:13.5px;padding:11px 22px;border-radius:10px;white-space:nowrap;box-shadow:0 6px 20px rgba(53,224,245,.32)">加速打開 →</span>
+      </div>
+    </a>
+    <!-- 其他生態系統（管理員配置） -->
+    <div class="grid3" id="ecoGrid"></div>
+    <div class="mut" id="ecoHint" style="text-align:center;margin-top:14px;font-size:13px"></div>
+  </div>
+</section>
+
+<!-- 12. RISK -->
+<section id="risk">
+  <div class="wrap">
+    <div class="sec-head"><h2 data-i18n="risk.title">風險說明</h2></div>
+    <div class="risk-list">
+      <div class="risk-item"><div class="n">1</div><p data-i18n="risk.1"></p></div>
+      <div class="risk-item"><div class="n">2</div><p data-i18n="risk.2"></p></div>
+      <div class="risk-item"><div class="n">3</div><p data-i18n="risk.3"></p></div>
+      <div class="risk-item"><div class="n">4</div><p data-i18n="risk.4"></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 13. FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="f-logo"><img src="images/mascot.png" alt="ARK"><span>ARK Citizen Tools</span></div>
+    <p data-i18n="footer.disclaimer"></p>
+    <p class="copy">PancakeSwap V2 · BSC · &copy; <span id="yr"></span> ARK Citizen Tools</p>
+  </div>
+</footer>
+
+<!-- 廣告投放彈窗 -->
+<div class="pay-modal" id="adModal">
+  <div class="pay-dialog" style="max-width:520px">
+    <div class="pay-head">
+      <h3 id="adFormTitle">投放廣告</h3>
+      <button class="btn ghost mini" onclick="adCloseForm()">✕</button>
+    </div>
+    <div class="form-row"><label>項目名稱 *</label><input id="adTitle" type="text" placeholder="例如：ARK 生態錢包"></div>
+    <div class="form-row"><label>項目連結 *</label><input id="adUrl" type="text" placeholder="https://..."></div>
+    <div class="form-row"><label>廣告圖 URL（選填）</label><input id="adImage" type="text" placeholder="https://.../banner.png"></div>
+    <div class="grid2" style="grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-row"><label>投放時長</label>
+        <select id="adMonths"></select>
+      </div>
+      <div class="form-row"><label>應付金額</label>
+        <div class="res" style="padding:9px 12px"><div class="v" id="adTotal">-</div></div>
+      </div>
+    </div>
+    <div class="form-row"><label>聯絡方式</label><input id="adContact" type="text" placeholder="Telegram / Email"></div>
+    <div class="form-row"><label>簡介（選填）</label><input id="adDesc" type="text" placeholder="一句話介紹"></div>
+    <button class="btn primary" style="width:100%" onclick="adSubmit()">提交申請</button>
+    <div class="pay-invoice" id="adPayBox" style="display:none"></div>
+  </div>
+</div>
+
+<!-- 聯繫彈窗 -->
+<div class="pay-modal" id="contactModal">
+  <div class="pay-dialog">
+    <div class="pay-head">
+      <h3 data-i18n="ct.title">聯繫我們</h3>
+      <button class="btn ghost mini" onclick="closeContact()">✕</button>
+    </div>
+    <p class="mut" style="margin-bottom:14px" data-i18n="ct.desc">留下你的訊息，管理員會盡快回覆。</p>
+    <div class="form-row"><label data-i18n="ct.contact">你的聯絡方式</label>
+      <input id="ctContact" type="text" placeholder="Telegram / Email / 微信"/></div>
+    <div class="form-row"><label data-i18n="ct.body">訊息內容</label>
+      <textarea id="ctBody" rows="4" placeholder=""></textarea></div>
+    <button class="btn primary" style="width:100%" onclick="submitContact()" data-i18n="ct.send">發送</button>
+    <div class="mut" id="ctStatus" style="margin-top:10px;text-align:center"></div>
+  </div>
+</div>
+
+<!-- 付費彈窗 -->
+<div class="pay-modal" id="payModal">
+  <div class="pay-dialog">
+    <div class="pay-head">
+      <h3 data-i18n="au.proTitle">升級 VIP 會員</h3>
+      <button class="btn ghost mini" onclick="closePay()">✕</button>
+    </div>
+    <p class="mut" style="margin-bottom:16px" data-i18n="au.proDesc">解鎖全部功能</p>
+
+    <details class="tp-guide" open>
+      <summary data-i18n="au.guide">升級指引</summary>
+      <div class="tp-steps" id="guideDesktop" style="display:none">
+        <div style="color:var(--cyan);font-weight:700;margin-bottom:4px">💻 電腦端（3 步）</div>
+        <div data-i18n="au.d1">① 安裝瀏覽器錢包插件（MetaMask / OKX / 幣安 Web3）</div>
+        <div data-i18n="au.d2">② 點「錢包登入」→ 插件彈窗簽名（零 gas）</div>
+        <div data-i18n="au.d3">③ 選方案 → 確認轉帳 ARK → 自動開通</div>
+        <div class="tp-note" style="margin-top:10px">
+          <b data-i18n="au.dNote">沒有錢包？</b>
+          <a href="https://metamask.io/download/" target="_blank" rel="noopener" style="color:var(--cyan)">MetaMask</a> ·
+          <a href="https://www.okx.com/web3" target="_blank" rel="noopener" style="color:var(--cyan)">OKX Web3</a> ·
+          <a href="https://www.binance.com/zh-CN/web3wallet" target="_blank" rel="noopener" style="color:var(--cyan)">幣安 Web3</a>
+          <div style="margin-top:6px;color:var(--text-dim);font-weight:400" data-i18n="au.dNote2">裝好後刷新頁面，點「錢包登入」即可（網絡需切到 BSC）</div>
+        </div>
+      </div>
+      <div class="tp-steps" id="guideMobile" style="display:none">
+        <div style="color:var(--cyan);font-weight:700;margin-bottom:4px">📱 手機端（TP 錢包）</div>
+        <div data-i18n="au.step1">① 點「錢包登入」，選擇 TP 錢包</div>
+        <div data-i18n="au.step2">② 簽名確認（零 gas，僅驗證身份）</div>
+        <div data-i18n="au.step3">③ 選擇 VIP 方案</div>
+        <div data-i18n="au.step4">④ 錢包確認轉帳 ARK</div>
+        <div data-i18n="au.step5">⑤ 鏈上確認後自動開通（約 15 秒）</div>
+      </div>
+      <div class="tp-note" data-i18n="au.tpNote"></div>
+    </details>
+
+    <div class="net-bar">
+      <span class="tag" id="netTag"><span data-i18n="au.network">當前網路</span>: <b id="netName">-</b></span>
+      <button class="btn ghost mini" onclick="switchBSC()" data-i18n="au.switchNet">切換到 BSC</button>
+      <span class="mut" data-i18n="au.needBnb">需準備少量 BNB 作為手續費</span>
+    </div>
+
+    <div class="pay-plans" id="payPlans"></div>
+    <div class="pay-invoice" id="payInvoice" style="display:none"></div>
+
+    <!-- 🔗 跨设备登录（手机升级 → 电脑使用） -->
+    <div style="margin-top:16px;padding:14px;background:var(--surface);border:1px solid rgba(53,224,245,.2);border-radius:12px">
+      <div style="font-weight:800;color:var(--cyan);font-size:13px;margin-bottom:10px" data-i18n="bind.title">🔗 跨设备登录（手机升级 → 电脑使用）</div>
+      <div class="mut" style="font-size:12px;margin-bottom:10px" data-i18n="bind.desc">手机端升级后生成绑定码，电脑端输入即可免插件登录</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost mini" onclick="genBindCode()" data-i18n="bind.gen">📱 生成绑定码（本机）</button>
+        <input id="bindInput" placeholder="输入6位绑定码" maxlength="6" style="flex:1;min-width:130px;text-transform:uppercase;font-family:ui-monospace,monospace;letter-spacing:3px;text-align:center;padding:8px;background:#0a101c;border:1px solid var(--line);border-radius:8px;color:#e6edf3"/>
+        <button class="btn primary mini" onclick="useBindCode()" data-i18n="bind.use">💻 用码登录</button>
+      </div>
+      <div id="bindCodeBox" style="display:none;margin-top:12px"></div>
+    </div>
+    <div class="mut" style="margin-top:14px;font-size:12px">
+      收款地址：<span class="mono" id="payTo">-</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ⭐ 一鍵清除所有本地狀態（訪問 ?clear）
+if (location.search.indexOf("clear") >= 0) {
+  try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+  document.addEventListener("DOMContentLoaded", function () {
+    var box = document.createElement("div");
+    box.style.cssText = "position:fixed;inset:0;z-index:99999;background:#060b18;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;text-align:center";
+    box.innerHTML = '<h2 style="color:#35e0f5;font-size:20px">✅ 已清除所有本地資料</h2>' +
+      '<p style="color:#93a4c8;font-size:14px;max-width:320px;line-height:1.8">localStorage 和 sessionStorage 已全部清空。<br>請點下方按鈕重新開始。</p>' +
+      '<button onclick="location.href=\'/?v=\'+Date.now()" class="btn primary" style="padding:14px 32px;font-size:15px">重新開啟網站</button>';
+    document.body.appendChild(box);
+  });
+}
+document.getElementById("yr").textContent = new Date().getFullYear();
+// ⭐ 版本標記（用來確認瀏覽器跑的是哪個版本）
+window.ARK_VERSION = "v1.9.0";
+console.log("[ARK] version=" + window.ARK_VERSION);
+document.addEventListener("DOMContentLoaded", function(){
+  var f = document.querySelector("footer .copy");
+  if (f) f.innerHTML += ' · <b style="color:#35e0f5">' + window.ARK_VERSION + '</b>';
+});
+</script>
+<script src="i18n2.js?v=1792513380"></script>
+<script src="i18n-runtime.js?v=1792513380"></script>
+<script src="app2.js?v=1792854760"></script>
+<script src="accounts.js?v=1792513380"></script>
+<script src="phase3.js?v=1792513380"></script>
+<script src="engine2.js?v=1792513380"></script>
+<script src="arkie.js?v=1792513380"></script>
+<script src="wallet2.js?v=1792513380"></script>
+<script src="wc.js?v=1792513380"></script>
+<script src="wc2.js?v=1792513380"></script>
+<script src="flow.js?v=1792513380"></script>
+<script src="debug.js?v=1792513380"></script>
+<script src="auth2.js?v=1792513380"></script>
+<script src="paylink2.js?v=1792513380"></script>
+<script src="ads2.js?v=1792513380"></script>
+<script src="arkie-chat.js?v=1792513380"></script>
+</body>
+</html>
